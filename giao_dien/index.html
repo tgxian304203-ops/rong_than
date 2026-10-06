@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Rồng Thần 🐉</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ============================================================ -->
+<!-- MÀN HÌNH CHAT CHÍNH                                          -->
+<!-- ============================================================ -->
+<div id="man-hinh-chinh" class="man-hinh">
+
+    <header id="header-chinh" class="header">
+        <button id="nut-menu-trai" class="nut-icon" aria-label="Mở menu trái">
+            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                <line x1="3" y1="6"  x2="21" y2="6"/>
+                <line x1="3" y1="12" x2="21" y2="12"/>
+                <line x1="3" y1="18" x2="21" y2="18"/>
+            </svg>
+        </button>
+
+        <div id="logo-chinh" class="logo-chinh">🌕🐉</div>
+
+        <button id="nut-menu-phai" class="nut-icon" aria-label="Mở menu phải">
+            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                <line x1="21" y1="6"  x2="3" y2="6"/>
+                <line x1="21" y1="12" x2="3" y2="12"/>
+                <line x1="21" y1="18" x2="3" y2="18"/>
+            </svg>
+        </button>
+    </header>
+
+    <main id="khung-chat" class="khung-chat">
+        <div id="danh-sach-tin-nhan" class="danh-sach-tin-nhan"></div>
+
+        <div id="khung-sandbox" class="khung-sandbox an">
+            <div class="sandbox-header">
+                <span class="sandbox-tieude">Sandbox Rồng Thần</span>
+                <div class="sandbox-nut">
+                    <button id="nut-chay-sandbox" class="nut-nho">Chạy</button>
+                    <button id="nut-copy-sandbox" class="nut-nho">Copy</button>
+                </div>
+            </div>
+            <div class="sandbox-body">
+                <div class="sandbox-code">
+                    <textarea id="sandbox-input" spellcheck="false"></textarea>
+                </div>
+                <div class="sandbox-output">
+                    <pre id="sandbox-ketqua"></pre>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer id="khung-input" class="khung-input">
+        <div id="khung-preview" class="khung-preview an"></div>
+
+        <div class="input-hang">
+            <button id="nut-dinh-kem" class="nut-icon" aria-label="Đính kèm file/ảnh">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5"  x2="12" y2="19"/>
+                    <line x1="5"  y1="12" x2="19" y2="12"/>
+                </svg>
+            </button>
+            <input type="file" id="input-file-anh" accept="image/*" multiple hidden>
+            <input type="file" id="input-file-tai-lieu" multiple hidden>
+
+            <textarea id="o-nhap" placeholder="Nhập..." rows="1"></textarea>
+
+            <button id="nut-gui" class="nut-icon nut-gui" aria-label="Gửi">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="22" y1="2" x2="11" y2="13"/>
+                    <polygon points="22,2 15,22 11,13 2,9 22,2"/>
+                </svg>
+            </button>
+        </div>
+    </footer>
+
+</div>
+
+<!-- ============================================================ -->
+<!-- MENU TRÁI                                                    -->
+<!-- ============================================================ -->
+<div id="menu-trai" class="overlay overlay-trai">
+    <div class="overlay-header">
+        <div class="logo-chinh">🌕🐉</div>
+        <button id="dong-menu-trai" class="nut-icon" aria-label="Đóng menu trái">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12"/>
+                <polyline points="12,19 5,12 12,5"/>
+            </svg>
+        </button>
+    </div>
+
+    <div class="overlay-body">
+
+        <button id="nut-new-chat" class="muc-menu">
+            <span class="muc-icon">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19"/>
+                    <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+            </span>
+            <span class="muc-chu">New Chat</span>
+        </button>
+
+        <button id="nut-tao-du-an" class="muc-menu">
+            <span class="muc-icon">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                </svg>
+            </span>
+            <span class="muc-chu">Tạo dự án</span>
+        </button>
+
+        <button id="nut-share" class="muc-menu">
+            <span class="muc-icon">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="18" cy="5" r="3"/>
+                    <circle cx="6" cy="12" r="3"/>
+                    <circle cx="18" cy="19" r="3"/>
+                    <line x1="8.59"  y1="13.51" x2="15.42" y2="17.49"/>
+                    <line x1="15.41" y1="6.51"  x2="8.59"  y2="10.49"/>
+                </svg>
+            </span>
+            <span class="muc-chu">Share</span>
+        </button>
+
+        <button id="nut-mo-cay" class="muc-menu">
+            <span class="muc-icon">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="5" r="2"/>
+                    <circle cx="5" cy="19" r="2"/>
+                    <circle cx="19" cy="19" r="2"/>
+                    <line x1="12" y1="7" x2="12" y2="12"/>
+                    <line x1="12" y1="12" x2="5" y2="17"/>
+                    <line x1="12" y1="12" x2="19" y2="17"/>
+                </svg>
+            </span>
+            <span class="muc-chu">Cây quyết định</span>
+        </button>
+
+        <div class="muc-ngan"></div>
+
+        <div class="muc-tieude">DỰ ÁN</div>
+        <div id="danh-sach-du-an" class="danh-sach-cuon"></div>
+
+        <div class="muc-ngan"></div>
+
+        <div class="muc-tieude">GẦN ĐÂY</div>
+        <div id="danh-sach-chat-nhanh" class="danh-sach-cuon"></div>
+
+        <div class="muc-ngan"></div>
+
+        <button id="nut-doi-sang-toi" class="muc-menu">
+            <span class="muc-icon">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                </svg>
+            </span>
+            <span class="muc-chu">Chế độ sáng tối</span>
+        </button>
+
+        <button id="nut-cai-dat" class="muc-menu">
+            <span class="muc-icon">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+            </span>
+            <span class="muc-chu">Cài đặt</span>
+        </button>
+
+        <div id="nguoi-dung-da-dang-nhap" class="muc-nguoi-dung an">
+            <div class="muc-menu muc-tinh">
+                <span class="muc-icon">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                        <circle cx="12" cy="7" r="4"/>
+                    </svg>
+                </span>
+                <span id="ten-nguoi-dung" class="muc-chu">Người dùng</span>
+            </div>
+            <button id="nut-dang-xuat" class="muc-menu">
+                <span class="muc-icon">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                        <polyline points="16,17 21,12 16,7"/>
+                        <line x1="21" y1="12" x2="9" y2="12"/>
+                    </svg>
+                </span>
+                <span class="muc-chu">Đăng xuất</span>
+            </button>
+        </div>
+
+        <div id="nguoi-dung-khach" class="muc-nguoi-dung">
+            <button id="nut-mo-dang-ky" class="muc-menu">
+                <span class="muc-icon">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 20h9"/>
+                        <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                    </svg>
+                </span>
+                <span class="muc-chu">Đăng ký</span>
+            </button>
+            <button id="nut-mo-dang-nhap" class="muc-menu">
+                <span class="muc-icon">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+                        <polyline points="10,17 15,12 10,7"/>
+                        <line x1="15" y1="12" x2="3" y2="12"/>
+                    </svg>
+                </span>
+                <span class="muc-chu">Đăng nhập</span>
+            </button>
+        </div>
+
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- MENU PHẢI (CHỈ LOGS)                                         -->
+<!-- ============================================================ -->
+<div id="menu-phai" class="overlay overlay-phai">
+    <div class="overlay-header">
+        <button id="dong-menu-phai" class="nut-icon" aria-label="Đóng menu phải">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12"/>
+                <polyline points="12,19 5,12 12,5"/>
+            </svg>
+        </button>
+        <div class="logo-phai">🌕🐉</div>
+    </div>
+
+    <div class="overlay-body">
+        <button id="nut-mo-logs" class="muc-menu">
+            <span class="muc-icon">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14,2 14,8 20,8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                </svg>
+            </span>
+            <span class="muc-chu">Logs</span>
+        </button>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- TRANG CÀI ĐẶT                                                -->
+<!-- ============================================================ -->
+<div id="trang-cai-dat" class="overlay overlay-phai">
+    <div class="overlay-header">
+        <button id="dong-cai-dat" class="nut-icon" aria-label="Đóng cài đặt">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12"/>
+                <polyline points="12,19 5,12 12,5"/>
+            </svg>
+        </button>
+        <div class="tieude-overlay">⚙️ CÀI ĐẶT</div>
+    </div>
+
+    <div class="overlay-body">
+
+        <button id="nut-mo-key" class="muc-menu">
+            <span class="muc-icon">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+                </svg>
+            </span>
+            <span class="muc-chu">Key</span>
+        </button>
+
+        <button id="nut-mo-doi-mat-khau" class="muc-menu an">
+            <span class="muc-icon">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+            </span>
+            <span class="muc-chu">Đổi mật khẩu</span>
+        </button>
+
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- TRANG QUẢN LÝ KEY                                            -->
+<!-- ============================================================ -->
+<div id="trang-key" class="overlay overlay-phai">
+    <div class="overlay-header">
+        <button id="dong-key" class="nut-icon" aria-label="Đóng key">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12"/>
+                <polyline points="12,19 5,12 12,5"/>
+            </svg>
+        </button>
+        <div class="tieude-overlay">🗝 QUẢN LÝ KEY</div>
+    </div>
+
+    <div class="overlay-body">
+
+        <div class="muc-tieude">KEY MODEL</div>
+        <div class="nhom-input">
+            <input type="text" id="o-key-model-2" class="o-nhap-key" placeholder="Dán API Key model...">
+            <button id="nut-run-key-model-2" class="nut-run">Run</button>
+        </div>
+
+        <div class="muc-tieude">KEY TRA WEB</div>
+        <div class="nhom-input">
+            <input type="text" id="o-key-web-2" class="o-nhap-key" placeholder="Dán API Key tra web...">
+            <button id="nut-run-key-web-2" class="nut-run">Run</button>
+        </div>
+
+        <div class="muc-tieude">URI KHO MONGODB</div>
+        <div class="nhom-input">
+            <input type="text" id="o-uri-kho-1-2" class="o-nhap-key" placeholder="Dán URI kho 1...">
+            <button id="nut-run-kho-1-2" class="nut-run">Run</button>
+        </div>
+        <div class="nhom-input">
+            <input type="text" id="o-uri-kho-2-2" class="o-nhap-key" placeholder="Dán URI kho 2...">
+            <button id="nut-run-kho-2-2" class="nut-run">Run</button>
+        </div>
+
+        <div class="muc-ngan"></div>
+
+        <div class="muc-tieude">KEY MODEL ĐÃ LƯU</div>
+        <div id="danh-sach-key-model-2" class="danh-sach-cuon"></div>
+
+        <div class="muc-ngan"></div>
+
+        <div class="muc-tieude">KEY TRA WEB ĐÃ LƯU</div>
+        <div id="danh-sach-key-web-2" class="danh-sach-cuon"></div>
+
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- TRANG LOGS                                                   -->
+<!-- ============================================================ -->
+<div id="trang-logs" class="overlay overlay-phai">
+    <div class="overlay-header">
+        <button id="dong-logs" class="nut-icon" aria-label="Đóng logs">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12"/>
+                <polyline points="12,19 5,12 12,5"/>
+            </svg>
+        </button>
+        <div class="tieude-overlay">LOGS</div>
+    </div>
+
+    <div class="overlay-body">
+        <div class="logs-bo-loc">
+            <button class="nut-loc dang-chon" data-loc="tat-ca">Tất cả</button>
+            <button class="nut-loc" data-loc="dai-nao">Đại não</button>
+            <button class="nut-loc" data-loc="tieu-nao">Tiểu não</button>
+            <button class="nut-loc" data-loc="tra-web">Tra web</button>
+            <button class="nut-loc" data-loc="sandbox">Sandbox</button>
+            <button class="nut-loc" data-loc="loi">Lỗi</button>
+        </div>
+
+        <div id="danh-sach-log" class="danh-sach-log"></div>
+
+        <div class="logs-nut">
+            <button id="nut-xoa-log" class="nut-nho">Xóa log</button>
+            <button id="nut-tai-log" class="nut-nho">Tải log</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- TRANG CÂY QUYẾT ĐỊNH                                         -->
+<!-- ============================================================ -->
+<div id="trang-cay" class="overlay overlay-phai">
+    <div class="overlay-header">
+        <button id="dong-cay" class="nut-icon" aria-label="Đóng cây">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12"/>
+                <polyline points="12,19 5,12 12,5"/>
+            </svg>
+        </button>
+        <div class="tieude-overlay">🌳 CÂY QUYẾT ĐỊNH</div>
+        <button id="nut-tai-lai-cay" class="nut-icon" aria-label="Tải lại cây">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="23,4 23,10 17,10"/>
+                <polyline points="1,20 1,14 7,14"/>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+            </svg>
+        </button>
+    </div>
+
+    <div class="overlay-body">
+        <div id="cay-thong-tin" class="cay-thong-tin"></div>
+        <div id="khung-cay" class="khung-cay"></div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- POPUP ĐĂNG KÝ                                                -->
+<!-- ============================================================ -->
+<div id="popup-dang-ky" class="popup-nen">
+    <div class="popup">
+        <div class="popup-header">
+            <div class="popup-tieude">📝 Đăng ký</div>
+            <button id="dong-popup-dang-ky" class="nut-icon" aria-label="Đóng">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6"  y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <div class="popup-body">
+            <input type="text"     id="dang-ky-ten"    class="o-nhap-popup" placeholder="Tên đăng nhập">
+            <input type="password" id="dang-ky-mat-khau" class="o-nhap-popup" placeholder="Mật khẩu">
+            <div id="dang-ky-thong-bao" class="thong-bao-popup"></div>
+            <button id="nut-xac-nhan-dang-ky" class="nut-chinh">Đăng ký</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- POPUP ĐĂNG NHẬP                                              -->
+<!-- ============================================================ -->
+<div id="popup-dang-nhap" class="popup-nen">
+    <div class="popup">
+        <div class="popup-header">
+            <div class="popup-tieude">🔑 Đăng nhập</div>
+            <button id="dong-popup-dang-nhap" class="nut-icon" aria-label="Đóng">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6"  y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <div class="popup-body">
+            <input type="text"     id="dang-nhap-ten"      class="o-nhap-popup" placeholder="Tên đăng nhập">
+            <input type="password" id="dang-nhap-mat-khau" class="o-nhap-popup" placeholder="Mật khẩu">
+            <div id="dang-nhap-thong-bao" class="thong-bao-popup"></div>
+            <button id="nut-xac-nhan-dang-nhap" class="nut-chinh">Đăng nhập</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- POPUP XÁC NHẬN XÓA                                           -->
+<!-- ============================================================ -->
+<div id="popup-xac-nhan-xoa" class="popup-nen">
+    <div class="popup popup-nho">
+        <div class="popup-body">
+            <div id="xac-nhan-noi-dung" class="noi-dung-xac-nhan">Bạn có chắc muốn xóa?</div>
+            <div class="popup-nut-hang">
+                <button id="nut-huy-xoa"  class="nut-phu">Hủy</button>
+                <button id="nut-dong-y-xoa" class="nut-chinh nut-do">Xóa</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- POPUP ĐỔI MẬT KHẨU                                           -->
+<!-- ============================================================ -->
+<div id="popup-doi-mat-khau" class="popup-nen">
+    <div class="popup">
+        <div class="popup-header">
+            <div class="popup-tieude">🔑 Đổi mật khẩu</div>
+            <button id="dong-popup-doi-mat-khau" class="nut-icon" aria-label="Đóng">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6"  y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <div class="popup-body">
+            <input type="password" id="doi-mk-cu"    class="o-nhap-popup" placeholder="Mật khẩu cũ">
+            <input type="password" id="doi-mk-moi"   class="o-nhap-popup" placeholder="Mật khẩu mới">
+            <input type="password" id="doi-mk-lai"   class="o-nhap-popup" placeholder="Nhập lại mật khẩu mới">
+            <div id="doi-mk-thong-bao" class="thong-bao-popup"></div>
+            <div class="popup-nut-hang">
+                <button id="nut-huy-doi-mk"    class="nut-phu">Hủy</button>
+                <button id="nut-xac-nhan-doi-mk" class="nut-chinh">Đổi mật khẩu</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SCRIPT                                                       -->
+<!-- ============================================================ -->
+<script src="quan_ly_menu.js"></script>
+<script src="tach_code_khoi_tin_nhan.js"></script>
+<script src="copy_code.js"></script>
+<script src="hien_thi_code.js"></script>
+<script src="chat.js"></script>
+<script src="quan_ly_key.js"></script>
+<script src="quan_ly_key_web.js"></script>
+<script src="quan_ly_kho.js"></script>
+<script src="quan_ly_cai_dat.js"></script>
+<script src="logs.js"></script>
+<script src="xu_ly_anh.js"></script>
+<script src="xu_ly_file.js"></script>
+<script src="hien_thi_cay.js"></script>
+<script src="dang_ky.js"></script>
+<script src="dang_nhap.js"></script>
+<script src="app.js"></script>
+
+</body>
+</html>
