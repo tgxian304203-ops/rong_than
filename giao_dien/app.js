@@ -1,8 +1,11 @@
 /* ============================================================
    app.js - Khởi động chung giao diện Rồng Thần
    ------------------------------------------------------------
-   ĐÃ SỬA: Vẽ danh sách dự án/chat nhanh vào trang riêng.
-           Hỗ trợ localStorage cho khách.
+   ĐÃ SỬA:
+     - Vẽ danh sách dự án vào trang riêng.
+     - Vẽ 10 chat nhanh gần nhất vào menu trái.
+     - Thêm hàm tải trò chuyện trong dự án + tin nhắn.
+     - Hỗ trợ localStorage cho khách.
    ============================================================ */
 
 (function () {
@@ -10,10 +13,12 @@
 
     const KHOA_LS_DU_AN = 'rong_than_du_an_khach';
     const KHOA_LS_CHAT = 'rong_than_chat_nhanh_khach';
+    const KHOA_LS_TRO_CHUYEN = 'rong_than_tro_chuyen_khach';
+    const KHOA_LS_TIN_NHAN = 'rong_than_tin_nhan_khach';
     let laKhach = false;
 
     /* ============================================================
-       HÀM TIỆN ÍCH
+       HÀM TIỆN ÍCH CHUNG
        ============================================================ */
     function layKhungTinNhan() {
         return document.getElementById('danh-sach-tin-nhan');
@@ -67,20 +72,6 @@
     }
 
     /* ============================================================
-       KIỂM TRA PHIÊN
-       ============================================================ */
-    async function kiemTraPhien() {
-        try {
-            const ph = await fetch('/api/phien');
-            const dl = await ph.json();
-            laKhach = !(dl && dl.da_dang_nhap);
-        } catch (e) {
-            laKhach = true;
-        }
-        return laKhach;
-    }
-
-    /* ============================================================
        LOCALSTORAGE CHO KHÁCH
        ============================================================ */
     function docLS(khoa) {
@@ -96,7 +87,6 @@
         try { localStorage.setItem(khoa, JSON.stringify(ds || [])); } catch (e) {}
     }
 
-    // Hàm toàn cục — gọi từ quan_ly_menu.js
     function luuDuAnKhach(duAn) {
         const ds = docLS(KHOA_LS_DU_AN);
         ds.push(duAn);
@@ -106,13 +96,26 @@
     function luuChatNhanhKhach(chat) {
         let ds = docLS(KHOA_LS_CHAT);
         ds.push(chat);
-        // Khách không giới hạn, nhưng để an toàn giữ 50 cái
         if (ds.length > 50) ds = ds.slice(-50);
         ghiLS(KHOA_LS_CHAT, ds);
     }
 
     /* ============================================================
-       VẼ DANH SÁCH DỰ ÁN
+       KIỂM TRA PHIÊN
+       ============================================================ */
+    async function kiemTraPhien() {
+        try {
+            const ph = await fetch('/api/phien');
+            const dl = await ph.json();
+            laKhach = !(dl && dl.da_dang_nhap);
+        } catch (e) {
+            laKhach = true;
+        }
+        return laKhach;
+    }
+
+    /* ============================================================
+       VẼ DANH SÁCH DỰ ÁN (trang riêng)
        ============================================================ */
     function taoMucDuAn(duAn) {
         const muc = document.createElement('div');
@@ -124,8 +127,8 @@
         nut.innerHTML = '📁 <span class="muc-chu">' +
             String(duAn.ten || 'Dự án').replace(/</g, '&lt;') + '</span>';
         nut.addEventListener('click', function () {
-            if (typeof window.moDuAn === 'function') {
-                window.moDuAn(duAn.id);
+            if (typeof window.moChiTietDuAn === 'function') {
+                window.moChiTietDuAn(duAn.id, duAn.ten);
             }
         });
         muc.appendChild(nut);
@@ -139,7 +142,6 @@
             const noiDung = 'Bạn có chắc muốn xóa dự án "' + duAn.ten + '"?';
             const hamDongY = async function () {
                 if (laKhach) {
-                    // Xóa khỏi localStorage
                     const ds = docLS(KHOA_LS_DU_AN)
                         .filter(function (d) { return d.id !== duAn.id; });
                     ghiLS(KHOA_LS_DU_AN, ds);
@@ -178,7 +180,7 @@
         if (!khung) return;
         khung.innerHTML = '';
         if (!Array.isArray(ds) || ds.length === 0) {
-            khung.innerHTML = '<div class="muc-trong">Chưa có dự án nào</div>';
+            khung.innerHTML = '<div class="muc-trong">Chưa có dự án nào. Bấm [+] để tạo.</div>';
             return;
         }
         ds.forEach(function (d) {
@@ -205,9 +207,9 @@
     }
 
     /* ============================================================
-       VẼ DANH SÁCH CHAT NHANH
+       VẼ 10 CHAT NHANH GẦN NHẤT VÀO MENU TRÁI
        ============================================================ */
-    function taoMucChatNhanh(chat) {
+    function taoMucChatNhanhMenu(chat) {
         const muc = document.createElement('div');
         muc.classList.add('muc-chat-nhanh');
 
@@ -215,10 +217,12 @@
         nut.classList.add('muc-menu', 'muc-chat-nut');
         nut.type = 'button';
         nut.innerHTML = '💬 <span class="muc-chu">' +
-            String(chat.ten || chat.tieu_de || 'Chat').replace(/</g, '&lt;') + '</span>';
+            String(chat.ten || 'Chat').replace(/</g, '&lt;') + '</span>';
         nut.addEventListener('click', function () {
             if (typeof window.moChatNhanh === 'function') {
                 window.moChatNhanh(chat.id);
+            } else if (window.dongMenuTrai) {
+                window.dongMenuTrai();
             }
         });
         muc.appendChild(nut);
@@ -229,7 +233,7 @@
         nutXoa.innerHTML = '&#10005;';
         nutXoa.addEventListener('click', function (e) {
             e.stopPropagation();
-            const tenChat = chat.ten || chat.tieu_de || 'chat này';
+            const tenChat = chat.ten || 'chat này';
             const noiDung = 'Bạn có chắc muốn xóa "' + tenChat + '"?';
             const hamDongY = async function () {
                 if (laKhach) {
@@ -266,34 +270,169 @@
         return muc;
     }
 
-    function veDanhSachChatNhanh(ds) {
-        const khung = document.getElementById('danh-sach-chat-nhanh-trong-trang');
+    function veDanhSachChatNhanhMenu(ds) {
+        const khung = document.getElementById('danh-sach-chat-nhanh-menu');
         if (!khung) return;
         khung.innerHTML = '';
         if (!Array.isArray(ds) || ds.length === 0) {
-            khung.innerHTML = '<div class="muc-trong">Chưa có chat nào</div>';
             return;
         }
-        ds.forEach(function (c) {
-            khung.appendChild(taoMucChatNhanh(c));
+        // Chỉ hiện 10 cái gần nhất
+        ds.slice(0, 10).forEach(function (c) {
+            khung.appendChild(taoMucChatNhanhMenu(c));
         });
     }
 
     async function taiDanhSachChatNhanh() {
         if (laKhach) {
-            veDanhSachChatNhanh(docLS(KHOA_LS_CHAT));
+            veDanhSachChatNhanhMenu(docLS(KHOA_LS_CHAT));
             return;
         }
         try {
             const ph = await fetch('/api/danh-sach-chat-nhanh');
             const dl = await ph.json();
             if (dl && dl.thanh_cong && Array.isArray(dl.danh_sach)) {
-                veDanhSachChatNhanh(dl.danh_sach);
+                veDanhSachChatNhanhMenu(dl.danh_sach);
             } else {
-                veDanhSachChatNhanh([]);
+                veDanhSachChatNhanhMenu([]);
             }
         } catch (e) {
-            veDanhSachChatNhanh([]);
+            veDanhSachChatNhanhMenu([]);
+        }
+    }
+
+    /* ============================================================
+       TRÒ CHUYỆN TRONG DỰ ÁN
+       ============================================================ */
+    function taoMucTroChuyen(tro) {
+        const muc = document.createElement('div');
+        muc.classList.add('muc-du-an'); // dùng lại style có nút X
+
+        const nut = document.createElement('button');
+        nut.classList.add('muc-menu', 'muc-du-an-nut');
+        nut.type = 'button';
+        nut.innerHTML = '💬 <span class="muc-chu">' +
+            String(tro.ten || 'Trò chuyện').replace(/</g, '&lt;') + '</span>';
+        nut.addEventListener('click', function () {
+            if (typeof window.moChatDuAn === 'function') {
+                window.moChatDuAn(window.__ID_DU_AN_DANG_XEM, tro.id, tro.ten);
+            }
+        });
+        muc.appendChild(nut);
+
+        const nutXoa = document.createElement('button');
+        nutXoa.classList.add('nut-xoa-muc');
+        nutXoa.type = 'button';
+        nutXoa.innerHTML = '&#10005;';
+        nutXoa.addEventListener('click', function (e) {
+            e.stopPropagation();
+            const noiDung = 'Bạn có chắc muốn xóa trò chuyện "' + tro.ten + '"?';
+            const hamDongY = async function () {
+                try {
+                    const ph = await fetch('/api/xoa-tro-chuyen', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            id_du_an: window.__ID_DU_AN_DANG_XEM,
+                            id_tro_chuyen: tro.id,
+                        }),
+                    });
+                    const dl = await ph.json();
+                    if (dl && dl.thanh_cong) {
+                        taiDanhSachTroChuyen(window.__ID_DU_AN_DANG_XEM);
+                    } else {
+                        alert((dl && dl.loi) || 'Không xóa được.');
+                    }
+                } catch (err) {
+                    alert('Lỗi kết nối: ' + err.message);
+                }
+            };
+            if (typeof window.moXacNhanXoa === 'function') {
+                window.moXacNhanXoa(noiDung, hamDongY);
+            } else if (confirm(noiDung)) {
+                hamDongY();
+            }
+        });
+        muc.appendChild(nutXoa);
+
+        return muc;
+    }
+
+    function veDanhSachTroChuyen(ds) {
+        const khung = document.getElementById('danh-sach-tro-chuyen-trong-du-an');
+        if (!khung) return;
+        khung.innerHTML = '';
+        if (!Array.isArray(ds) || ds.length === 0) {
+            khung.innerHTML = '<div class="muc-trong">Chưa có trò chuyện nào. Bấm [+] để tạo.</div>';
+            return;
+        }
+        ds.forEach(function (t) {
+            khung.appendChild(taoMucTroChuyen(t));
+        });
+    }
+
+    async function taiDanhSachTroChuyen(idDuAn) {
+        if (!idDuAn) return;
+        if (laKhach) {
+            const ds = docLS(KHOA_LS_TRO_CHUYEN)
+                .filter(function (t) { return t.id_du_an === idDuAn; });
+            veDanhSachTroChuyen(ds);
+            return;
+        }
+        try {
+            const ph = await fetch('/api/danh-sach-tro-chuyen?id_du_an=' + encodeURIComponent(idDuAn));
+            const dl = await ph.json();
+            if (dl && dl.thanh_cong && Array.isArray(dl.danh_sach)) {
+                veDanhSachTroChuyen(dl.danh_sach);
+            } else {
+                veDanhSachTroChuyen([]);
+            }
+        } catch (e) {
+            veDanhSachTroChuyen([]);
+        }
+    }
+
+    /* ============================================================
+       TIN NHẮN TRONG TRÒ CHUYỆN
+       ============================================================ */
+    function veTinNhanTrongDuAn(ds) {
+        const khung = document.getElementById('danh-sach-tin-nhan-du-an');
+        if (!khung) return;
+        khung.innerHTML = '';
+        if (!Array.isArray(ds) || ds.length === 0) {
+            khung.appendChild(taoBongBong('Nói điều ước đi 🔥🐉', 'rong'));
+            return;
+        }
+        ds.forEach(function (t) {
+            const vaiTro = t.vai_tro === 'nguoi' ? 'nguoi'
+                : (t.vai_tro === 'rong' ? 'rong' : 'he-thong');
+            khung.appendChild(taoBongBong(t.noi_dung || '', vaiTro));
+        });
+        khung.scrollTop = khung.scrollHeight;
+    }
+
+    async function taiTinNhanTroChuyen(idDuAn, idTroChuyen) {
+        if (!idDuAn || !idTroChuyen) return;
+        if (laKhach) {
+            const ds = docLS(KHOA_LS_TIN_NHAN)
+                .filter(function (t) {
+                    return t.id_du_an === idDuAn && t.id_tro_chuyen === idTroChuyen;
+                });
+            veTinNhanTrongDuAn(ds);
+            return;
+        }
+        try {
+            const ph = await fetch('/api/tin-nhan-tro-chuyen?id_du_an=' +
+                encodeURIComponent(idDuAn) + '&id_tro_chuyen=' +
+                encodeURIComponent(idTroChuyen));
+            const dl = await ph.json();
+            if (dl && dl.thanh_cong && Array.isArray(dl.danh_sach)) {
+                veTinNhanTrongDuAn(dl.danh_sach);
+            } else {
+                veTinNhanTrongDuAn([]);
+            }
+        } catch (e) {
+            veTinNhanTrongDuAn([]);
         }
     }
 
@@ -326,47 +465,20 @@
     }
 
     /* ============================================================
-       KIỂM TRA + KHỞI ĐỘNG
+       KHỞI ĐỘNG
        ============================================================ */
-    function kiemTraMoiTruong() {
-        const can = ['themTinNhanRong','themTinNhanNguoi','themTinNhanHeThong','moXacNhanXoa'];
-        const thieu = can.filter(function (t) { return typeof window[t] !== 'function'; });
-        if (thieu.length) console.warn('[Rồng Thần] Thiếu hàm:', thieu.join(', '));
-    }
-
-    function kiemTraNutChinh() {
-        const can = ['nut-gui','nut-menu-trai','nut-menu-phai','nut-dinh-kem'];
-        const thieu = can.filter(function (id) { return !document.getElementById(id); });
-        if (thieu.length) console.warn('[Rồng Thần] Thiếu nút:', thieu.join(', '));
-    }
-
-    async function kiemTraKetNoi() {
-        try {
-            const ph = await fetch('/api/phien');
-            if (!ph.ok && ph.status !== 401) {
-                themTinNhanHeThong('⚠️ Server phản hồi mã ' + ph.status);
-            }
-        } catch (e) {
-            themTinNhanHeThong('⚠️ Không kết nối được server.');
-        }
-    }
-
     async function khoiDong() {
         console.log('%c🌕🐉 Rồng Thần', 'color:#4ade80;font-size:16px;font-weight:bold;');
 
         await taiThongTinPhien();
 
-        // Hiện chào nếu khung trống
         const khung = layKhungTinNhan();
         if (khung && khung.children.length === 0) {
             themTinNhanRong('Nói điều ước đi 🔥🐉');
         }
 
-        kiemTraMoiTruong();
-        kiemTraNutChinh();
-        await kiemTraKetNoi();
+        await kiemTraPhien();
 
-        // Tải danh sách
         taiDanhSachDuAn();
         taiDanhSachChatNhanh();
     }
@@ -379,8 +491,12 @@
     window.themTinNhanHeThong = themTinNhanHeThong;
     window.taiDanhSachDuAn = taiDanhSachDuAn;
     window.taiDanhSachChatNhanh = taiDanhSachChatNhanh;
+    window.taiDanhSachTroChuyen = taiDanhSachTroChuyen;
+    window.taiTinNhanTroChuyen = taiTinNhanTroChuyen;
     window.veDanhSachDuAn = veDanhSachDuAn;
-    window.veDanhSachChatNhanh = veDanhSachChatNhanh;
+    window.veDanhSachChatNhanhMenu = veDanhSachChatNhanhMenu;
+    window.veDanhSachTroChuyen = veDanhSachTroChuyen;
+    window.veTinNhanTrongDuAn = veTinNhanTrongDuAn;
     window.taiThongTinPhien = taiThongTinPhien;
     window.luuDuAnKhach = luuDuAnKhach;
     window.luuChatNhanhKhach = luuChatNhanhKhach;

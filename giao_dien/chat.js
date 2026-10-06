@@ -1,30 +1,27 @@
 /* ============================================================
-   chat.js - Gửi/nhận tin nhắn trong giao diện Rồng Thần
+   chat.js - Gửi/nhận tin nhắn (chat chính + chat trong dự án)
    ------------------------------------------------------------
-   Nhiệm vụ:
-     - Lắng nghe sự kiện gõ và gửi tin.
-     - Tự động giãn ô input theo nội dung (tối đa 6 dòng).
-     - Enter xuống dòng, KHÔNG gửi. Chỉ gửi khi bấm nút [➤].
-     - Khi gửi: tự động upload ảnh + file trước (nếu có).
-     - Gửi tin lên server qua POST /api/gui-tin-nhan.
-     - Hiển thị tin nhắn Rồng Thần / Người dùng / Hệ thống.
-     - Tự động cuộn xuống tin nhắn mới nhất.
+   ĐÃ SỬA: Thêm xử lý gửi tin trong trò chuyện dự án.
    ============================================================ */
 
 (function () {
     'use strict';
 
     /* ------------------------------------------------------------
-       THAM CHIẾU DOM
+       THAM CHIẾU DOM — CHAT CHÍNH
        ------------------------------------------------------------ */
     const oNhap = document.getElementById('o-nhap');
     const nutGui = document.getElementById('nut-gui');
     const danhSach = document.getElementById('danh-sach-tin-nhan');
     const khungChat = document.getElementById('khung-chat');
 
-    if (!oNhap || !nutGui || !danhSach) {
-        return;
-    }
+    /* ------------------------------------------------------------
+       THAM CHIẾU DOM — CHAT TRONG DỰ ÁN
+       ------------------------------------------------------------ */
+    const oNhapDuAn = document.getElementById('o-nhap-du-an');
+    const nutGuiDuAn = document.getElementById('nut-gui-du-an');
+    const danhSachDuAn = document.getElementById('danh-sach-tin-nhan-du-an');
+    const khungChatDuAn = document.getElementById('khung-chat-du-an');
 
     /* ------------------------------------------------------------
        HẰNG SỐ
@@ -33,21 +30,23 @@
     const SO_DONG_TOI_DA = 6;
     const CHIEU_CAO_TOI_DA = CHIEU_CAO_DONG * SO_DONG_TOI_DA;
 
-    let dangGui = false;
+    const KHOA_LS_TIN_NHAN = 'rong_than_tin_nhan_khach';
 
-    /* ------------------------------------------------------------
+    let dangGui = false;
+    let dangGuiDuAn = false;
+
+    /* ============================================================
        TIỆN ÍCH
-       ------------------------------------------------------------ */
-    function cuonXuongCuoi() {
-        if (khungChat) {
-            khungChat.scrollTop = khungChat.scrollHeight;
-        }
+       ============================================================ */
+    function cuonXuongCuoi(khung) {
+        if (khung) khung.scrollTop = khung.scrollHeight;
     }
 
-    function tuDongGian() {
-        oNhap.style.height = 'auto';
-        const cao = Math.min(oNhap.scrollHeight, CHIEU_CAO_TOI_DA);
-        oNhap.style.height = cao + 'px';
+    function tuDongGian(o) {
+        if (!o) return;
+        o.style.height = 'auto';
+        const cao = Math.min(o.scrollHeight, CHIEU_CAO_TOI_DA);
+        o.style.height = cao + 'px';
     }
 
     function taoTinNhan(noiDung, loai) {
@@ -66,120 +65,108 @@
         } else {
             div.textContent = noiDung;
         }
-
-        danhSach.appendChild(div);
-        cuonXuongCuoi();
         return div;
     }
 
     function themTinNhanRong(noiDung) {
-        return taoTinNhan(noiDung, 'rong');
+        if (!danhSach) return;
+        danhSach.appendChild(taoTinNhan(noiDung, 'rong'));
+        cuonXuongCuoi(khungChat);
     }
 
     function themTinNhanNguoi(noiDung) {
-        return taoTinNhan(noiDung, 'nguoi');
+        if (!danhSach) return;
+        danhSach.appendChild(taoTinNhan(noiDung, 'nguoi'));
+        cuonXuongCuoi(khungChat);
     }
 
     function themTinNhanHeThong(noiDung) {
-        return taoTinNhan(noiDung, 'he-thong');
+        if (!danhSach) return;
+        danhSach.appendChild(taoTinNhan(noiDung, 'he-thong'));
+        cuonXuongCuoi(khungChat);
     }
 
-    /* ------------------------------------------------------------
-       HIỂN THỊ "ĐANG TRẢ LỜI..."
-       ------------------------------------------------------------ */
-    function hienDangTraLoi() {
+    /* ============================================================
+       ĐANG TRẢ LỜI
+       ============================================================ */
+    function hienDangTraLoi(khung, idThem) {
         const div = document.createElement('div');
         div.classList.add('tin-nhan', 'tin-nhan-rong');
-        div.id = 'tin-nhan-dang-tra-loi';
+        div.id = idThem;
         div.textContent = '🌕🐉 Đang suy nghĩ...';
-        danhSach.appendChild(div);
-        cuonXuongCuoi();
+        if (khung) khung.appendChild(div);
+        cuonXuongCuoi(khung.parentElement || khung);
         return div;
     }
 
-    function xoaDangTraLoi() {
-        const el = document.getElementById('tin-nhan-dang-tra-loi');
+    function xoaDangTraLoi(idThem) {
+        const el = document.getElementById(idThem);
         if (el) el.remove();
     }
 
-    /* ------------------------------------------------------------
-       GỬI TIN NHẮN (đã tích hợp upload ảnh + file)
-       ------------------------------------------------------------ */
-    async function guiTinNhan() {
+    /* ============================================================
+       XỬ LÝ LOCALSTORAGE CHO KHÁCH (chat trong dự án)
+       ============================================================ */
+    function docLS(khoa) {
+        try {
+            const raw = localStorage.getItem(khoa);
+            if (!raw) return [];
+            const ds = JSON.parse(raw);
+            return Array.isArray(ds) ? ds : [];
+        } catch (e) { return []; }
+    }
+
+    function ghiLS(khoa, ds) {
+        try { localStorage.setItem(khoa, JSON.stringify(ds || [])); } catch (e) {}
+    }
+
+    function luuTinNhanKhach(idDuAn, idTroChuyen, vaiTro, noiDung) {
+        const ds = docLS(KHOA_LS_TIN_NHAN);
+        ds.push({
+            id_du_an: idDuAn,
+            id_tro_chuyen: idTroChuyen,
+            vai_tro: vaiTro,
+            noi_dung: noiDung,
+            thoi_gian: Date.now(),
+        });
+        ghiLS(KHOA_LS_TIN_NHAN, ds);
+    }
+
+    /* ============================================================
+       GỬI TIN NHẮN — CHAT CHÍNH
+       ============================================================ */
+    async function guiTinNhanChinh() {
         if (dangGui) return;
-
         const noiDung = oNhap.value.trim();
-
-        // Có ảnh hoặc file chờ gửi không?
-        const coAnh  = window.DANH_SACH_ANH  && window.DANH_SACH_ANH.length > 0;
-        const coFile = window.DANH_SACH_FILE && window.DANH_SACH_FILE.length > 0;
-
-        // Không có gì để gửi
-        if (!noiDung && !coAnh && !coFile) return;
+        if (!noiDung) return;
 
         dangGui = true;
         nutGui.disabled = true;
 
-        // Hiển thị tin nhắn người dùng (nếu có chữ)
-        if (noiDung) {
-            themTinNhanNguoi(noiDung);
-        }
-
-        // Xóa ô nhập
+        themTinNhanNguoi(noiDung);
         oNhap.value = '';
-        oNhap.style.height = 'auto';
-        tuDongGian();
+        tuDongGian(oNhap);
 
-        // Upload ảnh + file (nếu có)
-        let urlAnh = [];
-        let urlFile = [];
-
-        try {
-            if (coAnh && typeof window.uploadTatCaAnh === 'function') {
-                urlAnh = await window.uploadTatCaAnh();
-            }
-            if (coFile && typeof window.uploadTatCaFile === 'function') {
-                urlFile = await window.uploadTatCaFile();
-            }
-        } catch (e) {
-            console.error('Lỗi upload:', e);
-        }
-
-        // Xóa preview sau khi upload
-        if (typeof window.xoaTatCaAnh === 'function') window.xoaTatCaAnh();
-        if (typeof window.xoaTatCaFile === 'function') window.xoaTatCaFile();
-
-        // Hiện đang trả lời
-        hienDangTraLoi();
+        hienDangTraLoi(danhSach, 'tin-nhan-dang-tra-loi');
 
         try {
             const phanHoi = await fetch('/api/gui-tin-nhan', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    noi_dung: noiDung,
-                    anh: urlAnh,
-                    file: urlFile,
-                }),
+                body: JSON.stringify({ noi_dung: noiDung }),
             });
-
             const duLieu = await phanHoi.json();
-
-            xoaDangTraLoi();
+            xoaDangTraLoi('tin-nhan-dang-tra-loi');
 
             if (duLieu && duLieu.thanh_cong && duLieu.tra_loi) {
                 themTinNhanRong(duLieu.tra_loi);
-
-                if (duLieu.code && typeof window.hienThiKhungCode === 'function') {
-                    window.hienThiKhungCode(duLieu.code, duLieu.ngon_ngu || 'python');
-                }
             } else if (duLieu && duLieu.loi) {
                 themTinNhanHeThong('⚠️ ' + duLieu.loi);
             } else {
-                themTinNhanHeThong('⚠️ Không nhận được phản hồi từ Rồng Thần.');
+                themTinNhanHeThong('⚠️ Không nhận được phản hồi.');
             }
         } catch (e) {
-            xoaDangTraLoi();
+            xoaDangTraLoi('tin-nhan-dang-tra-loi');
             themTinNhanHeThong('⚠️ Lỗi kết nối: ' + e.message);
         } finally {
             dangGui = false;
@@ -188,46 +175,135 @@
         }
     }
 
-    /* ------------------------------------------------------------
-       SỰ KIỆN
-       ------------------------------------------------------------ */
-    oNhap.addEventListener('input', tuDongGian);
+    /* ============================================================
+       GỬI TIN NHẮN — CHAT TRONG DỰ ÁN
+       ============================================================ */
+    async function guiTinNhanDuAn() {
+        if (dangGuiDuAn) return;
 
-    oNhap.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-            e.preventDefault();
-            guiTinNhan();
+        const noiDung = oNhapDuAn.value.trim();
+        if (!noiDung) return;
+
+        const idDuAn = window.__ID_DU_AN_DANG_CHAT;
+        const idTroChuyen = window.__ID_TRO_CHUYEN_DANG_CHAT;
+
+        if (!idDuAn || !idTroChuyen) {
+            alert('Chưa chọn trò chuyện.');
+            return;
         }
-    });
 
-    nutGui.addEventListener('click', function (e) {
-        e.preventDefault();
-        guiTinNhan();
-    });
+        dangGuiDuAn = true;
+        nutGuiDuAn.disabled = true;
 
-    /* ------------------------------------------------------------
-       XUẤT HÀM RA TOÀN CỤC
-       ------------------------------------------------------------ */
+        // Thêm tin nhắn người dùng
+        danhSachDuAn.appendChild(taoTinNhan(noiDung, 'nguoi'));
+        cuonXuongCuoi(khungChatDuAn);
+
+        oNhapDuAn.value = '';
+        tuDongGian(oNhapDuAn);
+
+        // Lưu localStorage nếu là khách
+        const laKhachHienTai = window.__LA_KHACH === true;
+        if (laKhachHienTai) {
+            luuTinNhanKhach(idDuAn, idTroChuyen, 'nguoi', noiDung);
+        }
+
+        // Hiện đang trả lời
+        hienDangTraLoi(danhSachDuAn, 'tin-nhan-dang-tra-loi-du-an');
+
+        try {
+            const phanHoi = await fetch('/api/gui-tin-nhan-du-an', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    noi_dung: noiDung,
+                    id_du_an: idDuAn,
+                    id_tro_chuyen: idTroChuyen,
+                }),
+            });
+            const duLieu = await phanHoi.json();
+            xoaDangTraLoi('tin-nhan-dang-tra-loi-du-an');
+
+            let traLoi = '';
+            if (duLieu && duLieu.thanh_cong && duLieu.tra_loi) {
+                traLoi = duLieu.tra_loi;
+            } else if (duLieu && duLieu.loi) {
+                traLoi = '⚠️ ' + duLieu.loi;
+            } else {
+                traLoi = '⚠️ Không nhận được phản hồi.';
+            }
+
+            danhSachDuAn.appendChild(taoTinNhan(traLoi, 'rong'));
+            cuonXuongCuoi(khungChatDuAn);
+
+            // Lưu localStorage nếu là khách
+            if (laKhachHienTai) {
+                luuTinNhanKhach(idDuAn, idTroChuyen, 'rong', traLoi);
+            }
+        } catch (e) {
+            xoaDangTraLoi('tin-nhan-dang-tra-loi-du-an');
+            const loi = '⚠️ Lỗi kết nối: ' + e.message;
+            danhSachDuAn.appendChild(taoTinNhan(loi, 'he-thong'));
+            cuonXuongCuoi(khungChatDuAn);
+        } finally {
+            dangGuiDuAn = false;
+            nutGuiDuAn.disabled = false;
+            oNhapDuAn.focus();
+        }
+    }
+
+    /* ============================================================
+       GẮN SỰ KIỆN — CHAT CHÍNH
+       ============================================================ */
+    if (oNhap) {
+        oNhap.addEventListener('input', function () { tuDongGian(oNhap); });
+        oNhap.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                guiTinNhanChinh();
+            }
+        });
+    }
+    if (nutGui) {
+        nutGui.addEventListener('click', function (e) {
+            e.preventDefault();
+            guiTinNhanChinh();
+        });
+    }
+
+    /* ============================================================
+       GẮN SỰ KIỆN — CHAT TRONG DỰ ÁN
+       ============================================================ */
+    if (oNhapDuAn) {
+        oNhapDuAn.addEventListener('input', function () { tuDongGian(oNhapDuAn); });
+        oNhapDuAn.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                guiTinNhanDuAn();
+            }
+        });
+    }
+    if (nutGuiDuAn) {
+        nutGuiDuAn.addEventListener('click', function (e) {
+            e.preventDefault();
+            guiTinNhanDuAn();
+        });
+    }
+
+    /* ============================================================
+       XUẤT RA TOÀN CỤC
+       ============================================================ */
     window.themTinNhanRong = themTinNhanRong;
     window.themTinNhanNguoi = themTinNhanNguoi;
     window.themTinNhanHeThong = themTinNhanHeThong;
     window.cuonXuongCuoi = cuonXuongCuoi;
+    window.guiTinNhanDuAn = guiTinNhanDuAn;
 
-    /* ------------------------------------------------------------
-       KHỞI ĐỘNG: HIỂN THỊ LỜI CHÀO
-       ------------------------------------------------------------ */
-    function hienLoiChao() {
+    /* ============================================================
+       LỜI CHÀO KHI MỞ TRANG
+       ============================================================ */
+    if (danhSach && !danhSach.children.length) {
         themTinNhanRong('Nói điều ước đi 🌕🐉');
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function () {
-            tuDongGian();
-            if (!danhSach.children.length) hienLoiChao();
-        });
-    } else {
-        tuDongGian();
-        if (!danhSach.children.length) hienLoiChao();
     }
 
 })();

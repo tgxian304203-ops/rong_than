@@ -1,14 +1,7 @@
 """
 routes.py - Định nghĩa toàn bộ route API cho Rồng Thần.
-
-Nguyên tắc:
-    - Mỗi route chỉ nhận request, gọi file xử lý, trả kết quả JSON.
-    - Không chứa logic nghiệp vụ.
-    - Nếu file xử lý chưa tồn tại (ImportError), route trả về lỗi 501
-      (chưa triển khai) thay vì làm sập server.
-
-ĐÃ SỬA: Không dùng decorator yeu_cau_dang_nhap cho route key/URI
-        (vì khách vẫn dùng được — xử lý đã nằm trong file luu_*.py).
+------------------------------------------------------------
+ĐÃ SỬA: Thêm route cho trò chuyện trong dự án.
 """
 
 import os
@@ -19,20 +12,13 @@ from functools import wraps
 from flask import jsonify, request, session
 
 
-# ----------------------------------------------------------------
-# ĐƯỜNG DẪN FILE LƯU CẤU HÌNH (chứa secret key)
-# ----------------------------------------------------------------
 THU_MUC_GOC = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 THU_MUC_DU_LIEU = os.path.join(THU_MUC_GOC, "du_lieu")
 FILE_CAU_HINH_KHO = os.path.join(THU_MUC_DU_LIEU, "cau_hinh_kho.json")
 
 
-# ----------------------------------------------------------------
-# ĐỌC / TẠO SECRET KEY
-# ----------------------------------------------------------------
 def _doc_hoac_tao_secret_key():
     os.makedirs(THU_MUC_DU_LIEU, exist_ok=True)
-
     du_lieu = {}
     if os.path.exists(FILE_CAU_HINH_KHO):
         try:
@@ -52,9 +38,6 @@ def _doc_hoac_tao_secret_key():
     return du_lieu["secret_key"]
 
 
-# ----------------------------------------------------------------
-# DECORATOR (giữ nguyên để dùng cho route cần login)
-# ----------------------------------------------------------------
 def yeu_cau_dang_nhap(f):
     @wraps(f)
     def bao_boc(*args, **kwargs):
@@ -64,9 +47,6 @@ def yeu_cau_dang_nhap(f):
     return bao_boc
 
 
-# ----------------------------------------------------------------
-# GỌI AN TOÀN MODULE CHƯA TỒN TẠI
-# ----------------------------------------------------------------
 def _goi_an_toan(duong_dan_module, ten_ham):
     try:
         module = __import__(duong_dan_module, fromlist=[ten_ham])
@@ -82,14 +62,11 @@ def _chua_trien_khai(ten_chuc_nang):
     }), 501
 
 
-# ----------------------------------------------------------------
-# ĐĂNG KÝ ROUTE
-# ----------------------------------------------------------------
 def dang_ky_routes(app):
     app.secret_key = _doc_hoac_tao_secret_key()
 
     # ============================================================
-    # CHAT
+    # CHAT CHÍNH
     # ============================================================
     @app.route("/api/gui-tin-nhan", methods=["POST"])
     def api_gui_tin_nhan():
@@ -97,6 +74,94 @@ def dang_ky_routes(app):
         if ham is None:
             return _chua_trien_khai("gửi tin nhắn")
         return jsonify(ham(request.get_json(silent=True) or {}))
+
+    # ============================================================
+    # CHAT TRONG DỰ ÁN (MỚI)
+    # ============================================================
+    @app.route("/api/gui-tin-nhan-du-an", methods=["POST"])
+    def api_gui_tin_nhan_du_an():
+        du_lieu = request.get_json(silent=True) or {}
+        id_du_an = du_lieu.get("id_du_an")
+        id_tro_chuyen = du_lieu.get("id_tro_chuyen")
+        noi_dung = (du_lieu.get("noi_dung") or "").strip()
+
+        if not id_du_an or not id_tro_chuyen or not noi_dung:
+            return jsonify({"thanh_cong": False, "loi": "Thiếu thông tin."})
+
+        ten_tk = session.get("ten_dang_nhap")
+
+        # Lưu tin nhắn người dùng (nếu có tài khoản)
+        if ten_tk:
+            ham_luu = _goi_an_toan("giao_dien.session", "luu_tin_nhan")
+            if ham_luu:
+                ham_luu({
+                    "id_du_an": id_du_an,
+                    "id_tro_chuyen": id_tro_chuyen,
+                    "vai_tro": "nguoi",
+                    "noi_dung": noi_dung,
+                })
+
+        # Gọi Đại não xử lý
+        ham_xu_ly = _goi_an_toan("dai_nao.nhan_task", "nhan_task")
+        if ham_xu_ly is None:
+            return _chua_trien_khai("đại não xử lý")
+
+        try:
+            ket_qua = ham_xu_ly(noi_dung)
+            tra_loi = ""
+            if isinstance(ket_qua, dict):
+                tra_loi = ket_qua.get("tra_loi") or ket_qua.get("ket_qua") or ""
+            else:
+                tra_loi = str(ket_qua)
+        except Exception as e:
+            tra_loi = f"⚠️ Lỗi xử lý: {e}"
+
+        # Lưu tin nhắn Rồng Thần (nếu có tài khoản)
+        if ten_tk and tra_loi:
+            ham_luu = _goi_an_toan("giao_dien.session", "luu_tin_nhan")
+            if ham_luu:
+                ham_luu({
+                    "id_du_an": id_du_an,
+                    "id_tro_chuyen": id_tro_chuyen,
+                    "vai_tro": "rong",
+                    "noi_dung": tra_loi,
+                })
+
+        return jsonify({
+            "thanh_cong": True,
+            "tra_loi": tra_loi,
+        })
+
+    # ============================================================
+    # TRÒ CHUYỆN TRONG DỰ ÁN (MỚI)
+    # ============================================================
+    @app.route("/api/tao-tro-chuyen", methods=["POST"])
+    def api_tao_tro_chuyen():
+        ham = _goi_an_toan("giao_dien.session", "tao_tro_chuyen")
+        if ham is None:
+            return _chua_trien_khai("tạo trò chuyện")
+        return jsonify(ham(request.get_json(silent=True) or {}))
+
+    @app.route("/api/danh-sach-tro-chuyen", methods=["GET"])
+    def api_danh_sach_tro_chuyen():
+        ham = _goi_an_toan("giao_dien.session", "lay_danh_sach_tro_chuyen")
+        if ham is None:
+            return _chua_trien_khai("lấy danh sách trò chuyện")
+        return jsonify(ham())
+
+    @app.route("/api/xoa-tro-chuyen", methods=["POST"])
+    def api_xoa_tro_chuyen():
+        ham = _goi_an_toan("giao_dien.session", "xoa_tro_chuyen")
+        if ham is None:
+            return _chua_trien_khai("xóa trò chuyện")
+        return jsonify(ham(request.get_json(silent=True) or {}))
+
+    @app.route("/api/tin-nhan-tro-chuyen", methods=["GET"])
+    def api_tin_nhan_tro_chuyen():
+        ham = _goi_an_toan("giao_dien.session", "lay_tin_nhan")
+        if ham is None:
+            return _chua_trien_khai("lấy tin nhắn trò chuyện")
+        return jsonify(ham())
 
     # ============================================================
     # KEY MODEL
@@ -161,7 +226,7 @@ def dang_ky_routes(app):
         return jsonify(ham())
 
     # ============================================================
-    # URI KHO MONGODB
+    # URI KHO
     # ============================================================
     @app.route("/api/luu-uri-kho", methods=["POST"])
     def api_luu_uri_kho():
