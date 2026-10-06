@@ -2,9 +2,8 @@
    quan_ly_menu.js - Quản lý menu, popup, trang Rồng Thần
    ------------------------------------------------------------
    ĐÃ SỬA:
-     - Bỏ nút "Tạo dự án", "GẦN ĐÂY" cũ.
-     - Thêm trang chi tiết dự án + chat dự án + tab.
-     - Bỏ thông báo "Đã tạo dự án" trong chat.
+     - Bỏ nút Share.
+     - Lưu trò chuyện vào localStorage khi khách tạo.
    ============================================================ */
 
 (function () {
@@ -48,7 +47,7 @@
     function dongTrangCay() { dong(lay('trang-cay')); }
 
     /* ------------------------------------------------------------
-       TRANG DỰ ÁN (danh sách)
+       TRANG DỰ ÁN
        ------------------------------------------------------------ */
     function moTrangDuAn() {
         dongMenuTrai();
@@ -60,23 +59,19 @@
     function dongTrangDuAn() { dong(lay('trang-du-an')); }
 
     /* ------------------------------------------------------------
-       TRANG CHI TIẾT DỰ ÁN (trò chuyện + nguồn)
+       TRANG CHI TIẾT DỰ ÁN
        ------------------------------------------------------------ */
     function moChiTietDuAn(idDuAn, tenDuAn) {
         dongTrangDuAn();
         const tieuDe = lay('tieude-chi-tiet-du-an');
         if (tieuDe) tieuDe.textContent = tenDuAn || 'Dự án';
 
-        // Lưu id dự án đang xem
         window.__ID_DU_AN_DANG_XEM = idDuAn;
         window.__TEN_DU_AN_DANG_XEM = tenDuAn;
 
-        // Chuyển về tab "trò chuyện"
         doiTab('tro-chuyen');
-
         mo(lay('trang-chi-tiet-du-an'));
 
-        // Tải danh sách trò chuyện
         if (typeof window.taiDanhSachTroChuyen === 'function') {
             window.taiDanhSachTroChuyen(idDuAn);
         }
@@ -99,7 +94,7 @@
        TRANG CHAT TRONG DỰ ÁN
        ------------------------------------------------------------ */
     function moChatDuAn(idDuAn, idTroChuyen, tenTroChuyen) {
-        const tieuDe = lay('tieude-chat-du-an');
+        const tieuDe = lay('tieu de-chat-du-an') || lay('tieude-chat-du-an');
         if (tieuDe) tieuDe.textContent = tenTroChuyen || 'Trò chuyện';
 
         window.__ID_DU_AN_DANG_CHAT = idDuAn;
@@ -110,12 +105,10 @@
 
         mo(lay('trang-chat-du-an'));
 
-        // Tải tin nhắn cũ
         if (typeof window.taiTinNhanTroChuyen === 'function') {
             window.taiTinNhanTroChuyen(idDuAn, idTroChuyen);
         }
 
-        // Focus ô nhập
         const oNhap = lay('o-nhap-du-an');
         if (oNhap) {
             oNhap.value = '';
@@ -125,6 +118,7 @@
     function quayLaiDuAn() {
         dong(lay('trang-chat-du-an'));
         mo(lay('trang-chi-tiet-du-an'));
+        // Tải lại danh sách trò chuyện — QUAN TRỌNG
         if (typeof window.taiDanhSachTroChuyen === 'function') {
             window.taiDanhSachTroChuyen(window.__ID_DU_AN_DANG_XEM);
         }
@@ -221,7 +215,6 @@
             const dl = await ph.json();
 
             if (dl && dl.thanh_cong) {
-                // Khách → lưu localStorage
                 if (dl.tam && dl.du_an && typeof window.luuDuAnKhach === 'function') {
                     window.luuDuAnKhach(dl.du_an);
                 }
@@ -229,7 +222,6 @@
                 if (typeof window.taiDanhSachDuAn === 'function') {
                     window.taiDanhSachDuAn();
                 }
-                // ĐÃ BỎ: themTinNhanHeThong "Đã tạo dự án"
             } else {
                 if (tb) tb.textContent = (dl && dl.loi) || 'Không tạo được dự án.';
             }
@@ -324,11 +316,14 @@
             const dl = await ph.json();
 
             if (dl && dl.thanh_cong) {
+                // LƯU VÀO LOCALSTORAGE NẾU LÀ KHÁCH
+                if (dl.tam && dl.tro_chuyen && typeof window.luuTroChuyenKhach === 'function') {
+                    window.luuTroChuyenKhach(dl.tro_chuyen);
+                }
                 dong(popup);
                 if (typeof window.taiDanhSachTroChuyen === 'function') {
                     window.taiDanhSachTroChuyen(idDuAn);
                 }
-                // Mở luôn trò chuyện vừa tạo
                 if (dl.tro_chuyen) {
                     moChatDuAn(idDuAn, dl.tro_chuyen.id, dl.tro_chuyen.ten);
                 }
@@ -359,9 +354,11 @@
             if (khung) khung.innerHTML = '';
 
             if (dl && dl.thanh_cong && dl.tam && dl.chat) {
+                // Lưu chat nhanh vào localStorage cho khách
                 if (typeof window.luuChatNhanhKhach === 'function') {
                     window.luuChatNhanhKhach(dl.chat);
                 }
+                window.__ID_CHAT_NHANH_HIEN_TAI = dl.chat.id;
             }
 
             if (typeof window.themTinNhanRong === 'function') {
@@ -380,23 +377,6 @@
     }
 
     /* ------------------------------------------------------------
-       SHARE
-       ------------------------------------------------------------ */
-    async function xuLyShare() {
-        try {
-            await navigator.clipboard.writeText(window.location.href);
-            if (typeof window.themTinNhanHeThong === 'function') {
-                window.themTinNhanHeThong('🔗 Đã copy link chia sẻ.');
-            } else {
-                alert('Đã copy link: ' + window.location.href);
-            }
-        } catch (e) {
-            alert('Link: ' + window.location.href);
-        }
-        dongMenuTrai();
-    }
-
-    /* ------------------------------------------------------------
        ĐĂNG XUẤT
        ------------------------------------------------------------ */
     async function xuLyDangXuat() {
@@ -404,6 +384,8 @@
         try {
             localStorage.removeItem('rong_than_du_an_khach');
             localStorage.removeItem('rong_than_chat_nhanh_khach');
+            localStorage.removeItem('rong_than_tro_chuyen_khach');
+            localStorage.removeItem('rong_than_tin_nhan_khach');
         } catch (e) {}
         window.location.reload();
     }
@@ -437,14 +419,11 @@
        GẮN SỰ KIỆN
        ------------------------------------------------------------ */
     function ganToanBoSuKien() {
-
-        // Menu trái / phải
         ganSuKien('nut-menu-trai', 'click', moMenuTrai);
         ganSuKien('dong-menu-trai', 'click', dongMenuTrai);
         ganSuKien('nut-menu-phai', 'click', moMenuPhai);
         ganSuKien('dong-menu-phai', 'click', dongMenuPhai);
 
-        // Cài đặt / Key / Đổi mật khẩu
         ganSuKien('nut-cai-dat', 'click', moCaiDat);
         ganSuKien('dong-cai-dat', 'click', dongCaiDat);
         ganSuKien('nut-mo-key', 'click', moTrangKey);
@@ -453,49 +432,38 @@
         ganSuKien('dong-popup-doi-mat-khau', 'click', dongPopupDoiMatKhau);
         ganSuKien('nut-huy-doi-mk', 'click', dongPopupDoiMatKhau);
 
-        // Logs
         ganSuKien('nut-mo-logs', 'click', moTrangLogs);
         ganSuKien('dong-logs', 'click', dongTrangLogs);
 
-        // Cây
         ganSuKien('nut-mo-cay', 'click', moTrangCay);
         ganSuKien('dong-cay', 'click', dongTrangCay);
 
-        // Đăng ký / đăng nhập
         ganSuKien('nut-mo-dang-ky', 'click', moPopupDangKy);
         ganSuKien('dong-popup-dang-ky', 'click', dongPopupDangKy);
         ganSuKien('nut-mo-dang-nhap', 'click', moPopupDangNhap);
         ganSuKien('dong-popup-dang-nhap', 'click', dongPopupDangNhap);
 
-        // Xác nhận xóa
         ganSuKien('nut-huy-xoa', 'click', dongXacNhanXoa);
         ganSuKien('nut-dong-y-xoa', 'click', dongYXoa);
 
-        // Nút chính
         ganSuKien('nut-new-chat', 'click', xuLyNewChat);
-        ganSuKien('nut-share', 'click', xuLyShare);
         ganSuKien('nut-dang-xuat', 'click', xuLyDangXuat);
 
-        // Dự án
         ganSuKien('nut-mo-trang-du-an', 'click', moTrangDuAn);
         ganSuKien('dong-trang-du-an', 'click', dongTrangDuAn);
         ganSuKien('nut-tao-du-an-trong-trang', 'click', moPopupTaoDuAn);
 
-        // Chi tiết dự án
         ganSuKien('dong-chi-tiet-du-an', 'click', dongChiTietDuAn);
         ganSuKien('nut-tao-tro-chuyen-trong-du-an', 'click', moPopupTaoTroChuyen);
 
-        // Tab trong chi tiết dự án
         document.querySelectorAll('.tab-nut').forEach(function (btn) {
             btn.addEventListener('click', function () {
                 doiTab(btn.dataset.tab);
             });
         });
 
-        // Chat trong dự án
         ganSuKien('nut-quay-lai-du-an', 'click', quayLaiDuAn);
 
-        // Bấm nền popup thì đóng
         ['popup-dang-ky', 'popup-dang-nhap', 'popup-xac-nhan-xoa', 'popup-doi-mat-khau']
             .forEach(function (idPopup) {
                 const el = lay(idPopup);
@@ -506,7 +474,6 @@
                 }
             });
 
-        // ESC đóng tất cả
         document.addEventListener('keydown', function (e) {
             if (e.key === 'Escape') {
                 ['menu-trai', 'menu-phai', 'trang-cai-dat', 'trang-key',

@@ -1,36 +1,27 @@
 /* ============================================================
    chat.js - Gửi/nhận tin nhắn (chat chính + chat trong dự án)
    ------------------------------------------------------------
-   ĐÃ SỬA: Thêm xử lý gửi tin trong trò chuyện dự án.
+   ĐÃ SỬA:
+     - Cập nhật tên chat nhanh sau tin nhắn đầu.
+     - Lưu tin nhắn khách vào localStorage.
    ============================================================ */
 
 (function () {
     'use strict';
 
-    /* ------------------------------------------------------------
-       THAM CHIẾU DOM — CHAT CHÍNH
-       ------------------------------------------------------------ */
     const oNhap = document.getElementById('o-nhap');
     const nutGui = document.getElementById('nut-gui');
     const danhSach = document.getElementById('danh-sach-tin-nhan');
     const khungChat = document.getElementById('khung-chat');
 
-    /* ------------------------------------------------------------
-       THAM CHIẾU DOM — CHAT TRONG DỰ ÁN
-       ------------------------------------------------------------ */
     const oNhapDuAn = document.getElementById('o-nhap-du-an');
     const nutGuiDuAn = document.getElementById('nut-gui-du-an');
     const danhSachDuAn = document.getElementById('danh-sach-tin-nhan-du-an');
     const khungChatDuAn = document.getElementById('khung-chat-du-an');
 
-    /* ------------------------------------------------------------
-       HẰNG SỐ
-       ------------------------------------------------------------ */
     const CHIEU_CAO_DONG = 24;
     const SO_DONG_TOI_DA = 6;
     const CHIEU_CAO_TOI_DA = CHIEU_CAO_DONG * SO_DONG_TOI_DA;
-
-    const KHOA_LS_TIN_NHAN = 'rong_than_tin_nhan_khach';
 
     let dangGui = false;
     let dangGuiDuAn = false;
@@ -59,12 +50,7 @@
         } else {
             div.classList.add('tin-nhan-he-thong');
         }
-
-        if (loai === 'rong' && typeof window.hienThiCodeTrongTinNhan === 'function') {
-            window.hienThiCodeTrongTinNhan(div, noiDung);
-        } else {
-            div.textContent = noiDung;
-        }
+        div.textContent = noiDung;
         return div;
     }
 
@@ -95,7 +81,9 @@
         div.id = idThem;
         div.textContent = '🌕🐉 Đang suy nghĩ...';
         if (khung) khung.appendChild(div);
-        cuonXuongCuoi(khung.parentElement || khung);
+        if (khung && khung.parentElement) {
+            khung.parentElement.scrollTop = khung.parentElement.scrollHeight;
+        }
         return div;
     }
 
@@ -105,7 +93,7 @@
     }
 
     /* ============================================================
-       XỬ LÝ LOCALSTORAGE CHO KHÁCH (chat trong dự án)
+       LOCALSTORAGE CHO KHÁCH
        ============================================================ */
     function docLS(khoa) {
         try {
@@ -120,16 +108,19 @@
         try { localStorage.setItem(khoa, JSON.stringify(ds || [])); } catch (e) {}
     }
 
-    function luuTinNhanKhach(idDuAn, idTroChuyen, vaiTro, noiDung) {
-        const ds = docLS(KHOA_LS_TIN_NHAN);
-        ds.push({
-            id_du_an: idDuAn,
-            id_tro_chuyen: idTroChuyen,
-            vai_tro: vaiTro,
-            noi_dung: noiDung,
-            thoi_gian: Date.now(),
-        });
-        ghiLS(KHOA_LS_TIN_NHAN, ds);
+    /* ============================================================
+       ĐẾM SỐ TIN NHẮN ĐÃ GỬI TRONG CHAT NHANH HIỆN TẠI
+       (để biết có phải tin đầu tiên không)
+       ============================================================ */
+    function demTinNhanNguoiTrongChatChinh() {
+        if (!danhSach) return 0;
+        let dem = 0;
+        for (let i = 0; i < danhSach.children.length; i++) {
+            if (danhSach.children[i].classList.contains('tin-nhan-nguoi')) {
+                dem++;
+            }
+        }
+        return dem;
     }
 
     /* ============================================================
@@ -143,9 +134,21 @@
         dangGui = true;
         nutGui.disabled = true;
 
+        // Đếm số tin nhắn người dùng TRƯỚC KHI thêm tin mới
+        const soTinNguoiTruoc = demTinNhanNguoiTrongChatChinh();
+        const laTinDauTien = (soTinNguoiTruoc === 0);
+
         themTinNhanNguoi(noiDung);
         oNhap.value = '';
         tuDongGian(oNhap);
+
+        // NẾU LÀ TIN ĐẦU TIÊN → CẬP NHẬT TÊN CHAT NHANH
+        if (laTinDauTien) {
+            const idChat = window.__ID_CHAT_NHANH_HIEN_TAI;
+            if (idChat && typeof window.capNhatTenChatNhanh === 'function') {
+                window.capNhatTenChatNhanh(idChat, noiDung);
+            }
+        }
 
         hienDangTraLoi(danhSach, 'tin-nhan-dang-tra-loi');
 
@@ -195,20 +198,18 @@
         dangGuiDuAn = true;
         nutGuiDuAn.disabled = true;
 
-        // Thêm tin nhắn người dùng
         danhSachDuAn.appendChild(taoTinNhan(noiDung, 'nguoi'));
         cuonXuongCuoi(khungChatDuAn);
 
         oNhapDuAn.value = '';
         tuDongGian(oNhapDuAn);
 
-        // Lưu localStorage nếu là khách
-        const laKhachHienTai = window.__LA_KHACH === true;
-        if (laKhachHienTai) {
-            luuTinNhanKhach(idDuAn, idTroChuyen, 'nguoi', noiDung);
+        // Lưu tin nhắn khách vào localStorage
+        const laKhachHienTai = window.__LA_KHACH === true || !document.getElementById('ten-nguoi-dung');
+        if (laKhachHienTai && typeof window.luuTinNhanKhach === 'function') {
+            window.luuTinNhanKhach(idDuAn, idTroChuyen, 'nguoi', noiDung);
         }
 
-        // Hiện đang trả lời
         hienDangTraLoi(danhSachDuAn, 'tin-nhan-dang-tra-loi-du-an');
 
         try {
@@ -236,9 +237,8 @@
             danhSachDuAn.appendChild(taoTinNhan(traLoi, 'rong'));
             cuonXuongCuoi(khungChatDuAn);
 
-            // Lưu localStorage nếu là khách
-            if (laKhachHienTai) {
-                luuTinNhanKhach(idDuAn, idTroChuyen, 'rong', traLoi);
+            if (laKhachHienTai && typeof window.luuTinNhanKhach === 'function') {
+                window.luuTinNhanKhach(idDuAn, idTroChuyen, 'rong', traLoi);
             }
         } catch (e) {
             xoaDangTraLoi('tin-nhan-dang-tra-loi-du-an');
@@ -253,7 +253,7 @@
     }
 
     /* ============================================================
-       GẮN SỰ KIỆN — CHAT CHÍNH
+       GẮN SỰ KIỆN
        ============================================================ */
     if (oNhap) {
         oNhap.addEventListener('input', function () { tuDongGian(oNhap); });
@@ -271,9 +271,6 @@
         });
     }
 
-    /* ============================================================
-       GẮN SỰ KIỆN — CHAT TRONG DỰ ÁN
-       ============================================================ */
     if (oNhapDuAn) {
         oNhapDuAn.addEventListener('input', function () { tuDongGian(oNhapDuAn); });
         oNhapDuAn.addEventListener('keydown', function (e) {
@@ -300,7 +297,7 @@
     window.guiTinNhanDuAn = guiTinNhanDuAn;
 
     /* ============================================================
-       LỜI CHÀO KHI MỞ TRANG
+       LỜI CHÀO
        ============================================================ */
     if (danhSach && !danhSach.children.length) {
         themTinNhanRong('Nói điều ước đi 🌕🐉');

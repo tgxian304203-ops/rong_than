@@ -292,7 +292,9 @@ def lay_danh_sach_du_an_cua(ten_tk):
     if not ten_tk:
         return []
     db, _ = _ket_noi_kho_1()
-    ket_qua = db[C_DU_AN].find({"chu_so_huu": ten_tk, "loai": {"$ne": "chat_nhanh"}}).sort("ngay_tao", DESCENDING)
+    ket_qua = db[C_DU_AN].find(
+        {"chu_so_huu": ten_tk, "loai": {"$ne": "chat_nhanh"}}
+    ).sort("ngay_tao", DESCENDING)
     return [_chuan_hoa_doc(d) for d in ket_qua]
 
 
@@ -362,10 +364,21 @@ def xoa_chat_nhanh_theo_id(id_chat, ten_tk):
         return ket_qua.deleted_count > 0
     except Exception:
         return False
-        
-        
-        
-        
+
+
+def cap_nhat_ten_chat_nhanh(id_chat, ten_tk, ten_moi):
+    if not id_chat or not ten_tk or not ten_moi:
+        return False
+    db, _ = _ket_noi_kho_1()
+    try:
+        ket_qua = db[C_DU_AN].update_one(
+            {"id": id_chat, "chu_so_huu": ten_tk, "loai": "chat_nhanh"},
+            {"$set": {"ten": ten_moi}},
+        )
+        return ket_qua.modified_count > 0
+    except Exception:
+        return False
+
 
 def luu_key_da_luu(key):
     if not key or not key.get("id"):

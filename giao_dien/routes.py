@@ -1,7 +1,5 @@
 """
 routes.py - Định nghĩa toàn bộ route API cho Rồng Thần.
-------------------------------------------------------------
-ĐÃ SỬA: Thêm route cho trò chuyện trong dự án.
 """
 
 import os
@@ -76,7 +74,7 @@ def dang_ky_routes(app):
         return jsonify(ham(request.get_json(silent=True) or {}))
 
     # ============================================================
-    # CHAT TRONG DỰ ÁN (MỚI)
+    # CHAT TRONG DỰ ÁN
     # ============================================================
     @app.route("/api/gui-tin-nhan-du-an", methods=["POST"])
     def api_gui_tin_nhan_du_an():
@@ -90,7 +88,6 @@ def dang_ky_routes(app):
 
         ten_tk = session.get("ten_dang_nhap")
 
-        # Lưu tin nhắn người dùng (nếu có tài khoản)
         if ten_tk:
             ham_luu = _goi_an_toan("giao_dien.session", "luu_tin_nhan")
             if ham_luu:
@@ -101,13 +98,12 @@ def dang_ky_routes(app):
                     "noi_dung": noi_dung,
                 })
 
-        # Gọi Đại não xử lý
         ham_xu_ly = _goi_an_toan("dai_nao.nhan_task", "nhan_task")
         if ham_xu_ly is None:
             return _chua_trien_khai("đại não xử lý")
 
         try:
-            ket_qua = ham_xu_ly(noi_dung)
+            ket_qua = ham_xu_ly({"noi_dung": noi_dung})
             tra_loi = ""
             if isinstance(ket_qua, dict):
                 tra_loi = ket_qua.get("tra_loi") or ket_qua.get("ket_qua") or ""
@@ -116,7 +112,6 @@ def dang_ky_routes(app):
         except Exception as e:
             tra_loi = f"⚠️ Lỗi xử lý: {e}"
 
-        # Lưu tin nhắn Rồng Thần (nếu có tài khoản)
         if ten_tk and tra_loi:
             ham_luu = _goi_an_toan("giao_dien.session", "luu_tin_nhan")
             if ham_luu:
@@ -133,7 +128,7 @@ def dang_ky_routes(app):
         })
 
     # ============================================================
-    # TRÒ CHUYỆN TRONG DỰ ÁN (MỚI)
+    # TRÒ CHUYỆN TRONG DỰ ÁN
     # ============================================================
     @app.route("/api/tao-tro-chuyen", methods=["POST"])
     def api_tao_tro_chuyen():
@@ -371,6 +366,13 @@ def dang_ky_routes(app):
         ham = _goi_an_toan("giao_dien.session", "xoa_chat_nhanh")
         if ham is None:
             return _chua_trien_khai("xóa chat nhanh")
+        return jsonify(ham(request.get_json(silent=True) or {}))
+
+    @app.route("/api/doi-ten-chat-nhanh", methods=["POST"])
+    def api_doi_ten_chat_nhanh():
+        ham = _goi_an_toan("giao_dien.session", "doi_ten_chat_nhanh")
+        if ham is None:
+            return _chua_trien_khai("đổi tên chat nhanh")
         return jsonify(ham(request.get_json(silent=True) or {}))
 
     @app.route("/api/new-chat", methods=["POST"])

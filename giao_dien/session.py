@@ -1,12 +1,7 @@
 """
 session.py - Quản lý dự án + chat nhanh + trò chuyện trong dự án.
 ------------------------------------------------------------
-ĐÃ SỬA: Thêm trò chuyện trong dự án.
-    - Mỗi dự án có nhiều trò chuyện.
-    - Mỗi trò chuyện có nhiều tin nhắn.
-    - Trò chuyện trong các dự án khác nhau hoàn toàn.
-
-Tầng dữ liệu: dai_nao/ghi_nho.py
+ĐÃ SỬA: Thêm hàm đổi tên chat nhanh sau tin nhắn đầu.
 """
 
 import secrets
@@ -28,6 +23,7 @@ from dai_nao.ghi_nho import (
     xoa_tro_chuyen_theo_id,
     luu_tin_nhan_tro_chuyen,
     lay_tin_nhan_tro_chuyen_cua,
+    cap_nhat_ten_chat_nhanh,
 )
 
 
@@ -166,14 +162,32 @@ def xoa_chat_nhanh(du_lieu):
     return {"thanh_cong": True}
 
 
+def doi_ten_chat_nhanh(du_lieu):
+    """
+    Cập nhật tên chat nhanh sau tin nhắn đầu.
+    du_lieu: { id, ten }
+    """
+    ten_tk = _lay_ten_dang_nhap()
+    id_chat = du_lieu.get("id")
+    ten_moi = (du_lieu.get("ten") or "").strip()
+
+    if not id_chat or not ten_moi:
+        return {"thanh_cong": False, "loi": "Thiếu thông tin."}
+
+    # Khách → client tự lưu localStorage
+    if not ten_tk:
+        return {"thanh_cong": True, "tam": True}
+
+    if not cap_nhat_ten_chat_nhanh(id_chat, ten_tk, ten_moi):
+        return {"thanh_cong": False, "loi": "Không cập nhật được."}
+
+    return {"thanh_cong": True}
+
+
 # ================================================================
 # TRÒ CHUYỆN TRONG DỰ ÁN
 # ================================================================
 def tao_tro_chuyen(du_lieu):
-    """
-    Tạo trò chuyện mới trong dự án.
-    du_lieu: { id_du_an, ten }
-    """
     ten_tk = _lay_ten_dang_nhap()
     id_du_an = du_lieu.get("id_du_an")
     ten_tro = (du_lieu.get("ten") or "Trò chuyện mới").strip()
@@ -181,7 +195,6 @@ def tao_tro_chuyen(du_lieu):
     if not id_du_an:
         return {"thanh_cong": False, "loi": "Thiếu id dự án."}
 
-    # Tài khoản: kiểm tra dự án thuộc mình
     if ten_tk:
         du_an = lay_du_an(id_du_an)
         if not du_an:
@@ -200,7 +213,6 @@ def tao_tro_chuyen(du_lieu):
         "ngay_tao": int(time.time()),
     }
 
-    # Khách → chỉ trả tạm, không lưu kho
     if not ten_tk:
         tro_moi["tam"] = True
         return {"thanh_cong": True, "tro_chuyen": tro_moi, "tam": True}
@@ -212,10 +224,6 @@ def tao_tro_chuyen(du_lieu):
 
 
 def lay_danh_sach_tro_chuyen():
-    """
-    Lấy danh sách trò chuyện của 1 dự án.
-    Query string: ?id_du_an=xxx
-    """
     from flask import request
     id_du_an = request.args.get("id_du_an")
     if not id_du_an:
@@ -246,10 +254,6 @@ def xoa_tro_chuyen(du_lieu):
 # TIN NHẮN TRONG TRÒ CHUYỆN
 # ================================================================
 def luu_tin_nhan(du_lieu):
-    """
-    Lưu 1 tin nhắn vào trò chuyện.
-    du_lieu: { id_du_an, id_tro_chuyen, vai_tro, noi_dung }
-    """
     ten_tk = _lay_ten_dang_nhap()
     id_du_an = du_lieu.get("id_du_an")
     id_tro = du_lieu.get("id_tro_chuyen")
@@ -259,7 +263,6 @@ def luu_tin_nhan(du_lieu):
     if not id_du_an or not id_tro or not noi_dung:
         return {"thanh_cong": False, "loi": "Thiếu thông tin."}
 
-    # Khách → không lưu server (client tự lưu localStorage)
     if not ten_tk:
         return {"thanh_cong": True, "tam": True}
 
@@ -280,10 +283,6 @@ def luu_tin_nhan(du_lieu):
 
 
 def lay_tin_nhan():
-    """
-    Lấy tin nhắn của 1 trò chuyện.
-    Query: ?id_du_an=xxx&id_tro_chuyen=yyy
-    """
     from flask import request
     id_du_an = request.args.get("id_du_an")
     id_tro = request.args.get("id_tro_chuyen")

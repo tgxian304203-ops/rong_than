@@ -2,10 +2,8 @@
    app.js - Khởi động chung giao diện Rồng Thần
    ------------------------------------------------------------
    ĐÃ SỬA:
-     - Vẽ danh sách dự án vào trang riêng.
-     - Vẽ 10 chat nhanh gần nhất vào menu trái.
-     - Thêm hàm tải trò chuyện trong dự án + tin nhắn.
-     - Hỗ trợ localStorage cho khách.
+     - Thêm luuTroChuyenKhach.
+     - Sửa tên chat nhanh sau tin nhắn đầu.
    ============================================================ */
 
 (function () {
@@ -100,6 +98,63 @@
         ghiLS(KHOA_LS_CHAT, ds);
     }
 
+    // LƯU TRÒ CHUYỆN KHÁCH (MỚI)
+    function luuTroChuyenKhach(tro) {
+        let ds = docLS(KHOA_LS_TRO_CHUYEN);
+        ds.push(tro);
+        ghiLS(KHOA_LS_TRO_CHUYEN, ds);
+    }
+
+    // LƯU TIN NHẮN KHÁCH (MỚI) — dùng cho chat trong dự án
+    function luuTinNhanKhach(idDuAn, idTroChuyen, vaiTro, noiDung) {
+        let ds = docLS(KHOA_LS_TIN_NHAN);
+        ds.push({
+            id_du_an: idDuAn,
+            id_tro_chuyen: idTroChuyen,
+            vai_tro: vaiTro,
+            noi_dung: noiDung,
+            thoi_gian: Date.now(),
+        });
+        ghiLS(KHOA_LS_TIN_NHAN, ds);
+    }
+
+    /* ============================================================
+       CẬP NHẬT TÊN CHAT NHANH (giống ChatGPT)
+       Lấy dòng đầu tiên của tin nhắn đầu làm tên.
+       ============================================================ */
+    function capNhatTenChatNhanh(idChat, noiDung) {
+        if (!idChat || !noiDung) return;
+
+        // Lấy dòng đầu tiên (dừng ở \n hoặc hết chuỗi)
+        let ten = String(noiDung).split('\n')[0].trim();
+        if (!ten) return;
+        // Giới hạn 50 ký tự
+        if (ten.length > 50) ten = ten.slice(0, 50) + '...';
+
+        if (laKhach) {
+            // Khách → sửa trong localStorage
+            const ds = docLS(KHOA_LS_CHAT);
+            for (let i = 0; i < ds.length; i++) {
+                if (ds[i].id === idChat) {
+                    ds[i].ten = ten;
+                    ds[i].tin_nhan_dau = noiDung;
+                    break;
+                }
+            }
+            ghiLS(KHOA_LS_CHAT, ds);
+        } else {
+            // Tài khoản → gọi server cập nhật
+            fetch('/api/doi-ten-chat-nhanh', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: idChat, ten: ten }),
+            }).catch(function () {});
+        }
+
+        // Vẽ lại danh sách
+        taiDanhSachChatNhanh();
+    }
+
     /* ============================================================
        KIỂM TRA PHIÊN
        ============================================================ */
@@ -115,7 +170,7 @@
     }
 
     /* ============================================================
-       VẼ DANH SÁCH DỰ ÁN (trang riêng)
+       VẼ DANH SÁCH DỰ ÁN
        ============================================================ */
     function taoMucDuAn(duAn) {
         const muc = document.createElement('div');
@@ -207,7 +262,7 @@
     }
 
     /* ============================================================
-       VẼ 10 CHAT NHANH GẦN NHẤT VÀO MENU TRÁI
+       VẼ CHAT NHANH VÀO MENU TRÁI
        ============================================================ */
     function taoMucChatNhanhMenu(chat) {
         const muc = document.createElement('div');
@@ -217,7 +272,7 @@
         nut.classList.add('muc-menu', 'muc-chat-nut');
         nut.type = 'button';
         nut.innerHTML = '💬 <span class="muc-chu">' +
-            String(chat.ten || 'Chat').replace(/</g, '&lt;') + '</span>';
+            String(chat.ten || 'Chat mới').replace(/</g, '&lt;') + '</span>';
         nut.addEventListener('click', function () {
             if (typeof window.moChatNhanh === 'function') {
                 window.moChatNhanh(chat.id);
@@ -277,7 +332,6 @@
         if (!Array.isArray(ds) || ds.length === 0) {
             return;
         }
-        // Chỉ hiện 10 cái gần nhất
         ds.slice(0, 10).forEach(function (c) {
             khung.appendChild(taoMucChatNhanhMenu(c));
         });
@@ -306,7 +360,7 @@
        ============================================================ */
     function taoMucTroChuyen(tro) {
         const muc = document.createElement('div');
-        muc.classList.add('muc-du-an'); // dùng lại style có nút X
+        muc.classList.add('muc-du-an');
 
         const nut = document.createElement('button');
         nut.classList.add('muc-menu', 'muc-du-an-nut');
@@ -328,6 +382,17 @@
             e.stopPropagation();
             const noiDung = 'Bạn có chắc muốn xóa trò chuyện "' + tro.ten + '"?';
             const hamDongY = async function () {
+                if (laKhach) {
+                    let ds = docLS(KHOA_LS_TRO_CHUYEN)
+                        .filter(function (t) { return t.id !== tro.id; });
+                    ghiLS(KHOA_LS_TRO_CHUYEN, ds);
+                    // Xóa tin nhắn
+                    let dsTN = docLS(KHOA_LS_TIN_NHAN)
+                        .filter(function (t) { return t.id_tro_chuyen !== tro.id; });
+                    ghiLS(KHOA_LS_TIN_NHAN, dsTN);
+                    taiDanhSachTroChuyen(window.__ID_DU_AN_DANG_XEM);
+                    return;
+                }
                 try {
                     const ph = await fetch('/api/xoa-tro-chuyen', {
                         method: 'POST',
@@ -437,7 +502,7 @@
     }
 
     /* ============================================================
-       PHIÊN ĐĂNG NHẬP (hiện/ẩn nút)
+       PHIÊN ĐĂNG NHẬP
        ============================================================ */
     async function taiThongTinPhien() {
         try {
@@ -500,6 +565,9 @@
     window.taiThongTinPhien = taiThongTinPhien;
     window.luuDuAnKhach = luuDuAnKhach;
     window.luuChatNhanhKhach = luuChatNhanhKhach;
+    window.luuTroChuyenKhach = luuTroChuyenKhach;
+    window.luuTinNhanKhach = luuTinNhanKhach;
+    window.capNhatTenChatNhanh = capNhatTenChatNhanh;
 
     window.addEventListener('error', function (e) {
         console.error('[Rồng Thần] Lỗi:', e.message);
