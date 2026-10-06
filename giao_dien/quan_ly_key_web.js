@@ -1,60 +1,95 @@
 /* ============================================================
    quan_ly_key_web.js - Dán + quản lý API Key tra web
    ------------------------------------------------------------
-   Nhiệm vụ:
-     - Lấy key từ ô #o-key-web-2, gửi POST /api/luu-key-web.
-     - Tải danh sách key tra web từ GET /api/danh-sach-key-web
-       → vẽ vào #danh-sach-key-web-2.
-     - Hỗ trợ 3 provider: SERPJET, Tavily, Bright Data.
-     - Vẽ mỗi key là 1 card: icon, tên provider, số thứ tự,
-       nút [X], thanh quota, % còn lại.
-     - Màu quota: xanh (>50%), vàng (20-50%), đỏ (<20%), đen (0%).
-     - Tự động cập nhật quota mỗi 60 giây.
+   ĐÃ SỬA: Cho phép chế độ KHÁCH dán key tra web.
+     - Khách  : lưu vào localStorage (đóng tab mất).
+     - Tài khoản: gửi server lưu kho 1.
    ============================================================ */
 
 (function () {
     'use strict';
 
-    /* ------------------------------------------------------------
-       THAM CHIẾU DOM
-       ------------------------------------------------------------ */
-    const oKey       = document.getElementById('o-key-web-2');
-    const nutRun     = document.getElementById('nut-run-key-web-2');
-    const danhSach   = document.getElementById('danh-sach-key-web-2');
+    const oKey     = document.getElementById('o-key-web-2');
+    const nutRun   = document.getElementById('nut-run-key-web-2');
+    const danhSach = document.getElementById('danh-sach-key-web-2');
 
     if (!oKey || !nutRun || !danhSach) {
-        return; // Thiếu DOM thì thoát.
+        return;
+    }
+
+    const KHOA_LS = 'rong_than_key_web_khach';
+    const THOI_GIAN_CAP_NHAT_QUOTA = 60 * 1000;
+    let idHenQuota = null;
+    let laKhach = false;
+
+    /* ------------------------------------------------------------
+       KIỂM TRA PHIÊN
+       ------------------------------------------------------------ */
+    async function kiemTraPhien() {
+        try {
+            const ph = await fetch('/api/phien');
+            const dl = await ph.json();
+            laKhach = !(dl && dl.da_dang_nhap);
+        } catch (e) {
+            laKhach = true;
+        }
+        return laKhach;
     }
 
     /* ------------------------------------------------------------
-       HẰNG SỐ
+       LOCALSTORAGE
        ------------------------------------------------------------ */
-    const THOI_GIAN_CAP_NHAT_QUOTA = 60 * 1000;
-    let idHenQuota = null;
+    function docLS() {
+        try {
+            const raw = localStorage.getItem(KHOA_LS);
+            if (!raw) return [];
+            const ds = JSON.parse(raw);
+            return Array.isArray(ds) ? ds : [];
+        } catch (e) {
+            return [];
+        }
+    }
+
+    function ghiLS(ds) {
+        try {
+            localStorage.setItem(KHOA_LS, JSON.stringify(ds || []));
+        } catch (e) {}
+    }
 
     /* ------------------------------------------------------------
-       MÀU QUOTA THEO PHẦN TRĂM
+       NHẬN DIỆN PROVIDER TỪ KEY
+       - SERPJET: thường là chuỗi hex dài
+       - Tavily: bắt đầu bằng tvly-
+       - Bright Data: bắt đầu bằng brd-
+       ------------------------------------------------------------ */
+    function nhanDienProvider(key) {
+        const k = String(key || '').trim().toLowerCase();
+        if (k.startsWith('tvly-')) return 'Tavily';
+        if (k.startsWith('brd-'))  return 'Bright Data';
+        if (k.length >= 20)        return 'SERPJET'; // fallback
+        return null;
+    }
+
+    /* ------------------------------------------------------------
+       MÀU QUOTA
        ------------------------------------------------------------ */
     function layClassQuota(phanTram) {
-        if (phanTram <= 0)   return 'quota-den';
-        if (phanTram < 20)   return 'quota-do';
-        if (phanTram < 50)   return 'quota-vang';
+        if (phanTram <= 0) return 'quota-den';
+        if (phanTram < 20) return 'quota-do';
+        if (phanTram < 50) return 'quota-vang';
         return 'quota-xanh';
     }
 
-    /* ------------------------------------------------------------
-       TÊN PROVIDER TRA WEB
-       ------------------------------------------------------------ */
     function nhanProvider(ten) {
         const t = String(ten || '').toLowerCase();
-        if (t.includes('serpjet') || t.includes('serp')) return 'SERPJET';
-        if (t.includes('tavily'))                        return 'Tavily';
-        if (t.includes('bright') || t.includes('brightdata')) return 'Bright Data';
+        if (t.includes('serp'))   return 'SERPJET';
+        if (t.includes('tavily')) return 'Tavily';
+        if (t.includes('bright')) return 'Bright Data';
         return ten || 'Không rõ';
     }
 
     /* ------------------------------------------------------------
-       TẠO 1 CARD KEY
+       TẠO CARD KEY
        ------------------------------------------------------------ */
     function taoTheKey(key, chiSo) {
         const the = document.createElement('div');
@@ -81,11 +116,8 @@
         const nutXoa = document.createElement('button');
         nutXoa.classList.add('nut-xoa-muc');
         nutXoa.type = 'button';
-        nutXoa.setAttribute('aria-label', 'Xóa key');
         nutXoa.innerHTML = '&#10005;';
-        nutXoa.addEventListener('click', function () {
-            xacNhanXoaKey(key);
-        });
+        nutXoa.addEventListener('click', function () { xacNhanXoaKey(key); });
         hang.appendChild(nutXoa);
 
         the.appendChild(hang);
@@ -110,25 +142,27 @@
     /* ------------------------------------------------------------
        VẼ DANH SÁCH
        ------------------------------------------------------------ */
-    function veDanhSach(danhSachKey) {
+    function veDanhSach(ds) {
         danhSach.innerHTML = '';
-        if (!Array.isArray(danhSachKey) || danhSachKey.length === 0) {
-            return;
-        }
-        danhSachKey.forEach(function (key, i) {
+        if (!Array.isArray(ds) || ds.length === 0) return;
+        ds.forEach(function (key, i) {
             danhSach.appendChild(taoTheKey(key, i));
         });
     }
 
     /* ------------------------------------------------------------
-       TẢI DANH SÁCH KEY TRA WEB
+       TẢI DANH SÁCH
        ------------------------------------------------------------ */
     async function taiDanhSach() {
+        if (laKhach) {
+            veDanhSach(docLS());
+            return;
+        }
         try {
-            const phanHoi = await fetch('/api/danh-sach-key-web');
-            const duLieu = await phanHoi.json();
-            if (duLieu && duLieu.thanh_cong && Array.isArray(duLieu.danh_sach)) {
-                veDanhSach(duLieu.danh_sach);
+            const ph = await fetch('/api/danh-sach-key-web');
+            const dl = await ph.json();
+            if (dl && dl.thanh_cong && Array.isArray(dl.danh_sach)) {
+                veDanhSach(dl.danh_sach);
             } else {
                 veDanhSach([]);
             }
@@ -152,19 +186,37 @@
         nutRun.textContent = '...';
 
         try {
-            const phanHoi = await fetch('/api/luu-key-web', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ key: giaTri }),
-            });
-
-            const duLieu = await phanHoi.json();
-
-            if (duLieu && duLieu.thanh_cong) {
+            if (laKhach) {
+                const provider = nhanDienProvider(giaTri);
+                if (!provider) {
+                    alert('Không nhận diện được provider. Key phải là Tavily (tvly-...), Bright Data (brd-...) hoặc SERPJET.');
+                    return;
+                }
+                const ds = docLS();
+                ds.push({
+                    id: 'khach-keyweb-' + Date.now(),
+                    provider: provider,
+                    ten: provider,
+                    phan_tram: 100,
+                    key: giaTri,
+                    ngay_tao: Date.now(),
+                });
+                ghiLS(ds);
                 oKey.value = '';
                 await taiDanhSach();
             } else {
-                alert((duLieu && duLieu.loi) || 'Không lưu được key.');
+                const ph = await fetch('/api/luu-key-web', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key: giaTri }),
+                });
+                const dl = await ph.json();
+                if (dl && dl.thanh_cong) {
+                    oKey.value = '';
+                    await taiDanhSach();
+                } else {
+                    alert((dl && dl.loi) || 'Không lưu được key.');
+                }
             }
         } catch (e) {
             alert('Lỗi kết nối: ' + e.message);
@@ -175,7 +227,7 @@
     }
 
     /* ------------------------------------------------------------
-       XÁC NHẬN XÓA KEY
+       XÓA KEY
        ------------------------------------------------------------ */
     function xacNhanXoaKey(key) {
         const ten = nhanProvider(key.provider || key.ten);
@@ -183,16 +235,22 @@
 
         const hamDongY = async function () {
             try {
-                const phanHoi = await fetch('/api/xoa-key-web', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id: key.id || key.key || key.ten }),
-                });
-                const duLieu = await phanHoi.json();
-                if (duLieu && duLieu.thanh_cong) {
+                if (laKhach) {
+                    const ds = docLS().filter(function (k) { return k.id !== key.id; });
+                    ghiLS(ds);
                     await taiDanhSach();
                 } else {
-                    alert((duLieu && duLieu.loi) || 'Không xóa được key.');
+                    const ph = await fetch('/api/xoa-key-web', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: key.id || key.key || key.ten }),
+                    });
+                    const dl = await ph.json();
+                    if (dl && dl.thanh_cong) {
+                        await taiDanhSach();
+                    } else {
+                        alert((dl && dl.loi) || 'Không xóa được key.');
+                    }
                 }
             } catch (e) {
                 alert('Lỗi kết nối: ' + e.message);
@@ -201,24 +259,23 @@
 
         if (typeof window.moXacNhanXoa === 'function') {
             window.moXacNhanXoa(noiDung, hamDongY);
-        } else {
-            if (confirm(noiDung)) hamDongY();
+        } else if (confirm(noiDung)) {
+            hamDongY();
         }
     }
 
     /* ------------------------------------------------------------
-       CẬP NHẬT QUOTA ĐỊNH KỲ
+       CẬP NHẬT QUOTA
        ------------------------------------------------------------ */
     async function capNhatQuota() {
+        if (laKhach) return;
         try {
-            const phanHoi = await fetch('/api/quota-key-web');
-            const duLieu = await phanHoi.json();
-            if (duLieu && duLieu.thanh_cong && Array.isArray(duLieu.danh_sach)) {
-                veDanhSach(duLieu.danh_sach);
+            const ph = await fetch('/api/quota-key-web');
+            const dl = await ph.json();
+            if (dl && dl.thanh_cong && Array.isArray(dl.danh_sach)) {
+                veDanhSach(dl.danh_sach);
             }
-        } catch (e) {
-            // Im lặng
-        }
+        } catch (e) {}
     }
 
     function batDauCapNhatQuota() {
@@ -244,8 +301,9 @@
     /* ------------------------------------------------------------
        KHỞI ĐỘNG
        ------------------------------------------------------------ */
-    function khoiDong() {
-        taiDanhSach();
+    async function khoiDong() {
+        await kiemTraPhien();
+        await taiDanhSach();
         batDauCapNhatQuota();
     }
 
@@ -255,9 +313,6 @@
         khoiDong();
     }
 
-    /* ------------------------------------------------------------
-       XUẤT RA TOÀN CỤC
-       ------------------------------------------------------------ */
     window.taiDanhSachKeyWeb = taiDanhSach;
     window.veDanhSachKeyWeb = veDanhSach;
 

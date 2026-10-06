@@ -1,20 +1,9 @@
 /* ============================================================
    quan_ly_key.js - Dán + quản lý API Key model
    ------------------------------------------------------------
-   Nhiệm vụ:
-     - Lấy key từ ô #o-key-model-2, gửi POST /api/luu-key-model.
-     - Tải danh sách key model từ GET /api/danh-sach-key
-       → vẽ vào #danh-sach-key-model-2.
-     - Vẽ mỗi key là 1 card:
-         + Icon 🔥🐉, tên provider, số thứ tự (#1, #2, #3...).
-         + Nút [X] xóa key.
-         + Thanh quota + % còn lại.
-     - Màu quota:
-         + Xanh: trên 50%
-         + Vàng: 20-50%
-         + Đỏ:   dưới 20%
-         + Đen:  0%
-     - Tự động cập nhật quota mỗi 60 giây.
+   ĐÃ SỬA: Cho phép chế độ KHÁCH dán key.
+     - Khách  : lưu vào localStorage (đóng tab mất).
+     - Tài khoản: gửi server lưu kho 1 (vĩnh viễn).
    ============================================================ */
 
 (function () {
@@ -23,33 +12,77 @@
     /* ------------------------------------------------------------
        THAM CHIẾU DOM
        ------------------------------------------------------------ */
-    const oKey       = document.getElementById('o-key-model-2');
-    const nutRun     = document.getElementById('nut-run-key-model-2');
-    const danhSach   = document.getElementById('danh-sach-key-model-2');
+    const oKey     = document.getElementById('o-key-model-2');
+    const nutRun   = document.getElementById('nut-run-key-model-2');
+    const danhSach = document.getElementById('danh-sach-key-model-2');
 
     if (!oKey || !nutRun || !danhSach) {
-        return; // Thiếu DOM thì thoát.
+        return;
     }
 
     /* ------------------------------------------------------------
        HẰNG SỐ
        ------------------------------------------------------------ */
-    const THOI_GIAN_CAP_NHAT_QUOTA = 60 * 1000; // 60 giây
+    const KHOA_LS = 'rong_than_key_model_khach';
+    const THOI_GIAN_CAP_NHAT_QUOTA = 60 * 1000;
     let idHenQuota = null;
+    let laKhach = false; // cập nhật từ taiThongTinPhien
 
     /* ------------------------------------------------------------
-       XÁC ĐỊNH MÀU QUOTA THEO PHẦN TRĂM
+       KIỂM TRA PHIÊN
        ------------------------------------------------------------ */
-    function layClassQuota(phanTram) {
-        if (phanTram <= 0)   return 'quota-den';
-        if (phanTram < 20)   return 'quota-do';
-        if (phanTram < 50)   return 'quota-vang';
-        return 'quota-xanh';
+    async function kiemTraPhien() {
+        try {
+            const ph = await fetch('/api/phien');
+            const dl = await ph.json();
+            laKhach = !(dl && dl.da_dang_nhap);
+        } catch (e) {
+            laKhach = true; // nếu lỗi, coi như khách
+        }
+        return laKhach;
     }
 
     /* ------------------------------------------------------------
-       TÊN PROVIDER
+       LOCALSTORAGE — dùng cho khách
        ------------------------------------------------------------ */
+    function docLS() {
+        try {
+            const raw = localStorage.getItem(KHOA_LS);
+            if (!raw) return [];
+            const ds = JSON.parse(raw);
+            return Array.isArray(ds) ? ds : [];
+        } catch (e) {
+            return [];
+        }
+    }
+
+    function ghiLS(ds) {
+        try {
+            localStorage.setItem(KHOA_LS, JSON.stringify(ds || []));
+        } catch (e) {}
+    }
+
+    /* ------------------------------------------------------------
+       NHẬN DIỆN PROVIDER TỪ KEY
+       ------------------------------------------------------------ */
+    function nhanDienProvider(key) {
+        const k = String(key || '').trim();
+        if (k.startsWith('gsk_'))   return 'Groq';
+        if (k.startsWith('sk-or-')) return 'OpenRouter';
+        if (k.startsWith('AIza'))   return 'Gemini';
+        return null;
+    }
+
+    /* ------------------------------------------------------------
+       MÀU QUOTA
+       ------------------------------------------------------------ */
+    function layClassQuota(phanTram) {
+        if (phanTram <= 0) return 'quota-den';
+        if (phanTram < 20) return 'quota-do';
+        if (phanTram < 50) return 'quota-vang';
+        return 'quota-xanh';
+    }
+
     function nhanProvider(ten) {
         const t = String(ten || '').toLowerCase();
         if (t.includes('groq'))       return 'Groq';
@@ -59,7 +92,7 @@
     }
 
     /* ------------------------------------------------------------
-       TẠO 1 CARD KEY
+       TẠO CARD KEY
        ------------------------------------------------------------ */
     function taoTheKey(key, chiSo) {
         const the = document.createElement('div');
@@ -86,11 +119,8 @@
         const nutXoa = document.createElement('button');
         nutXoa.classList.add('nut-xoa-muc');
         nutXoa.type = 'button';
-        nutXoa.setAttribute('aria-label', 'Xóa key');
         nutXoa.innerHTML = '&#10005;';
-        nutXoa.addEventListener('click', function () {
-            xacNhanXoaKey(key);
-        });
+        nutXoa.addEventListener('click', function () { xacNhanXoaKey(key); });
         hang.appendChild(nutXoa);
 
         the.appendChild(hang);
@@ -113,27 +143,29 @@
     }
 
     /* ------------------------------------------------------------
-       VẼ DANH SÁCH KEY
+       VẼ DANH SÁCH
        ------------------------------------------------------------ */
-    function veDanhSach(danhSachKey) {
+    function veDanhSach(ds) {
         danhSach.innerHTML = '';
-        if (!Array.isArray(danhSachKey) || danhSachKey.length === 0) {
-            return;
-        }
-        danhSachKey.forEach(function (key, i) {
+        if (!Array.isArray(ds) || ds.length === 0) return;
+        ds.forEach(function (key, i) {
             danhSach.appendChild(taoTheKey(key, i));
         });
     }
 
     /* ------------------------------------------------------------
-       TẢI DANH SÁCH KEY TỪ SERVER
+       TẢI DANH SÁCH
        ------------------------------------------------------------ */
     async function taiDanhSach() {
+        if (laKhach) {
+            veDanhSach(docLS());
+            return;
+        }
         try {
-            const phanHoi = await fetch('/api/danh-sach-key');
-            const duLieu = await phanHoi.json();
-            if (duLieu && duLieu.thanh_cong && Array.isArray(duLieu.danh_sach)) {
-                veDanhSach(duLieu.danh_sach);
+            const ph = await fetch('/api/danh-sach-key');
+            const dl = await ph.json();
+            if (dl && dl.thanh_cong && Array.isArray(dl.danh_sach)) {
+                veDanhSach(dl.danh_sach);
             } else {
                 veDanhSach([]);
             }
@@ -143,7 +175,7 @@
     }
 
     /* ------------------------------------------------------------
-       LƯU KEY MỚI
+       LƯU KEY
        ------------------------------------------------------------ */
     async function luuKey() {
         const giaTri = oKey.value.trim();
@@ -157,19 +189,39 @@
         nutRun.textContent = '...';
 
         try {
-            const phanHoi = await fetch('/api/luu-key-model', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ key: giaTri }),
-            });
-
-            const duLieu = await phanHoi.json();
-
-            if (duLieu && duLieu.thanh_cong) {
+            if (laKhach) {
+                // ====== KHÁCH: lưu localStorage ======
+                const provider = nhanDienProvider(giaTri);
+                if (!provider) {
+                    alert('Không nhận diện được provider. Key phải bắt đầu bằng gsk_ (Groq), sk-or- (OpenRouter) hoặc AIza (Gemini).');
+                    return;
+                }
+                const ds = docLS();
+                ds.push({
+                    id: 'khach-key-' + Date.now(),
+                    provider: provider,
+                    ten: provider,
+                    phan_tram: 100,
+                    key: giaTri,
+                    ngay_tao: Date.now(),
+                });
+                ghiLS(ds);
                 oKey.value = '';
                 await taiDanhSach();
             } else {
-                alert((duLieu && duLieu.loi) || 'Không lưu được key.');
+                // ====== TÀI KHOẢN: gửi server ======
+                const ph = await fetch('/api/luu-key-model', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key: giaTri }),
+                });
+                const dl = await ph.json();
+                if (dl && dl.thanh_cong) {
+                    oKey.value = '';
+                    await taiDanhSach();
+                } else {
+                    alert((dl && dl.loi) || 'Không lưu được key.');
+                }
             }
         } catch (e) {
             alert('Lỗi kết nối: ' + e.message);
@@ -180,7 +232,7 @@
     }
 
     /* ------------------------------------------------------------
-       XÁC NHẬN XÓA KEY
+       XÓA KEY
        ------------------------------------------------------------ */
     function xacNhanXoaKey(key) {
         const ten = nhanProvider(key.provider || key.ten);
@@ -188,16 +240,22 @@
 
         const hamDongY = async function () {
             try {
-                const phanHoi = await fetch('/api/xoa-key', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id: key.id || key.key || key.ten }),
-                });
-                const duLieu = await phanHoi.json();
-                if (duLieu && duLieu.thanh_cong) {
+                if (laKhach) {
+                    const ds = docLS().filter(function (k) { return k.id !== key.id; });
+                    ghiLS(ds);
                     await taiDanhSach();
                 } else {
-                    alert((duLieu && duLieu.loi) || 'Không xóa được key.');
+                    const ph = await fetch('/api/xoa-key', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: key.id || key.key || key.ten }),
+                    });
+                    const dl = await ph.json();
+                    if (dl && dl.thanh_cong) {
+                        await taiDanhSach();
+                    } else {
+                        alert((dl && dl.loi) || 'Không xóa được key.');
+                    }
                 }
             } catch (e) {
                 alert('Lỗi kết nối: ' + e.message);
@@ -206,24 +264,23 @@
 
         if (typeof window.moXacNhanXoa === 'function') {
             window.moXacNhanXoa(noiDung, hamDongY);
-        } else {
-            if (confirm(noiDung)) hamDongY();
+        } else if (confirm(noiDung)) {
+            hamDongY();
         }
     }
 
     /* ------------------------------------------------------------
-       CẬP NHẬT QUOTA ĐỊNH KỲ
+       CẬP NHẬT QUOTA
        ------------------------------------------------------------ */
     async function capNhatQuota() {
+        if (laKhach) return; // khách không cập nhật quota
         try {
-            const phanHoi = await fetch('/api/quota-key');
-            const duLieu = await phanHoi.json();
-            if (duLieu && duLieu.thanh_cong && Array.isArray(duLieu.danh_sach)) {
-                veDanhSach(duLieu.danh_sach);
+            const ph = await fetch('/api/quota-key');
+            const dl = await ph.json();
+            if (dl && dl.thanh_cong && Array.isArray(dl.danh_sach)) {
+                veDanhSach(dl.danh_sach);
             }
-        } catch (e) {
-            // Im lặng
-        }
+        } catch (e) {}
     }
 
     function batDauCapNhatQuota() {
@@ -249,8 +306,9 @@
     /* ------------------------------------------------------------
        KHỞI ĐỘNG
        ------------------------------------------------------------ */
-    function khoiDong() {
-        taiDanhSach();
+    async function khoiDong() {
+        await kiemTraPhien();
+        await taiDanhSach();
         batDauCapNhatQuota();
     }
 
@@ -261,7 +319,7 @@
     }
 
     /* ------------------------------------------------------------
-       XUẤT RA TOÀN CỤC
+       XUẤT TOÀN CỤC
        ------------------------------------------------------------ */
     window.taiDanhSachKeyModel = taiDanhSach;
     window.veDanhSachKeyModel = veDanhSach;

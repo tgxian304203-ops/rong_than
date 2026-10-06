@@ -6,6 +6,9 @@ Nguyên tắc:
     - Không chứa logic nghiệp vụ.
     - Nếu file xử lý chưa tồn tại (ImportError), route trả về lỗi 501
       (chưa triển khai) thay vì làm sập server.
+
+ĐÃ SỬA: Không dùng decorator yeu_cau_dang_nhap cho route key/URI
+        (vì khách vẫn dùng được — xử lý đã nằm trong file luu_*.py).
 """
 
 import os
@@ -28,10 +31,6 @@ FILE_CAU_HINH_KHO = os.path.join(THU_MUC_DU_LIEU, "cau_hinh_kho.json")
 # ĐỌC / TẠO SECRET KEY
 # ----------------------------------------------------------------
 def _doc_hoac_tao_secret_key():
-    """
-    Đọc secret key từ du_lieu/cau_hinh_kho.json.
-    Nếu chưa có, tự sinh và lưu lại.
-    """
     os.makedirs(THU_MUC_DU_LIEU, exist_ok=True)
 
     du_lieu = {}
@@ -54,13 +53,9 @@ def _doc_hoac_tao_secret_key():
 
 
 # ----------------------------------------------------------------
-# DECORATOR: YÊU CẦU ĐĂNG NHẬP
+# DECORATOR (giữ nguyên để dùng cho route cần login)
 # ----------------------------------------------------------------
 def yeu_cau_dang_nhap(f):
-    """
-    Decorator kiểm tra session đã đăng nhập chưa.
-    Nếu chưa, trả về 401.
-    """
     @wraps(f)
     def bao_boc(*args, **kwargs):
         if not session.get("da_dang_nhap"):
@@ -70,14 +65,9 @@ def yeu_cau_dang_nhap(f):
 
 
 # ----------------------------------------------------------------
-# HÀM GỌI AN TOÀN CÁC FILE XỬ LÝ CHƯA TỒN TẠI
+# GỌI AN TOÀN MODULE CHƯA TỒN TẠI
 # ----------------------------------------------------------------
 def _goi_an_toan(duong_dan_module, ten_ham):
-    """
-    Import động 1 hàm từ module. Nếu module chưa tồn tại, trả về None.
-    duong_dan_module: ví dụ "giao_dien.gui_tin_nhan"
-    ten_ham: tên hàm cần lấy
-    """
     try:
         module = __import__(duong_dan_module, fromlist=[ten_ham])
         return getattr(module, ten_ham, None)
@@ -86,7 +76,6 @@ def _goi_an_toan(duong_dan_module, ten_ham):
 
 
 def _chua_trien_khai(ten_chuc_nang):
-    """Trả về lỗi 501 khi file xử lý chưa được làm."""
     return jsonify({
         "thanh_cong": False,
         "loi": f"Chức năng '{ten_chuc_nang}' chưa được triển khai.",
@@ -94,16 +83,13 @@ def _chua_trien_khai(ten_chuc_nang):
 
 
 # ----------------------------------------------------------------
-# ĐĂNG KÝ TOÀN BỘ ROUTE
+# ĐĂNG KÝ ROUTE
 # ----------------------------------------------------------------
 def dang_ky_routes(app):
-    """Gắn toàn bộ route vào Flask app."""
-
-    # Gắn secret key cho session
     app.secret_key = _doc_hoac_tao_secret_key()
 
     # ============================================================
-    # NHÓM CHAT
+    # CHAT
     # ============================================================
     @app.route("/api/gui-tin-nhan", methods=["POST"])
     def api_gui_tin_nhan():
@@ -113,7 +99,7 @@ def dang_ky_routes(app):
         return jsonify(ham(request.get_json(silent=True) or {}))
 
     # ============================================================
-    # NHÓM KEY MODEL
+    # KEY MODEL
     # ============================================================
     @app.route("/api/luu-key-model", methods=["POST"])
     def api_luu_key_model():
@@ -144,7 +130,7 @@ def dang_ky_routes(app):
         return jsonify(ham())
 
     # ============================================================
-    # NHÓM KEY TRA WEB
+    # KEY TRA WEB
     # ============================================================
     @app.route("/api/luu-key-web", methods=["POST"])
     def api_luu_key_web():
@@ -153,8 +139,29 @@ def dang_ky_routes(app):
             return _chua_trien_khai("lưu key tra web")
         return jsonify(ham(request.get_json(silent=True) or {}))
 
+    @app.route("/api/danh-sach-key-web", methods=["GET"])
+    def api_danh_sach_key_web():
+        ham = _goi_an_toan("giao_dien.luu_key_web", "lay_danh_sach_key_web")
+        if ham is None:
+            return _chua_trien_khai("lấy danh sách key tra web")
+        return jsonify(ham())
+
+    @app.route("/api/xoa-key-web", methods=["POST"])
+    def api_xoa_key_web():
+        ham = _goi_an_toan("giao_dien.luu_key_web", "xoa_key_web")
+        if ham is None:
+            return _chua_trien_khai("xóa key tra web")
+        return jsonify(ham(request.get_json(silent=True) or {}))
+
+    @app.route("/api/quota-key-web", methods=["GET"])
+    def api_quota_key_web():
+        ham = _goi_an_toan("giao_dien.luu_key_web", "lay_quota_key_web")
+        if ham is None:
+            return _chua_trien_khai("lấy quota key tra web")
+        return jsonify(ham())
+
     # ============================================================
-    # NHÓM URI KHO MONGODB
+    # URI KHO MONGODB
     # ============================================================
     @app.route("/api/luu-uri-kho", methods=["POST"])
     def api_luu_uri_kho():
@@ -163,8 +170,15 @@ def dang_ky_routes(app):
             return _chua_trien_khai("lưu URI kho")
         return jsonify(ham(request.get_json(silent=True) or {}))
 
+    @app.route("/api/lay-uri-kho", methods=["GET"])
+    def api_lay_uri_kho():
+        ham = _goi_an_toan("giao_dien.luu_uri_kho", "lay_uri_kho")
+        if ham is None:
+            return _chua_trien_khai("lấy URI kho")
+        return jsonify(ham())
+
     # ============================================================
-    # NHÓM LOGS
+    # LOGS
     # ============================================================
     @app.route("/api/logs", methods=["GET"])
     def api_logs():
@@ -189,7 +203,7 @@ def dang_ky_routes(app):
         return jsonify(ham())
 
     # ============================================================
-    # NHÓM TÀI KHOẢN
+    # TÀI KHOẢN
     # ============================================================
     @app.route("/api/dang-ky", methods=["POST"])
     def api_dang_ky():
@@ -233,7 +247,7 @@ def dang_ky_routes(app):
         return jsonify(ham(request.get_json(silent=True) or {}))
 
     # ============================================================
-    # NHÓM UPLOAD ẢNH / FILE
+    # UPLOAD
     # ============================================================
     @app.route("/api/upload-anh", methods=["POST"])
     def api_upload_anh():
@@ -250,7 +264,7 @@ def dang_ky_routes(app):
         return jsonify(ham(request.files))
 
     # ============================================================
-    # NHÓM DỰ ÁN / CHAT NHANH
+    # DỰ ÁN / CHAT NHANH
     # ============================================================
     @app.route("/api/danh-sach-du-an", methods=["GET"])
     def api_danh_sach_du_an():
@@ -302,7 +316,7 @@ def dang_ky_routes(app):
         return jsonify(ham(request.get_json(silent=True) or {}))
 
     # ============================================================
-    # NHÓM SANDBOX
+    # SANDBOX
     # ============================================================
     @app.route("/api/sandbox/chay", methods=["POST"])
     def api_sandbox_chay():
@@ -317,7 +331,7 @@ def dang_ky_routes(app):
         return jsonify(ham(du_lieu))
 
     # ============================================================
-    # NHÓM CÂY QUYẾT ĐỊNH
+    # CÂY QUYẾT ĐỊNH
     # ============================================================
     @app.route("/api/cay", methods=["GET"])
     def api_cay():
