@@ -145,24 +145,25 @@
 
         <div class="muc-ngan"></div>
 
-        <div class="muc-tieude">DỰ ÁN</div>
-        <div id="danh-sach-du-an" class="danh-sach-cuon"></div>
-
-        <div class="muc-ngan"></div>
-
-        <div class="muc-tieude">GẦN ĐÂY</div>
-        <div id="danh-sach-chat-nhanh" class="danh-sach-cuon"></div>
-
-        <div class="muc-ngan"></div>
-
-        <button id="nut-doi-sang-toi" class="muc-menu">
+        <button id="nut-mo-trang-du-an" class="muc-menu">
             <span class="muc-icon">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
                 </svg>
             </span>
-            <span class="muc-chu">Chế độ sáng tối</span>
+            <span class="muc-chu">DỰ ÁN</span>
         </button>
+
+        <button id="nut-mo-trang-chat-nhanh" class="muc-menu">
+            <span class="muc-icon">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+            </span>
+            <span class="muc-chu">GẦN ĐÂY</span>
+        </button>
+
+        <div class="muc-ngan"></div>
 
         <button id="nut-cai-dat" class="muc-menu">
             <span class="muc-icon">
@@ -396,6 +397,56 @@
     <div class="overlay-body">
         <div id="cay-thong-tin" class="cay-thong-tin"></div>
         <div id="khung-cay" class="khung-cay"></div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- TRANG DANH SÁCH DỰ ÁN (MỚI)                                  -->
+<!-- ============================================================ -->
+<div id="trang-du-an" class="overlay overlay-trai">
+    <div class="overlay-header">
+        <button id="dong-trang-du-an" class="nut-icon" aria-label="Đóng">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12"/>
+                <polyline points="12,19 5,12 12,5"/>
+            </svg>
+        </button>
+        <div class="tieude-overlay">📁 DỰ ÁN</div>
+        <button id="nut-tao-du-an-trong-trang" class="nut-icon" aria-label="Tạo dự án">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+        </button>
+    </div>
+
+    <div class="overlay-body">
+        <div id="danh-sach-du-an-trong-trang" class="danh-sach-cuon"></div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- TRANG DANH SÁCH CHAT NHANH (MỚI)                             -->
+<!-- ============================================================ -->
+<div id="trang-chat-nhanh" class="overlay overlay-trai">
+    <div class="overlay-header">
+        <button id="dong-trang-chat-nhanh" class="nut-icon" aria-label="Đóng">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12"/>
+                <polyline points="12,19 5,12 12,5"/>
+            </svg>
+        </button>
+        <div class="tieude-overlay">💬 GẦN ĐÂY</div>
+        <button id="nut-tao-chat-trong-trang" class="nut-icon" aria-label="Tạo chat mới">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+        </button>
+    </div>
+
+    <div class="overlay-body">
+        <div id="danh-sach-chat-nhanh-trong-trang" class="danh-sach-cuon"></div>
     </div>
 </div>
 
