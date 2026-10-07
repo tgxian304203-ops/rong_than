@@ -1,9 +1,12 @@
 /* ============================================================
    quan_ly_key_web.js - Dán + quản lý API Key tra web
    ------------------------------------------------------------
-   ĐÃ SỬA: Cho phép chế độ KHÁCH dán key tra web.
-     - Khách  : lưu vào localStorage (đóng tab mất).
+   ĐÃ SỬA:
+     - Khách  : lưu sessionStorage (đóng tab mất).
      - Tài khoản: gửi server lưu kho 1.
+     - taiDanhSach() tự kiểm tra lại phiên mỗi lần chạy.
+     - Nhận diện provider qua BẢNG ÁNH XẠ (dễ mở rộng).
+     - Cập nhật tiền tố SERPJET: 'sj_'.
    ============================================================ */
 
 (function () {
@@ -23,6 +26,17 @@
     let laKhach = false;
 
     /* ------------------------------------------------------------
+       BẢNG ÁNH XẠ PROVIDER
+       ------------------------------------------------------------
+       Khi nhà cung cấp đổi tiền tố key → chỉ cần thêm 1 dòng.
+       ------------------------------------------------------------ */
+    const BANG_PROVIDER = [
+        { tien_to: 'sj_',   provider: 'SERPJET' },
+        { tien_to: 'tvly-', provider: 'Tavily' },
+        { tien_to: 'brd-',  provider: 'Bright Data' },
+    ];
+
+    /* ------------------------------------------------------------
        KIỂM TRA PHIÊN
        ------------------------------------------------------------ */
     async function kiemTraPhien() {
@@ -37,11 +51,11 @@
     }
 
     /* ------------------------------------------------------------
-       LOCALSTORAGE
+       SESSIONSTORAGE
        ------------------------------------------------------------ */
     function docLS() {
         try {
-            const raw = localStorage.getItem(KHOA_LS);
+            const raw = sessionStorage.getItem(KHOA_LS);
             if (!raw) return [];
             const ds = JSON.parse(raw);
             return Array.isArray(ds) ? ds : [];
@@ -52,21 +66,27 @@
 
     function ghiLS(ds) {
         try {
-            localStorage.setItem(KHOA_LS, JSON.stringify(ds || []));
+            sessionStorage.setItem(KHOA_LS, JSON.stringify(ds || []));
         } catch (e) {}
     }
 
     /* ------------------------------------------------------------
-       NHẬN DIỆN PROVIDER TỪ KEY
-       - SERPJET: thường là chuỗi hex dài
-       - Tavily: bắt đầu bằng tvly-
+       NHẬN DIỆN PROVIDER TỪ KEY (dùng bảng ánh xạ)
+       ------------------------------------------------------------
+       - SERPJET    : bắt đầu bằng sj_
+       - Tavily     : bắt đầu bằng tvly-
        - Bright Data: bắt đầu bằng brd-
        ------------------------------------------------------------ */
     function nhanDienProvider(key) {
-        const k = String(key || '').trim().toLowerCase();
-        if (k.startsWith('tvly-')) return 'Tavily';
-        if (k.startsWith('brd-'))  return 'Bright Data';
-        if (k.length >= 20)        return 'SERPJET'; // fallback
+        const k = String(key || '').trim();
+        const kLower = k.toLowerCase();
+
+        for (let i = 0; i < BANG_PROVIDER.length; i++) {
+            if (kLower.startsWith(BANG_PROVIDER[i].tien_to)) {
+                return BANG_PROVIDER[i].provider;
+            }
+        }
+
         return null;
     }
 
@@ -154,6 +174,7 @@
        TẢI DANH SÁCH
        ------------------------------------------------------------ */
     async function taiDanhSach() {
+        await kiemTraPhien();
         if (laKhach) {
             veDanhSach(docLS());
             return;
@@ -189,7 +210,7 @@
             if (laKhach) {
                 const provider = nhanDienProvider(giaTri);
                 if (!provider) {
-                    alert('Không nhận diện được provider. Key phải là Tavily (tvly-...), Bright Data (brd-...) hoặc SERPJET.');
+                    alert('Không nhận diện được provider. Key phải là SERPJET (sj_...), Tavily (tvly-...) hoặc Bright Data (brd-...).');
                     return;
                 }
                 const ds = docLS();
@@ -268,7 +289,7 @@
        CẬP NHẬT QUOTA
        ------------------------------------------------------------ */
     async function capNhatQuota() {
-        if (laKhach) return;
+        if (laKhach) return; // khách không có server để kiểm tra quota
         try {
             const ph = await fetch('/api/quota-key-web');
             const dl = await ph.json();

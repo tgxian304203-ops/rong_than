@@ -1,22 +1,19 @@
 """
 luu_key_web.py - Lưu + quản lý API Key tra web Rồng Thần.
 ------------------------------------------------------------
-ĐÃ SỬA: Cho phép chế độ KHÁCH lưu key tra web.
-    - Khách  : chu_so_huu = "khach"
-    - Tài khoản: chu_so_huu = ten_dang_nhap
-
 Nhiệm vụ:
     - luu_key_web(du_lieu): nhận key, nhận diện provider, lưu kho 1.
-    - lay_danh_sach_key_web(): trả danh sách key tra web.
+    - lay_danh_sach_key_web(): trả danh sách key tra web của chủ sở hữu.
     - xoa_key_web(du_lieu): xóa 1 key theo id.
-    - lay_quota_key_web(): lấy quota thật từ API.
+    - lay_quota_key_web(): lấy quota thật (nếu API hỗ trợ).
 
-Quy tắc:
-    - Nhận diện provider bằng tiền tố key:
-        + tvly-  → Tavily
-        + brd-   → Bright Data
-        + còn lại độ dài >= 20 → SERPJET (fallback)
-    - Key lưu với loai_key = "tra_web".
+Provider hỗ trợ:
+    - SERPJET    : tiền tố 'sj_',   không có endpoint kiểm tra quota
+                   -> mặc định 100%.
+    - Tavily     : tiền tố 'tvly-', có endpoint /usage
+                   -> lấy quota thật.
+    - Bright Data: tiền tố 'brd-',  không có endpoint quota free-tier
+                   -> mặc định 100%.
 
 Tầng dữ liệu: dai_nao/ghi_nho.py
 """
@@ -29,14 +26,29 @@ from flask import session as phien_flask
 
 from dai_nao.ghi_nho import (
     luu_key_da_luu,
-    lay_danh_sach_key_cua,
+    lay_danh_sach_key_web_cua,
     lay_key_da_luu,
     xoa_key_da_luu,
     cap_nhat_quota_key,
 )
 
 
+# ----------------------------------------------------------------
+# HẰNG SỐ
+# ----------------------------------------------------------------
 CHU_SO_HUU_KHACH = "khach"
+LOAI_KEY_TRA_WEB = "tra_web"
+
+
+# ----------------------------------------------------------------
+# BẢNG ÁNH XẠ PROVIDER
+# ----------------------------------------------------------------
+# Khi nhà cung cấp đổi tiền tố key -> chỉ cần thêm 1 dòng vào bảng.
+BANG_PROVIDER = [
+    {"tien_to": "sj_",   "provider": "SERPJET"},
+    {"tien_to": "tvly-", "provider": "Tavily"},
+    {"tien_to": "brd-",  "provider": "Bright Data"},
+]
 
 
 # ----------------------------------------------------------------
@@ -54,104 +66,73 @@ def _ghi_log(loai, noi_dung):
 # TIỆN ÍCH
 # ----------------------------------------------------------------
 def _lay_chu_so_huu():
+    """
+    Lấy chủ sở hữu key:
+        - Nếu đăng nhập -> tên đăng nhập.
+        - Nếu khách    -> "khach".
+    """
     ten = phien_flask.get("ten_dang_nhap")
     if ten:
         return ten
     return CHU_SO_HUU_KHACH
 
 
+def _nhan_dien_provider(key):
+    """
+    Nhận diện provider dựa vào BẢNG ÁNH XẠ.
+    Trả về: "SERPJET" | "Tavily" | "Bright Data" | None
+    """
+    k = (key or "").strip()
+    for muc in BANG_PROVIDER:
+        if k.startswith(muc["tien_to"]):
+            return muc["provider"]
+    return None
+
+
 def _tao_id():
     return "keyweb-" + secrets.token_hex(8)
 
 
-def _nhan_dien_provider(key):
-    """
-    Nhận diện provider tra web dựa vào tiền tố + độ dài.
-    Trả về: "Tavily" | "Bright Data" | "SERPJET" | None
-    """
-    k = (key or "").strip()
-    kl = k.lower()
-
-    if kl.startswith("tvly-"):
-        return "Tavily"
-    if kl.startswith("brd-"):
-        return "Bright Data"
-    # SERPJET dùng chuỗi hex dài
-    if len(k) >= 20:
-        return "SERPJET"
-    return None
-
-
 # ----------------------------------------------------------------
-# LẤY QUOTA THẬT
+# LẤY QUOTA THẬT TỪNG PROVIDER
 # ----------------------------------------------------------------
-def _lay_quota_serpjet(key):
-    try:
-        r = requests.get(
-            "https://serpjet.com/api/v1/account",
-            params={"api_key": key},
-            timeout=10,
-        )
-        if r.status_code != 200:
-            return 0 if r.status_code in (401, 403) else None
-        du_lieu = r.json()
-        da_dung = du_lieu.get("used", 0)
-        tong = du_lieu.get("quota", 1000)
-        if tong <= 0:
-            return 100
-        con_lai = max(0, tong - da_dung)
-        return int(con_lai / tong * 100)
-    except Exception:
-        return None
-
-
 def _lay_quota_tavily(key):
+    """
+    Tavily có endpoint /usage trả về { key: { limit, usage } }.
+    Trả về % còn lại (0-100) hoặc None nếu lỗi.
+    """
     try:
         r = requests.get(
             "https://api.tavily.com/usage",
-            params={"api_key": key},
-            timeout=10,
-        )
-        if r.status_code != 200:
-            return 0 if r.status_code in (401, 403) else None
-        du_lieu = r.json()
-        da_dung = du_lieu.get("usage", 0)
-        tong = du_lieu.get("limit", 1000)
-        if tong <= 0:
-            return 100
-        con_lai = max(0, tong - da_dung)
-        return int(con_lai / tong * 100)
-    except Exception:
-        return None
-
-
-def _lay_quota_brightdata(key):
-    try:
-        r = requests.get(
-            "https://api.brightdata.com/customer/balance",
             headers={"Authorization": f"Bearer {key}"},
             timeout=10,
         )
+        if r.status_code in (401, 403):
+            return 0
         if r.status_code != 200:
-            return 0 if r.status_code in (401, 403) else None
-        du_lieu = r.json()
-        con_lai = du_lieu.get("balance", 0)
-        tong = 5000
-        if tong <= 0:
-            return 100
-        return int(min(100, con_lai / tong * 100))
+            return None
+        du_lieu = r.json() or {}
+        khoa = du_lieu.get("key") or {}
+        gioi_han = khoa.get("limit")
+        da_dung = khoa.get("usage", 0)
+        if gioi_han and gioi_han > 0:
+            con_lai = max(0, gioi_han - da_dung)
+            return int(con_lai / gioi_han * 100)
+        return 100
     except Exception:
         return None
 
 
 def _lay_quota(key, provider):
-    if provider == "SERPJET":
-        return _lay_quota_serpjet(key)
+    """
+    Trả về % còn lại cho từng provider.
+        - Tavily     : gọi API /usage.
+        - SERPJET    : không có endpoint -> mặc định 100.
+        - Bright Data: không có endpoint -> mặc định 100.
+    """
     if provider == "Tavily":
         return _lay_quota_tavily(key)
-    if provider == "Bright Data":
-        return _lay_quota_brightdata(key)
-    return None
+    return 100
 
 
 # ----------------------------------------------------------------
@@ -160,7 +141,9 @@ def _lay_quota(key, provider):
 def luu_key_web(du_lieu):
     """
     Lưu API Key tra web mới.
-    KHÔNG yêu cầu đăng nhập.
+    KHÔNG yêu cầu đăng nhập — khách vẫn lưu được.
+    du_lieu: { key }
+    Trả về: { thanh_cong, key? }
     """
     chu_so_huu = _lay_chu_so_huu()
 
@@ -172,11 +155,10 @@ def luu_key_web(du_lieu):
     if provider is None:
         return {
             "thanh_cong": False,
-            "loi": "Không nhận diện được provider. Key phải là "
-                   "Tavily (tvly-...), Bright Data (brd-...) hoặc SERPJET.",
+            "loi": "Không nhận diện được provider. Key phải bắt đầu bằng "
+                   "'sj_' (SERPJET), 'tvly-' (Tavily) hoặc 'brd-' (Bright Data).",
         }
 
-    # Lấy quota ban đầu (có thể None nếu API lỗi tạm thời)
     phan_tram = _lay_quota(key, provider)
     if phan_tram is None:
         phan_tram = 100
@@ -185,7 +167,7 @@ def luu_key_web(du_lieu):
         "id": _tao_id(),
         "key": key,
         "provider": provider,
-        "loai_key": "tra_web",
+        "loai_key": LOAI_KEY_TRA_WEB,
         "chu_so_huu": chu_so_huu,
         "phan_tram": phan_tram,
         "ngay_tao": int(time.time()),
@@ -214,14 +196,13 @@ def luu_key_web(du_lieu):
 def lay_danh_sach_key_web():
     """
     Trả danh sách key tra web của chủ sở hữu hiện tại.
+    KHÔNG trả key gốc.
     """
     chu_so_huu = _lay_chu_so_huu()
-    danh_sach = lay_danh_sach_key_cua(chu_so_huu) or []
+    danh_sach = lay_danh_sach_key_web_cua(chu_so_huu) or []
 
     ket_qua = []
     for k in danh_sach:
-        if k.get("loai_key") != "tra_web":
-            continue
         ket_qua.append({
             "id": k.get("id"),
             "provider": k.get("provider"),
@@ -238,6 +219,7 @@ def lay_danh_sach_key_web():
 def xoa_key_web(du_lieu):
     """
     Xóa key tra web theo id.
+    Chỉ cho phép xóa key thuộc chủ sở hữu hiện tại.
     """
     chu_so_huu = _lay_chu_so_huu()
 
@@ -252,6 +234,9 @@ def xoa_key_web(du_lieu):
     if key.get("chu_so_huu") != chu_so_huu:
         return {"thanh_cong": False, "loi": "Không có quyền xóa key này."}
 
+    if key.get("loai_key") != LOAI_KEY_TRA_WEB:
+        return {"thanh_cong": False, "loi": "Key này không phải key tra web."}
+
     if not xoa_key_da_luu(id_xoa):
         return {"thanh_cong": False, "loi": "Không xóa được key."}
 
@@ -264,15 +249,16 @@ def xoa_key_web(du_lieu):
 # ----------------------------------------------------------------
 def lay_quota_key_web():
     """
-    Lấy quota thật của từng key tra web từ API provider.
+    Lấy quota của từng key tra web:
+        - Tavily     : gọi API /usage.
+        - SERPJET    : mặc định 100.
+        - Bright Data: mặc định 100.
     """
     chu_so_huu = _lay_chu_so_huu()
-    danh_sach = lay_danh_sach_key_cua(chu_so_huu) or []
+    danh_sach = lay_danh_sach_key_web_cua(chu_so_huu) or []
     ket_qua = []
 
     for k in danh_sach:
-        if k.get("loai_key") != "tra_web":
-            continue
         phan_tram_moi = _lay_quota(k.get("key"), k.get("provider"))
         if phan_tram_moi is not None:
             cap_nhat_quota_key(k.get("id"), phan_tram_moi)

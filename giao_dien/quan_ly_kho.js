@@ -1,8 +1,8 @@
 /* ============================================================
    quan_ly_kho.js - Dán + quản lý URI 2 kho MongoDB
    ------------------------------------------------------------
-   ĐÃ SỬA: Cho phép chế độ KHÁCH dán URI kho.
-     - Khách  : lưu vào localStorage (đóng tab mất).
+   ĐÃ SỬA:
+     - Khách  : lưu sessionStorage (đóng tab mất).
      - Tài khoản: gửi server lưu kho 1.
    ============================================================ */
 
@@ -22,9 +22,6 @@
     const KHOA_LS_2 = 'rong_than_uri_kho_2_khach';
     let laKhach = false;
 
-    /* ------------------------------------------------------------
-       KIỂM TRA PHIÊN
-       ------------------------------------------------------------ */
     async function kiemTraPhien() {
         try {
             const ph = await fetch('/api/phien');
@@ -36,9 +33,6 @@
         return laKhach;
     }
 
-    /* ------------------------------------------------------------
-       CHE MẬT KHẨU URI
-       ------------------------------------------------------------ */
     function cheUri(uri) {
         if (typeof uri !== 'string' || !uri) return '';
         const mau = /^(mongodb(?:\+srv)?:\/\/[^:]+:)([^@]+)(@.+)$/;
@@ -53,26 +47,20 @@
         return uri;
     }
 
-    /* ------------------------------------------------------------
-       LOCALSTORAGE
-       ------------------------------------------------------------ */
     function ghiLS(khoa, uri) {
         try {
-            localStorage.setItem(khoa, uri || '');
+            sessionStorage.setItem(khoa, uri || '');
         } catch (e) {}
     }
 
     function docLS(khoa) {
         try {
-            return localStorage.getItem(khoa) || '';
+            return sessionStorage.getItem(khoa) || '';
         } catch (e) {
             return '';
         }
     }
 
-    /* ------------------------------------------------------------
-       HIỂN THỊ TRẠNG THÁI NÚT
-       ------------------------------------------------------------ */
     function hienTrangThai(nut, chu, mau) {
         if (!nut.dataset.chuGoc) {
             nut.dataset.chuGoc = nut.textContent;
@@ -85,9 +73,6 @@
         }, 2500);
     }
 
-    /* ------------------------------------------------------------
-       LƯU URI KHO
-       ------------------------------------------------------------ */
     async function luuKho(soKho, oNhap, nut) {
         const uri = oNhap.value.trim();
         if (!uri) {
@@ -95,7 +80,6 @@
             return;
         }
 
-        // Kiểm tra định dạng
         if (!uri.startsWith('mongodb://') && !uri.startsWith('mongodb+srv://')) {
             hienTrangThai(nut, 'Sai định dạng', 'var(--do)');
             return;
@@ -106,13 +90,11 @@
 
         try {
             if (laKhach) {
-                // ====== KHÁCH: lưu localStorage ======
                 const khoa = soKho === 1 ? KHOA_LS_1 : KHOA_LS_2;
                 ghiLS(khoa, uri);
                 oNhap.value = cheUri(uri);
                 hienTrangThai(nut, 'Đã lưu tạm', 'var(--chu-rong)');
             } else {
-                // ====== TÀI KHOẢN: gửi server ======
                 const ph = await fetch('/api/luu-uri-kho', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -138,10 +120,8 @@
         }
     }
 
-    /* ------------------------------------------------------------
-       TẢI URI CŨ
-       ------------------------------------------------------------ */
     async function taiUriCu() {
+        await kiemTraPhien();
         if (laKhach) {
             const u1 = docLS(KHOA_LS_1);
             const u2 = docLS(KHOA_LS_2);
@@ -159,9 +139,6 @@
         } catch (e) {}
     }
 
-    /* ------------------------------------------------------------
-       SỰ KIỆN
-       ------------------------------------------------------------ */
     nutKho1.addEventListener('click', function (e) {
         e.preventDefault();
         luuKho(1, oKho1, nutKho1);
@@ -186,7 +163,6 @@
         }
     });
 
-    // Khi focus vào ô đang chứa URI đã che → xóa để dán mới
     [oKho1, oKho2].forEach(function (oNhap) {
         oNhap.addEventListener('focus', function () {
             if (oNhap.value.includes('***')) {
@@ -195,9 +171,6 @@
         });
     });
 
-    /* ------------------------------------------------------------
-       KHỞI ĐỘNG
-       ------------------------------------------------------------ */
     async function khoiDong() {
         await kiemTraPhien();
         await taiUriCu();

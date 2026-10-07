@@ -1,15 +1,16 @@
 """
 luu_key.py - Lưu + quản lý API Key model Rồng Thần.
 ------------------------------------------------------------
-ĐÃ SỬA: Cho phép chế độ KHÁCH lưu key.
-    - Khách  : chu_so_huu = "khach"
-    - Tài khoản: chu_so_huu = ten_dang_nhap
-
 Nhiệm vụ:
     - luu_key_model(du_lieu): nhận key, nhận diện provider, lưu kho 1.
     - lay_danh_sach_key(): trả danh sách key model (đã ẩn key gốc).
     - xoa_key(du_lieu): xóa 1 key theo id.
     - lay_quota_key(): lấy quota thật từ API của từng provider.
+
+ĐÃ SỬA:
+    - Nhận diện provider qua BẢNG ÁNH XẠ (dễ mở rộng khi provider
+      đổi tiền tố key).
+    - Thêm nhận diện Gemini định dạng mới 'AQ.Ab...'.
 
 Tầng dữ liệu: dai_nao/ghi_nho.py
 """
@@ -29,15 +30,17 @@ from dai_nao.ghi_nho import (
 )
 
 
-# ----------------------------------------------------------------
-# HẰNG SỐ
-# ----------------------------------------------------------------
 CHU_SO_HUU_KHACH = "khach"
 
 
-# ----------------------------------------------------------------
-# GHI LOG
-# ----------------------------------------------------------------
+BANG_PROVIDER = [
+    {"tien_to": "gsk_",   "provider": "Groq"},
+    {"tien_to": "sk-or-", "provider": "OpenRouter"},
+    {"tien_to": "AIza",   "provider": "Gemini"},
+    {"tien_to": "AQ.Ab",  "provider": "Gemini"},
+]
+
+
 def _ghi_log(loai, noi_dung):
     try:
         from logs.ghi_log import ghi_log
@@ -46,15 +49,7 @@ def _ghi_log(loai, noi_dung):
         pass
 
 
-# ----------------------------------------------------------------
-# TIỆN ÍCH
-# ----------------------------------------------------------------
 def _lay_chu_so_huu():
-    """
-    Lấy chủ sở hữu key:
-        - Nếu đăng nhập → tên đăng nhập.
-        - Nếu khách    → "khach".
-    """
     ten = phien_flask.get("ten_dang_nhap")
     if ten:
         return ten
@@ -62,17 +57,10 @@ def _lay_chu_so_huu():
 
 
 def _nhan_dien_provider(key):
-    """
-    Nhận diện provider dựa vào tiền tố key.
-    Trả về: "Groq" | "OpenRouter" | "Gemini" | None
-    """
     k = (key or "").strip()
-    if k.startswith("gsk_"):
-        return "Groq"
-    if k.startswith("sk-or-"):
-        return "OpenRouter"
-    if k.startswith("AIza"):
-        return "Gemini"
+    for muc in BANG_PROVIDER:
+        if k.startswith(muc["tien_to"]):
+            return muc["provider"]
     return None
 
 
@@ -80,9 +68,6 @@ def _tao_id():
     return "key-" + secrets.token_hex(8)
 
 
-# ----------------------------------------------------------------
-# LẤY QUOTA THẬT TỪNG PROVIDER
-# ----------------------------------------------------------------
 def _lay_quota_groq(key):
     try:
         r = requests.get(
@@ -146,16 +131,7 @@ def _lay_quota(key, provider):
     return None
 
 
-# ----------------------------------------------------------------
-# LƯU KEY MODEL
-# ----------------------------------------------------------------
 def luu_key_model(du_lieu):
-    """
-    Lưu API Key model mới.
-    KHÔNG yêu cầu đăng nhập — khách vẫn lưu được.
-    du_lieu: { key }
-    Trả về: { thanh_cong, key? }
-    """
     chu_so_huu = _lay_chu_so_huu()
 
     key = (du_lieu.get("key") or "").strip()
@@ -167,7 +143,8 @@ def luu_key_model(du_lieu):
         return {
             "thanh_cong": False,
             "loi": "Không nhận diện được provider. Key phải bắt đầu bằng "
-                   "'gsk_' (Groq), 'sk-or-' (OpenRouter) hoặc 'AIza' (Gemini).",
+                   "'gsk_' (Groq), 'sk-or-' (OpenRouter), 'AIza' hoặc "
+                   "'AQ.Ab' (Gemini).",
         }
 
     phan_tram = _lay_quota(key, provider)
@@ -201,20 +178,12 @@ def luu_key_model(du_lieu):
     }
 
 
-# ----------------------------------------------------------------
-# LẤY DANH SÁCH KEY MODEL
-# ----------------------------------------------------------------
 def lay_danh_sach_key():
-    """
-    Trả danh sách key model của chủ sở hữu hiện tại.
-    KHÔNG trả key gốc.
-    """
     chu_so_huu = _lay_chu_so_huu()
     danh_sach = lay_danh_sach_key_cua(chu_so_huu) or []
 
     ket_qua = []
     for k in danh_sach:
-        # Chỉ lấy key loại model (không lấy key tra web)
         if k.get("loai_key") == "tra_web":
             continue
         ket_qua.append({
@@ -227,14 +196,7 @@ def lay_danh_sach_key():
     return {"thanh_cong": True, "danh_sach": ket_qua}
 
 
-# ----------------------------------------------------------------
-# XÓA KEY MODEL
-# ----------------------------------------------------------------
 def xoa_key(du_lieu):
-    """
-    Xóa key model theo id.
-    Chỉ cho phép xóa key thuộc chủ sở hữu hiện tại.
-    """
     chu_so_huu = _lay_chu_so_huu()
 
     id_xoa = du_lieu.get("id")
@@ -255,13 +217,7 @@ def xoa_key(du_lieu):
     return {"thanh_cong": True}
 
 
-# ----------------------------------------------------------------
-# LẤY QUOTA KEY MODEL
-# ----------------------------------------------------------------
 def lay_quota_key():
-    """
-    Lấy quota thật của từng key model từ API provider.
-    """
     chu_so_huu = _lay_chu_so_huu()
     danh_sach = lay_danh_sach_key_cua(chu_so_huu) or []
     ket_qua = []

@@ -2,25 +2,34 @@
    app.js - Khởi động chung giao diện Rồng Thần
    ------------------------------------------------------------
    ĐÃ SỬA:
-     - taiThongTinPhien(goiLai): nếu goiLai = true → tải lại
-       danh sách dự án + chat nhanh (dùng sau khi đăng nhập).
-     - Sắp xếp chat nhanh theo ngay_tao giảm dần trước khi render.
-     - Sửa class bong bóng: tin-nhan-rong / tin-nhan-nguoi / tin-nhan-he-thong.
-     - Thêm hàm moChatNhanh(id_chat) load lịch sử chat cũ.
+     - Đổi localStorage → sessionStorage cho dữ liệu khách
+       (đóng tab mất sạch).
+     - taiThongTinPhien(goiLai): sau đăng nhập/đăng xuất →
+       làm mới luôn danh sách key model + key web + URI.
+     - Sau khi phiên đổi → xóa sạch sessionStorage của khách.
    ============================================================ */
 
 (function () {
     'use strict';
 
-    const KHOA_LS_DU_AN = 'rong_than_du_an_khach';
-    const KHOA_LS_CHAT = 'rong_than_chat_nhanh_khach';
-    const KHOA_LS_TRO_CHUYEN = 'rong_than_tro_chuyen_khach';
-    const KHOA_LS_TIN_NHAN = 'rong_than_tin_nhan_khach';
+    const KHOA_LS_DU_AN       = 'rong_than_du_an_khach';
+    const KHOA_LS_CHAT        = 'rong_than_chat_nhanh_khach';
+    const KHOA_LS_TRO_CHUYEN  = 'rong_than_tro_chuyen_khach';
+    const KHOA_LS_TIN_NHAN    = 'rong_than_tin_nhan_khach';
+
+    const DS_KHOA_KHACH = [
+        'rong_than_du_an_khach',
+        'rong_than_chat_nhanh_khach',
+        'rong_than_tro_chuyen_khach',
+        'rong_than_tin_nhan_khach',
+        'rong_than_key_model_khach',
+        'rong_than_key_web_khach',
+        'rong_than_uri_kho_1_khach',
+        'rong_than_uri_kho_2_khach',
+    ];
+
     let laKhach = false;
 
-    /* ============================================================
-       HÀM TIỆN ÍCH CHUNG
-       ============================================================ */
     function layKhungTinNhan() {
         return document.getElementById('danh-sach-tin-nhan');
     }
@@ -72,12 +81,9 @@
         cuonXuongCuoi();
     }
 
-    /* ============================================================
-       LOCALSTORAGE CHO KHÁCH
-       ============================================================ */
     function docLS(khoa) {
         try {
-            const raw = localStorage.getItem(khoa);
+            const raw = sessionStorage.getItem(khoa);
             if (!raw) return [];
             const ds = JSON.parse(raw);
             return Array.isArray(ds) ? ds : [];
@@ -85,7 +91,7 @@
     }
 
     function ghiLS(khoa, ds) {
-        try { localStorage.setItem(khoa, JSON.stringify(ds || [])); } catch (e) {}
+        try { sessionStorage.setItem(khoa, JSON.stringify(ds || [])); } catch (e) {}
     }
 
     function luuDuAnKhach(duAn) {
@@ -119,9 +125,14 @@
         ghiLS(KHOA_LS_TIN_NHAN, ds);
     }
 
-    /* ============================================================
-       SẮP XẾP
-       ============================================================ */
+    function xoaSachSessionKhach() {
+        for (let i = 0; i < DS_KHOA_KHACH.length; i++) {
+            try {
+                sessionStorage.removeItem(DS_KHOA_KHACH[i]);
+            } catch (e) {}
+        }
+    }
+
     function sapXepMoiNhatTruoc(ds, truongThoiGian) {
         if (!Array.isArray(ds)) return [];
         const truong = truongThoiGian || 'ngay_tao';
@@ -132,9 +143,6 @@
         });
     }
 
-    /* ============================================================
-       CẬP NHẬT TÊN CHAT NHANH
-       ============================================================ */
     function capNhatTenChatNhanh(idChat, noiDung) {
         if (!idChat || !noiDung) return;
 
@@ -166,11 +174,8 @@
         }
     }
 
-    /* ============================================================
-       TẢI THÔNG TIN PHIÊN
-       goiLai = true → tải lại danh sách sau khi đổi trạng thái
-       ============================================================ */
     async function taiThongTinPhien(goiLai) {
+        let laKhachTruoc = laKhach;
         try {
             const ph = await fetch('/api/phien');
             const dl = await ph.json();
@@ -193,10 +198,23 @@
                 if (nutDoiMK) nutDoiMK.classList.add('an');
             }
 
-            // Nếu goiLai → tải lại dữ liệu (dùng sau khi đăng nhập)
+            if (laKhachTruoc !== laKhach) {
+                xoaSachSessionKhach();
+            }
+
             if (goiLai === true) {
                 await taiDanhSachDuAn();
                 await taiDanhSachChatNhanh();
+
+                if (typeof window.taiDanhSachKeyModel === 'function') {
+                    await window.taiDanhSachKeyModel();
+                }
+                if (typeof window.taiDanhSachKeyWeb === 'function') {
+                    await window.taiDanhSachKeyWeb();
+                }
+                if (typeof window.taiUriKho === 'function') {
+                    await window.taiUriKho();
+                }
             }
         } catch (e) {
             laKhach = true;
@@ -208,9 +226,6 @@
         return laKhach;
     }
 
-    /* ============================================================
-       VẼ DANH SÁCH DỰ ÁN
-       ============================================================ */
     function taoMucDuAn(duAn) {
         const muc = document.createElement('div');
         muc.classList.add('muc-du-an');
@@ -301,9 +316,6 @@
         }
     }
 
-    /* ============================================================
-       VẼ CHAT NHANH VÀO MENU TRÁI
-       ============================================================ */
     function taoMucChatNhanhMenu(chat) {
         const muc = document.createElement('div');
         muc.classList.add('muc-chat-nhanh');
@@ -396,9 +408,6 @@
         }
     }
 
-    /* ============================================================
-       MỞ CHAT NHANH — LOAD LỊCH SỬ
-       ============================================================ */
     async function moChatNhanh(idChat) {
         if (!idChat) return;
 
@@ -448,9 +457,6 @@
         }
     }
 
-    /* ============================================================
-       TRÒ CHUYỆN TRONG DỰ ÁN
-       ============================================================ */
     function taoMucTroChuyen(tro) {
         const muc = document.createElement('div');
         muc.classList.add('muc-du-an');
@@ -550,9 +556,6 @@
         }
     }
 
-    /* ============================================================
-       TIN NHẮN TRONG TRÒ CHUYỆN DỰ ÁN
-       ============================================================ */
     function veTinNhanTrongDuAn(ds) {
         const khung = document.getElementById('danh-sach-tin-nhan-du-an');
         if (!khung) return;
@@ -603,9 +606,6 @@
         }
     }
 
-    /* ============================================================
-       KHỞI ĐỘNG
-       ============================================================ */
     async function khoiDong() {
         console.log('%c🌕🐉 Rồng Thần', 'color:#4ade80;font-size:16px;font-weight:bold;');
 
@@ -620,9 +620,6 @@
         }
     }
 
-    /* ============================================================
-       XUẤT TOÀN CỤC
-       ============================================================ */
     window.themTinNhanRong = themTinNhanRong;
     window.themTinNhanNguoi = themTinNhanNguoi;
     window.themTinNhanHeThong = themTinNhanHeThong;
@@ -641,6 +638,7 @@
     window.luuTinNhanKhach = luuTinNhanKhach;
     window.capNhatTenChatNhanh = capNhatTenChatNhanh;
     window.moChatNhanh = moChatNhanh;
+    window.xoaSachSessionKhach = xoaSachSessionKhach;
 
     window.addEventListener('error', function (e) {
         console.error('[Rồng Thần] Lỗi:', e.message);
