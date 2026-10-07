@@ -1,15 +1,11 @@
 /* ============================================================
    chat.js - Gửi/nhận tin nhắn (chat chính + chat trong dự án)
    ------------------------------------------------------------
-   ĐÃ SỬA:
-     - LỖI C: Sửa URL LiveCodes ES module cho đúng (không có
-       /esm/index.js).
-     - Thêm fallback load Pyodide nếu chưa có.
-     - L22: Thêm chaySandboxVaGuiKetQua() — chạy code qua
-       LiveCodes/Pyodide, gửi kết quả về /api/sandbox/ket-qua.
-     - Thêm xuLyCodeMoiTuBackend() — nhận code mới từ backend
-       và chạy lại.
-     - Giữ nguyên các hàm cũ.
+   ĐÃ SỬA (CÁCH 3):
+     - Bỏ client-side sandbox (không dùng Pyodide/LiveCodes).
+     - Backend chạy code → trả ket_qua_chay (stdout, stderr).
+     - Client chỉ hiển thị code + kết quả từ backend.
+     - Giữ nguyên các hàm render tin nhắn.
    ============================================================ */
 
 (function () {
@@ -219,201 +215,60 @@
     }
 
     /* ============================================================
-       L22 — CHẠY SANDBOX VÀ GỬI KẾT QUẢ VỀ BACKEND
+       HIỂN THỊ KẾT QUẢ CODE TỪ BACKEND (CÁCH 3)
        ============================================================ */
-    /**
-     * Chạy code qua sandbox (LiveCodes/Pyodide), gửi kết quả về backend.
-     *
-     * @param {string} code - Code cần chạy.
-     * @param {string} ngonNgu - "python" | "html" | "javascript".
-     * @param {string} idChat - ID chat hiện tại (nếu có).
-     * @returns {Promise<Object|null>} Kết quả từ backend hoặc null.
-     */
-    async function chaySandboxVaGuiKetQua(code, ngonNgu, idChat) {
-        if (!code) return null;
+    function hienThiKetQuaChay(ketQuaChay) {
+        if (!ketQuaChay) return;
 
-        // 1. Tạo container sandbox
-        const containerId = 'sandbox_auto_' + Date.now();
-        const container = document.createElement('div');
-        container.id = containerId;
-        container.className = 'sandbox-container';
-        container.style.minHeight = '300px';
+        // Nếu backend đã tự sửa → thông báo
+        if (ketQuaChay.da_sua) {
+            let thongBao = '🔧 Đã tự sửa lỗi';
+            if (ketQuaChay.so_lan_sua) {
+                thongBao += ` (${ketQuaChay.so_lan_sua} lần)`;
+            }
+            if (ketQuaChay.cach_sua) {
+                thongBao += `:\n${ketQuaChay.cach_sua}`;
+            }
+            if (ketQuaChay.nguon_sua) {
+                thongBao += `\n(nguồn: ${ketQuaChay.nguon_sua})`;
+            }
+            themTinNhanHeThong(thongBao);
+        }
 
-        if (danhSach) {
-            danhSach.appendChild(container);
+        // Hiển thị stdout (kết quả)
+        if (ketQuaChay.stdout) {
+            const dong = document.createElement('div');
+            dong.classList.add('tin-nhan', 'tin-nhan-rong');
+            const pre = document.createElement('pre');
+            pre.classList.add('sandbox-ket-qua');
+            pre.textContent = ketQuaChay.stdout;
+            dong.appendChild(pre);
+            danhSach.appendChild(dong);
             cuonXuongCuoi(khungChat);
         }
 
-        try {
-            // 2. Chạy code qua LiveCodes
-            const ketQuaChay = await chayCodeTrongContainer(container, code, ngonNgu);
-
-            // 3. Gửi kết quả về backend
-            const phanHoi = await fetch('/api/sandbox/ket-qua', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    code: code,
-                    stdout: ketQuaChay.stdout || '',
-                    stderr: ketQuaChay.stderr || '',
-                    ngon_ngu: ngonNgu || 'python',
-                    id_chat: idChat || '',
-                }),
-            });
-
-            const duLieu = await phanHoi.json();
-
-            // 4. Xử lý kết quả từ backend
-            if (duLieu && duLieu.thanh_cong) {
-                if (duLieu.co_loi) {
-                    // Có lỗi → backend đã cố sửa
-                    if (duLieu.da_sua && duLieu.code_moi) {
-                        // Backend đã sửa → chạy lại code mới
-                        await xuLyCodeMoiTuBackend(duLieu, containerId, ngonNgu, idChat);
-                    } else {
-                        // Không sửa được → hiển thị lỗi
-                        themTinNhanHeThong(
-                            '⚠️ Code chạy lỗi:\n' +
-                            (duLieu.thong_diep_loi || duLieu.loi || 'không rõ')
-                        );
-                    }
-                }
-                // Nếu không lỗi → không cần làm gì (kết quả đã hiển thị trong sandbox)
-            }
-
-            return duLieu;
-        } catch (e) {
-            console.error('Lỗi chạy sandbox:', e);
-            return null;
-        }
-    }
-
-    /**
-     * Chạy code trong container qua LiveCodes hoặc Pyodide.
-     * Trả về { stdout, stderr, result }.
-     */
-    async function chayCodeTrongContainer(container, code, ngonNgu) {
-        const ketQua = { stdout: '', stderr: '', result: '' };
-
-        try {
-            if (ngonNgu === 'html') {
-                // HTML → LiveCodes
-                // SỬA LỖI C: URL đúng, không có /esm/index.js
-                const { createPlayground } = await import(
-                    'https://cdn.jsdelivr.net/npm/livecodes@0.14.1'
-                );
-
-                const playground = await createPlayground(container, {
-                    config: {
-                        markup: { language: 'html', content: code },
-                    },
-                    headless: false,
-                    view: 'result',
-                });
-
-                playground.watch('console', ({ method, args }) => {
-                    const dong = (args || []).map(a => String(a)).join(' ') + '\n';
-                    if (method === 'error' || method === 'warn') {
-                        ketQua.stderr += dong;
-                    } else {
-                        ketQua.stdout += dong;
-                    }
-                });
-
-                await playground.run();
-                await new Promise(r => setTimeout(r, 1000));
-
-                return ketQua;
-            } else {
-                // Python → Pyodide
-                // Fallback: tự load Pyodide nếu chưa có
-                if (typeof loadPyodide !== 'function') {
-                    try {
-                        await new Promise((resolve, reject) => {
-                            const script = document.createElement('script');
-                            script.src = 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js';
-                            script.onload = resolve;
-                            script.onerror = () => reject(new Error('Không tải được Pyodide'));
-                            document.head.appendChild(script);
-                        });
-                    } catch (e) {
-                        ketQua.stderr = 'Pyodide chưa tải.';
-                        return ketQua;
-                    }
-                }
-
-                if (typeof loadPyodide !== 'function') {
-                    ketQua.stderr = 'Pyodide chưa tải.';
-                    return ketQua;
-                }
-
-                const pyodide = await loadPyodide({
-                    indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/',
-                });
-
-                pyodide.setStdout({ batched: (s) => { ketQua.stdout += s + '\n'; } });
-                pyodide.setStderr({ batched: (s) => { ketQua.stderr += s + '\n'; } });
-
-                try {
-                    const kq = await pyodide.runPythonAsync(code);
-                    if (kq !== undefined && kq !== null) {
-                        ketQua.stdout += String(kq) + '\n';
-                    }
-                } catch (err) {
-                    ketQua.stderr += err.message + '\n';
-                }
-
-                return ketQua;
-            }
-        } catch (e) {
-            ketQua.stderr += 'Lỗi sandbox: ' + e.message + '\n';
-            return ketQua;
-        }
-    }
-
-    /**
-     * Xử lý code mới từ backend — chạy lại code đã sửa.
-     */
-    async function xuLyCodeMoiTuBackend(duLieu, containerId, ngonNgu, idChat) {
-        const codeMoi = duLieu.code_moi;
-        if (!codeMoi) return;
-
-        themTinNhanHeThong(
-            '🔧 Đã tự sửa lỗi:\n' +
-            (duLieu.cach_sua || 'đã điều chỉnh code') +
-            (duLieu.nguon ? ` (nguồn: ${duLieu.nguon})` : '')
-        );
-
-        // Tạo container mới cho code đã sửa
-        const containerMoi = document.createElement('div');
-        containerMoi.id = containerId + '_sua';
-        containerMoi.className = 'sandbox-container';
-        containerMoi.style.minHeight = '300px';
-
-        if (danhSach) {
-            danhSach.appendChild(containerMoi);
+        // Hiển thị stderr (lỗi)
+        if (ketQuaChay.stderr && !ketQuaChay.da_sua) {
+            const dong = document.createElement('div');
+            dong.classList.add('tin-nhan', 'tin-nhan-he-thong');
+            const pre = document.createElement('pre');
+            pre.classList.add('sandbox-loi');
+            pre.textContent = '⚠️ Lỗi:\n' + ketQuaChay.stderr;
+            dong.appendChild(pre);
+            danhSach.appendChild(dong);
             cuonXuongCuoi(khungChat);
-        }
-
-        // Chạy lại
-        const ketQuaMoi = await chayCodeTrongContainer(containerMoi, codeMoi, ngonNgu);
-
-        // Gửi lại kết quả (1 lần — tránh vòng lặp vô hạn)
-        try {
-            await fetch('/api/sandbox/ket-qua', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    code: codeMoi,
-                    stdout: ketQuaMoi.stdout || '',
-                    stderr: ketQuaMoi.stderr || '',
-                    ngon_ngu: ngonNgu || 'python',
-                    id_chat: idChat || '',
-                    la_lan_hai: true,   // đánh dấu — backend không sửa nữa
-                }),
-            });
-        } catch (e) {
-            console.error('Lỗi gửi kết quả lần 2:', e);
+        } else if (ketQuaChay.stderr && ketQuaChay.da_sua) {
+            // Đã sửa nhưng vẫn còn lỗi
+            if (!ketQuaChay.thanh_cong) {
+                const dong = document.createElement('div');
+                dong.classList.add('tin-nhan', 'tin-nhan-he-thong');
+                const pre = document.createElement('pre');
+                pre.classList.add('sandbox-loi');
+                pre.textContent = '⚠️ Vẫn còn lỗi sau khi sửa:\n' + ketQuaChay.stderr;
+                dong.appendChild(pre);
+                danhSach.appendChild(dong);
+                cuonXuongCuoi(khungChat);
+            }
         }
     }
 
@@ -485,13 +340,9 @@
             if (duLieu && duLieu.thanh_cong && duLieu.tra_loi) {
                 themTinNhanRong(duLieu.tra_loi);
 
-                // Nếu có code → tự động chạy sandbox + gửi kết quả về backend
-                if (duLieu.code && duLieu.ngon_ngu) {
-                    // Chạy không đồng bộ (không chặn UI)
-                    chaySandboxVaGuiKetQua(duLieu.code, duLieu.ngon_ngu, idChat)
-                        .catch(function (e) {
-                            console.error('Lỗi chạy sandbox tự động:', e);
-                        });
+                // CÁCH 3: Nếu backend đã chạy code → hiển thị kết quả
+                if (duLieu.ket_qua_chay) {
+                    hienThiKetQuaChay(duLieu.ket_qua_chay);
                 }
             } else if (duLieu && duLieu.loi) {
                 themTinNhanHeThong('⚠️ ' + duLieu.loi);
@@ -706,8 +557,7 @@
     window.guiTinNhanDuAn = guiTinNhanDuAn;
     window.renderTinNhanCu = renderTinNhanCu;
     window.renderTinNhanChatNhanh = renderTinNhanChatNhanh;
-    window.chaySandboxVaGuiKetQua = chaySandboxVaGuiKetQua;
-    window.xuLyCodeMoiTuBackend = xuLyCodeMoiTuBackend;
+    window.hienThiKetQuaChay = hienThiKetQuaChay;
 
     /* ============================================================
        LỜI CHÀO

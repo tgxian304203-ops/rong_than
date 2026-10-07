@@ -2,39 +2,33 @@
 chay_html.py - Chạy code HTML qua Sandbox Rồng Thần.
 
 Nhiệm vụ:
-    - chay_html(du_lieu): điều phối chạy code HTML/CSS/JS qua LiveCodes.
-    - tao_html_sandbox(code, timeout): tạo HTML hoàn chỉnh để client chạy.
-    - _tao_js_khoi_tao(container_id, config, timeout): JS khởi tạo playground.
-    - _tao_js_gui_ket_qua(): JS gửi kết quả về backend.
-    - _tach_code_html(code): tách HTML/CSS/JS.
+    - chay_html_backend(code): kiểm tra cú pháp HTML ở backend (CÁCH 3).
+    - chay_html(du_lieu): API — trả code + trạng thái.
+    - tao_html_sandbox(code): tạo HTML sandbox đầy đủ (fallback).
 
 ĐÃ SỬA:
-    - L20: Sửa API LiveCodes — dùng ES module import thay vì window.livecodes.
-    - Đổi version LiveCodes sang 0.14.1 (ổn định).
-    - Tích hợp JS gửi kết quả về /api/sandbox/ket-qua.
+    - CÁCH 3: Backend kiểm tra cú pháp HTML cơ bản, trả code cho client.
+    - HTML không "chạy" như Python — chỉ render trên client.
+    - Client render HTML trong iframe.
 
 Quy tắc:
-    - Sandbox chạy CLIENT-SIDE bằng LiveCodes SDK.
-    - Backend KHÔNG chạy code HTML thật.
-    - Client chạy code → gửi stdout/stderr về backend.
-    - Backend nhận → tự sửa nếu lỗi → gửi code mới.
+    - HTML là ngôn ngữ khai báo → không có runtime error.
+    - Backend kiểm tra: thẻ cân bằng, độ dài, ký tự lạ.
+    - Client render HTML → hiển thị kết quả.
 
 Trả về:
     {
         thanh_cong: bool,
-        che_do: "client_side",
         code: str,
         ngon_ngu: "html",
-        timeout: int,
-        huong_dan_client: dict,
-        html_sandbox: str,
         loi: str,
+        canh_bao: str,
+        thoi_gian: float,
     }
 """
 
 import re
 import time
-import json
 
 
 # ================================================================
@@ -51,41 +45,136 @@ def _ghi_log(loai, noi_dung):
 # ================================================================
 # HẰNG SỐ
 # ================================================================
-TIMEOUT_MAC_DINH = 10
 DO_DAI_CODE_TOI_DA = 100000
-LIVECODES_VERSION = "0.14.1"
 
 
 # ================================================================
-# KIỂM TRA CODE
+# KIỂM TRA CÚ PHÁP HTML
 # ================================================================
-def _kiem_tra_code_rong(code):
-    if not code or not code.strip():
-        return True
-    code_clean = re.sub(r"<!--[\s\S]*?-->", "", code)
-    code_clean = re.sub(r"/\*[\s\S]*?\*/", "", code_clean)
-    code_clean = re.sub(r"//[^\n]*", "", code_clean)
-    return not code_clean.strip()
+def _kiem_tra_the_can_balanced(code):
+    """
+    Kiểm tra các thẻ HTML phổ biến có cân bằng không.
+
+    Trả về: (True, []) hoặc (False, [danh sách thẻ không cân bằng]).
+    """
+    the_can_kiem_tra = [
+        "html", "head", "body", "div", "span", "p", "a",
+        "ul", "ol", "li", "table", "tr", "td", "th",
+        "form", "input", "button", "script", "style",
+    ]
+
+    thieu = []
+    for the in the_can_kiem_tra:
+        # Thẻ tự đóng (input, br, img, ...) — bỏ qua
+        if the in ("input", "br", "img", "hr", "meta", "link"):
+            continue
+
+        # Đếm thẻ mở và đóng
+        mau_mo = rf"<{the}\b[^>]*?(?<!/)>"
+        mau_dong = rf"</{the}\s*>"
+
+        so_mo = len(re.findall(mau_mo, code, re.I))
+        so_dong = len(re.findall(mau_dong, code, re.I))
+
+        if so_mo != so_dong:
+            thieu.append(f"<{the}> ({so_mo} mở, {so_dong} đóng)")
+
+    if thieu:
+        return False, thieu
+    return True, []
 
 
-def _uoc_luong_thoi_gian(code):
+def _kiem_tra_ky_tu_la(code):
+    """
+    Kiểm tra ký tự lạ (không phải ASCII, không phải tiếng Việt, không phải emoji).
+
+    Trả về: list ký tự lạ (tối đa 10).
+    """
     if not code:
-        return 1
-    so_dong = len(code.split("\n"))
-    co_js = "<script" in code.lower() or "function" in code.lower()
-    co_vong_lap = bool(re.search(r"\b(for|while)\b", code))
+        return []
 
-    thoi_gian = 1
-    if so_dong > 100:
-        thoi_gian += 2
-    elif so_dong > 50:
-        thoi_gian += 1
-    if co_js:
-        thoi_gian += 1
-    if co_vong_lap:
-        thoi_gian += 1
+    # Cho phép: ASCII, tiếng Việt, emoji, ký tự đặc biệt HTML
+    mau_hop_le = re.compile(
+        r"[\x00-\x7F"
+        r"\u00C0-\u1EF9"  # Latin mở rộng + tiếng Việt
+        r"\u1F00-\u1FFF"  # Greek mở rộng
+        r"\u2000-\u206F"  # Dấu câu
+        r"\u2190-\u21FF"  # Mũi tên
+        r"\u2200-\u22FF"  # Toán học
+        r"\u2600-\u26FF"  # Biểu tượng
+        r"\u2700-\u27BF"  # Dingbat
+        r"\u1F300-\u1F9FF"  # Emoji
+        r"\uFE00-\uFE0F"  # Biến thể
+        r"]"
+    )
 
-    return min(thoi_gian, TIMEOUT_MAC_DINH)
+    ky_tu_la = []
+    for c in code:
+        if not mau_hop_le.match(c):
+            ky_tu_la.append(c)
+            if len(ky_tu_la) >= 10:
+                break
+
+    return ky_tu_la
+
+
+# ================================================================
+# CHẠY HTML Ở BACKEND (CÁCH 3)
+# ================================================================
+def chay_html_backend(code):
+    """
+    Kiểm tra cú pháp HTML ở backend.
+
+    HTML không "chạy" như Python — chỉ render trên client.
+    Backend kiểm tra:
+        - Độ dài.
+        - Thẻ cân bằng.
+        - Ký tự lạ.
+
+    Trả về dict đầy đủ.
+    """
+    ket_qua = {
+        "thanh_cong": False,
+        "code": "",
+        "ngon_ngu": "html",
+        "loi": "",
+        "canh_bao": "",
+        "thoi_gian": 0.0,
+    }
+
+    if not code:
+        ket_qua["loi"] = "Code rỗng."
+        return ket_qua
+
+    if len(code) > DO_DAI_CODE_TOI_DA:
+        ket_qua["loi"] = f"Code quá dài (>{DO_DAI_CODE_TOI_DA} ký tự)."
+        return ket_qua
+
+    thoi_gian_bat_dau = time.time()
+
+    # Kiểm tra thẻ cân bằng
+    the_ok, the_loi = _kiem_tra_the_can_balanced(code)
+    if not the_ok:
+        ket_qua["loi"] = "Thẻ HTML không cân bằng: " + ", ".join(the_loi[:5])
+        ket_qua["code"] = code
+        ket_qua["thoi_gian"] = round(time.time() - thoi_gian_bat_dau, 3)
+        return ket_qua
+
+    # Kiểm tra ký tự lạ
+    ky_tu_la = _kiem_tra_ky_tu_la(code)
+    if ky_tu_la:
+        ket_qua["canh_bao"] = "Có ký tự lạ: " + " ".join(repr(c) for c in ky_tu_la[:5])
+
+    ket_qua["thanh_cong"] = True
+    ket_qua["code"] = code
+    ket_qua["thoi_gian"] = round(time.time() - thoi_gian_bat_dau, 3)
+
+    _ghi_log(
+        "sandbox",
+        f"Kiểm tra HTML backend: {len(code)} ký tự, OK",
+    )
+
+    return ket_qua
 
 
 # ================================================================
@@ -98,17 +187,14 @@ def _tach_code_html(code):
     if not code:
         return ket_qua
 
-    # Tách <style>
     khop_style = re.findall(r"<style[^>]*>([\s\S]*?)</style>", code, re.I)
     if khop_style:
         ket_qua["style"] = "\n".join(khop_style).strip()
 
-    # Tách <script>
     khop_script = re.findall(r"<script[^>]*>([\s\S]*?)</script>", code, re.I)
     if khop_script:
         ket_qua["script"] = "\n".join(khop_script).strip()
 
-    # HTML còn lại
     html_con_lai = re.sub(r"<style[^>]*>[\s\S]*?</style>", "", code, flags=re.I)
     html_con_lai = re.sub(r"<script[^>]*>[\s\S]*?</script>", "", html_con_lai, flags=re.I)
     html_con_lai = html_con_lai.strip()
@@ -133,158 +219,72 @@ def _tao_html_mau(code):
 
 
 # ================================================================
-# TẠO JS GỬI KẾT QUẢ VỀ BACKEND
+# HÀM CHÍNH — API
 # ================================================================
-def _tao_js_gui_ket_qua(container_id):
-    """Tạo JS gửi kết quả chạy về backend."""
-    return f"""// Gửi kết quả về backend để tự sửa nếu lỗi
-async function guiKetQuaVeBackend_{container_id}(code, stdout, stderr) {{
-    try {{
-        const phanHoi = await fetch('/api/sandbox/ket-qua', {{
-            method: 'POST',
-            headers: {{ 'Content-Type': 'application/json' }},
-            body: JSON.stringify({{
-                code: code,
-                stdout: stdout || '',
-                stderr: stderr || '',
-                ngon_ngu: 'html',
-                id_chat: window.__ID_CHAT_NHANH_HIEN_TAI || '',
-            }}),
-        }});
-        const duLieu = await phanHoi.json();
+def chay_html(du_lieu):
+    """
+    API chính — kiểm tra HTML backend + trả code cho client.
 
-        if (duLieu && duLieu.thanh_cong && duLieu.code_moi && duLieu.code_moi !== code) {{
-            console.log('Backend đã sửa code HTML, cần chạy lại.');
-            return duLieu.code_moi;
-        }}
-        return null;
-    }} catch (e) {{
-        console.error('Không gửi được kết quả về backend:', e);
-        return null;
-    }}
-}}"""
-
-
-# ================================================================
-# TẠO JS KHỞI TẠO PLAYGROUND
-# ================================================================
-def _tao_js_khoi_tao(container_id, config, timeout):
-    """Tạo JS khởi tạo LiveCodes playground đúng API."""
-    config_json = json.dumps(config, ensure_ascii=False)
-    timeout_ms = timeout * 1000
-
-    return f"""// Khởi tạo LiveCodes playground
-const container_{container_id} = document.getElementById('{container_id}');
-if (container_{container_id}) {{
-    (async () => {{
-        try {{
-            // Import ES module — đúng API LiveCodes
-            const {{ createPlayground }} = await import(
-                'https://cdn.jsdelivr.net/npm/livecodes@{LIVECODES_VERSION}/esm/index.js'
-            );
-
-            // Tạo playground
-            const playground = await createPlayground(container_{container_id}, {{
-                config: {config_json},
-                headless: false,
-                view: 'result',
-            }});
-
-            // Lưu toàn cục
-            window['__playground_{container_id}'] = playground;
-
-            // Bắt console
-            let stdout = '';
-            let stderr = '';
-            playground.watch('console', ({{ method, args }}) => {{
-                const dong = (args || []).map(a => String(a)).join(' ') + '\\n';
-                if (method === 'error' || method === 'warn') {{
-                    stderr += dong;
-                }} else {{
-                    stdout += dong;
-                }}
-
-                const out = document.getElementById('{container_id}-console');
-                if (out) {{
-                    out.textContent += `[${{method}}] ${{dong}}`;
-                }}
-            }});
-
-            // Chạy
-            await playground.run();
-
-            // Chờ 1s cho code chạy xong
-            await new Promise(r => setTimeout(r, 1000));
-
-            // Lấy kết quả
-            const codeObj = await playground.getCode();
-            const codeHienTai = codeObj.markup || '';
-
-            // Gửi kết quả về backend
-            await guiKetQuaVeBackend_{container_id}(codeHienTai, stdout, stderr);
-
-            // Timeout cảnh báo
-            setTimeout(() => {{
-                console.warn('Sandbox chạy quá {timeout}s.');
-            }}, {timeout_ms});
-
-        }} catch (err) {{
-            const container = document.getElementById('{container_id}');
-            if (container) {{
-                container.textContent = 'Lỗi khởi tạo sandbox: ' + err.message;
-            }}
-            console.error('LiveCodes lỗi:', err);
-        }}
-    }})();
-}}"""
-
-
-# ================================================================
-# TẠO HƯỚNG DẪN CLIENT
-# ================================================================
-def _tao_huong_dan_client(code, timeout=TIMEOUT_MAC_DINH, container_id=""):
-    """Tạo hướng dẫn JS cho client chạy HTML qua LiveCodes SDK."""
-    phan = _tach_code_html(code)
-
-    if not container_id:
-        import secrets
-        container_id = "sandbox_" + secrets.token_hex(6)
-
-    config = {}
-    if phan.get("markup"):
-        config["markup"] = {"language": "html", "content": phan["markup"]}
-    if phan.get("style"):
-        config["style"] = {"language": "css", "content": phan["style"]}
-    if phan.get("script"):
-        config["script"] = {"language": "javascript", "content": phan["script"]}
-
-    js_khoi_tao = _tao_js_khoi_tao(container_id, config, timeout)
-    js_gui_ket_qua = _tao_js_gui_ket_qua(container_id)
-
-    return {
-        "cach_chay": "livecodes",
-        "livecodes_version": LIVECODES_VERSION,
-        "code": code,
-        "phan": phan,
-        "timeout": timeout,
-        "container_id": container_id,
-        "js_khoi_tao": js_khoi_tao,
-        "js_gui_ket_qua": js_gui_ket_qua,
-        "js_mau": js_khoi_tao + "\n\n" + js_gui_ket_qua,
+    CÁCH 3: Backend kiểm tra, client render.
+    """
+    ket_qua = {
+        "thanh_cong": False,
+        "che_do": "backend",
+        "code": "",
+        "ngon_ngu": "html",
+        "loi": "",
+        "canh_bao": "",
+        "huong_dan_client": {},
     }
 
+    if not du_lieu:
+        ket_qua["loi"] = "Không có dữ liệu."
+        return ket_qua
+
+    code = du_lieu.get("code") or ""
+
+    if not code:
+        ket_qua["loi"] = "Code rỗng."
+        return ket_qua
+
+    # Kiểm tra backend
+    ket_qua_backend = chay_html_backend(code)
+
+    ket_qua.update({
+        "thanh_cong": ket_qua_backend.get("thanh_cong", False),
+        "code": code,
+        "loi": ket_qua_backend.get("loi", ""),
+        "canh_bao": ket_qua_backend.get("canh_bao", ""),
+        "thoi_gian": ket_qua_backend.get("thoi_gian", 0.0),
+    })
+
+    return ket_qua
+
 
 # ================================================================
-# TẠO HTML SANDBOX HOÀN CHỈNH
+# TẠO HTML SANDBOX ĐẦY ĐỦ (FALLBACK)
 # ================================================================
-def tao_html_sandbox(code, timeout=TIMEOUT_MAC_DINH):
-    """Tạo HTML hoàn chỉnh để chạy code HTML/CSS/JS trong iframe."""
-    import secrets
-    container_id = "sandbox_" + secrets.token_hex(6)
+def tao_html_sandbox(code, timeout=10):
+    """
+    Tạo HTML hoàn chỉnh để render code HTML trong iframe.
 
-    huong_dan = _tao_huong_dan_client(code, timeout, container_id)
-    js_mau = huong_dan.get("js_mau", "")
+    Fallback nếu client không tự render được.
+    """
+    phan = _tach_code_html(code)
 
+    markup = phan.get("markup", "")
+    style = phan.get("style", "")
+    script = phan.get("script", "")
+
+    # Nếu markup đã có <html> → trả nguyên
+    if "<html" in markup.lower():
+        if style:
+            markup = markup.replace("</head>", f"<style>{style}</style></head>")
+        if script:
+            markup = markup.replace("</body>", f"<script>{script}</script></body>")
+        return markup
+
+    # Ngược lại → bọc HTML đầy đủ
     return f"""<!DOCTYPE html>
 <html lang="vi">
 <head>
@@ -293,126 +293,37 @@ def tao_html_sandbox(code, timeout=TIMEOUT_MAC_DINH):
     <title>Sandbox HTML - Rồng Thần</title>
     <style>
         * {{ box-sizing: border-box; }}
-        html, body {{
-            margin: 0;
-            padding: 0;
-            background: #000;
-            color: #4ade80;
-            font-family: -apple-system, monospace;
-        }}
-        #{container_id} {{
-            width: 100%;
-            min-height: 400px;
-            background: #fff;
-            border-radius: 8px;
-            overflow: hidden;
-        }}
-        #{container_id}-console {{
-            background: #0a0a0a;
-            color: #facc15;
-            padding: 10px;
-            margin-top: 8px;
-            border-radius: 8px;
-            font-family: "SF Mono", Consolas, monospace;
-            font-size: 12px;
-            min-height: 40px;
-            white-space: pre-wrap;
-            border: 1px solid #222;
-        }}
+        body {{ margin: 0; padding: 10px; font-family: sans-serif; }}
+        {style}
     </style>
 </head>
 <body>
-    <div id="{container_id}"></div>
-    <div id="{container_id}-console"></div>
-    <script type="module">
-        {js_mau}
+    {markup}
+    <script>
+        {script}
     </script>
 </body>
 </html>"""
 
 
 # ================================================================
-# HÀM CHÍNH
-# ================================================================
-def chay_html(du_lieu):
-    """Điều phối chạy code HTML/CSS/JS qua Sandbox."""
-    ket_qua = {
-        "thanh_cong": False,
-        "che_do": "client_side",
-        "code": "",
-        "ngon_ngu": "html",
-        "timeout": TIMEOUT_MAC_DINH,
-        "huong_dan_client": {},
-        "html_sandbox": "",
-        "loi": "",
-    }
-
-    if not du_lieu:
-        ket_qua["loi"] = "Không có dữ liệu."
-        return ket_qua
-
-    code = du_lieu.get("code") or ""
-    timeout = du_lieu.get("timeout") or TIMEOUT_MAC_DINH
-
-    if not code:
-        ket_qua["loi"] = "Code rỗng."
-        return ket_qua
-
-    if _kiem_tra_code_rong(code):
-        ket_qua["loi"] = "Code rỗng hoặc chỉ có comment."
-        return ket_qua
-
-    if len(code) > DO_DAI_CODE_TOI_DA:
-        ket_qua["loi"] = f"Code quá dài (>{DO_DAI_CODE_TOI_DA} ký tự)."
-        return ket_qua
-
-    try:
-        timeout = max(1, min(30, int(timeout)))
-    except (ValueError, TypeError):
-        timeout = TIMEOUT_MAC_DINH
-
-    huong_dan = _tao_huong_dan_client(code, timeout)
-    html = tao_html_sandbox(code, timeout)
-
-    ket_qua["thanh_cong"] = True
-    ket_qua["code"] = code
-    ket_qua["timeout"] = timeout
-    ket_qua["huong_dan_client"] = huong_dan
-    ket_qua["html_sandbox"] = html
-    ket_qua["thoi_gian_uoc_tinh"] = _uoc_luong_thoi_gian(code)
-
-    _ghi_log(
-        "sandbox",
-        f"Chuẩn bị chạy HTML: {len(code)} ký tự, timeout={timeout}s",
-    )
-
-    return ket_qua
-
-
-# ================================================================
-# HÀM PHỤ: KIỂM TRA CÚ PHÁP HTML
+# KIỂM TRA CÚ PHÁP
 # ================================================================
 def kiem_tra_cu_phap_html(code):
     """Kiểm tra cú pháp HTML cơ bản."""
     if not code:
         return False, "Code rỗng."
 
-    the_can_kiem_tra = ["div", "span", "p", "a", "ul", "li", "table", "tr", "td"]
-    for the in the_can_kiem_tra:
-        so_mo = len(re.findall(rf"<{the}\b[^>]*>", code, re.I))
-        so_dong = len(re.findall(rf"</{the}>", code, re.I))
-        if so_mo != so_dong:
-            return False, f"Thẻ <{the}> không cân bằng ({so_mo} mở, {so_dong} đóng)."
+    ok, the_loi = _kiem_tra_the_can_balanced(code)
+    if not ok:
+        return False, "Thẻ không cân bằng: " + ", ".join(the_loi[:5])
+
     return True, ""
 
 
 def sandbox_san_sang():
-    """Kiểm tra sandbox sẵn sàng."""
-    try:
-        import requests
-        return True
-    except ImportError:
-        return False
+    """Sandbox sẵn sàng."""
+    return True
 
 
 def tom_tat(ket_qua):
@@ -420,8 +331,5 @@ def tom_tat(ket_qua):
     if not ket_qua:
         return ""
     if ket_qua.get("thanh_cong"):
-        return (
-            f"✅ Sandbox HTML sẵn sàng: {len(ket_qua.get('code', ''))} ký tự, "
-            f"timeout={ket_qua.get('timeout')}s"
-        )
-    return f"❌ Sandbox HTML lỗi: {ket_qua.get('loi', '')}"
+        return f"✅ HTML OK: {len(ket_qua.get('code', ''))} ký tự"
+    return f"❌ HTML lỗi: {(ket_qua.get('loi') or '')[:150]}"

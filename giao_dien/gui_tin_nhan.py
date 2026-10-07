@@ -7,8 +7,8 @@ Nhiệm vụ:
 
 ĐÃ SỬA:
     - L2b: Không còn che giấu lỗi từ Đại não.
-    - Truyền chu_so_huu xuống nhan_task để tra web lấy đúng key.
-    - Trả về thêm code + ngon_ngu + sandbox (nếu Đại não sinh code).
+    - LỖI A: Truyền chu_so_huu xuống nhan_task.
+    - CÁCH 3: Trả về ket_qua_chay (stdout, stderr) từ Đại não.
 
 Quy tắc:
     - Đây là CẦU NỐI giữa giao diện và Đại não.
@@ -86,14 +86,12 @@ def xu_ly_gui_tin_nhan(du_lieu):
         tra_loi: str?,
         code: str?,
         ngon_ngu: str?,
-        sandbox: dict?,
+        ket_qua_chay: dict?,       # CÁCH 3
         id_tin_nhan: str?,
         loi: str?,
     }
     """
-    # ------------------------------------------------------------
     # 1. Kiểm tra dữ liệu đầu vào
-    # ------------------------------------------------------------
     noi_dung = (du_lieu.get("noi_dung") or "").strip()
     danh_sach_anh = _lay_danh_sach(du_lieu, "urls_anh", "anh")
     danh_sach_file = _lay_danh_sach(du_lieu, "urls_file", "file")
@@ -110,9 +108,7 @@ def xu_ly_gui_tin_nhan(du_lieu):
     id_tin_nhan = _tao_id()
     thoi_gian = int(time.time())
 
-    # ------------------------------------------------------------
-    # 2. Lưu tin nhắn của người dùng vào kho 1
-    # ------------------------------------------------------------
+    # 2. Lưu tin nhắn người dùng
     tin_nhan_nguoi = {
         "id_tin_nhan": id_tin_nhan,
         "chu_so_huu": ten_tk or "khach",
@@ -131,9 +127,7 @@ def xu_ly_gui_tin_nhan(du_lieu):
         except Exception as e:
             _ghi_log("dai-nao", f"Lỗi lưu tin nhắn người dùng: {e}")
 
-    # ------------------------------------------------------------
     # 3. Lấy lịch sử chat gần đây
-    # ------------------------------------------------------------
     lich_su = []
     if ten_tk and id_chat:
         try:
@@ -141,13 +135,11 @@ def xu_ly_gui_tin_nhan(du_lieu):
         except Exception:
             lich_su = []
 
-    # ------------------------------------------------------------
-    # 4. Chuyển cho Đại não xử lý
-    # ------------------------------------------------------------
+    # 4. Chuyển cho Đại não
     try:
         from dai_nao.nhan_task import nhan_task
     except ImportError:
-        _ghi_log("loi", "nhan_task.py chưa có hoặc import lỗi.")
+        _ghi_log("loi", "nhan_task.py chưa có.")
         return {
             "thanh_cong": False,
             "loi": "Đại não chưa sẵn sàng (dai_nao/nhan_task.py chưa có).",
@@ -179,14 +171,13 @@ def xu_ly_gui_tin_nhan(du_lieu):
             "loi": "Đại não không trả về kết quả hợp lệ.",
         }
 
-    # ============================================================
-    # 5. KIỂM TRA KẾT QUẢ ĐẠI NÃO (L2b)
-    # ============================================================
+    # 5. Kiểm tra kết quả Đại não (L2b)
     thanh_cong_dai_nao = bool(ket_qua.get("thanh_cong", False))
     tra_loi = ket_qua.get("tra_loi") or ""
     code = ket_qua.get("code")
     ngon_ngu = ket_qua.get("ngon_ngu")
     sandbox = ket_qua.get("sandbox")
+    ket_qua_chay = ket_qua.get("ket_qua_chay")   # CÁCH 3
     loi_dai_nao = ket_qua.get("loi") or ""
 
     # --- Trường hợp 1: Đại não báo thất bại ---
@@ -207,9 +198,7 @@ def xu_ly_gui_tin_nhan(du_lieu):
             "id_tin_nhan": id_tin_nhan,
         }
 
-    # ------------------------------------------------------------
     # 6. Lưu tin nhắn trả lời của Rồng Thần
-    # ------------------------------------------------------------
     tin_nhan_rong = {
         "id_tin_nhan": _tao_id(),
         "chu_so_huu": ten_tk or "khach",
@@ -228,9 +217,7 @@ def xu_ly_gui_tin_nhan(du_lieu):
         except Exception as e:
             _ghi_log("dai-nao", f"Lỗi lưu tin nhắn Rồng Thần: {e}")
 
-    # ------------------------------------------------------------
     # 7. Trả kết quả về client
-    # ------------------------------------------------------------
     ket_qua_tra = {
         "thanh_cong": True,
         "tra_loi": tra_loi,
@@ -243,5 +230,7 @@ def xu_ly_gui_tin_nhan(du_lieu):
         ket_qua_tra["ngon_ngu"] = ngon_ngu
     if sandbox:
         ket_qua_tra["sandbox"] = sandbox
+    if ket_qua_chay:   # CÁCH 3
+        ket_qua_tra["ket_qua_chay"] = ket_qua_chay
 
     return ket_qua_tra

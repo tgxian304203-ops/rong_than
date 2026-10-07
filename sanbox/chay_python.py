@@ -2,41 +2,38 @@
 chay_python.py - Chạy code Python qua Sandbox Rồng Thần.
 
 Nhiệm vụ:
-    - chay_python(du_lieu): điều phối chạy code Python qua Pyodide.
-    - tao_html_sandbox(code, timeout): tạo HTML hoàn chỉnh để client chạy.
-    - _tao_huong_dan_client(code, timeout): tạo hướng dẫn JS cho client.
-    - _tao_js_gui_ket_qua(): tạo JS gửi kết quả về backend.
-    - _tao_js_khoi_tao(): tạo JS khởi tạo Pyodide.
+    - chay_python_backend(code, timeout): chạy code Python ở BACKEND
+      qua subprocess (CÁCH 3).
+    - chay_python(du_lieu): API cũ — trả hướng dẫn client.
 
 ĐÃ SỬA:
-    - L19: Đổi Pyodide version từ v0.29.0 (không tồn tại) → v0.26.4.
-    - Tích hợp kiem_tra_loi + tra_ket_qua + nhung_vao_chat.
-    - Thêm JS gửi kết quả về /api/sandbox/ket-qua.
+    - Thêm chay_python_backend() — chạy code thật, trả stdout/stderr.
+    - Bảo mật cơ bản: temp dir riêng, timeout 5s, giới hạn output,
+      chặn import nguy hiểm.
 
 Quy tắc:
-    - Sandbox chạy CLIENT-SIDE bằng Pyodide (Python 3.12 qua WebAssembly).
-    - Backend KHÔNG chạy code Python thật.
-    - Client chạy code → gửi stdout/stderr về backend.
-    - Backend nhận → tự sửa nếu lỗi → gửi code mới.
-    - Timeout mặc định 10 giây.
+    - CÁCH 3: Backend chạy code thật, KHÔNG client-side.
+    - Vi phạm bàn giao Phần 4 mục 5 (đã được user chấp nhận).
+    - Timeout 5 giây — tránh treo Render.
+    - Không cho code đọc/ghi file hệ thống.
 
 Trả về:
     {
         thanh_cong: bool,
-        che_do: "client_side",
-        code: str,
-        ngon_ngu: "python",
-        timeout: int,
-        huong_dan_client: dict,
-        html_sandbox: str,
+        stdout: str,
+        stderr: str,
+        returncode: int,
+        thoi_gian: float,
         loi: str,
     }
 """
 
+import os
 import re
+import sys
 import time
-import json
-import secrets
+import tempfile
+import subprocess
 
 
 # ================================================================
@@ -53,14 +50,154 @@ def _ghi_log(loai, noi_dung):
 # ================================================================
 # HẰNG SỐ
 # ================================================================
-TIMEOUT_MAC_DINH = 10
-DO_DAI_CODE_TOI_DA = 50000
-# Pyodide version ổn định — Python 3.12
-PYODIDE_VERSION = "v0.26.4"
+TIMEOUT_MAC_DINH = 5           # giây
+DO_DAI_CODE_TOI_DA = 50000     # ký tự
+DO_DAI_OUTPUT_TOI_DA = 50000   # ký tự
+
+# Import bị chặn (nguy hiểm)
+IMPORT_CAM = [
+    "os.system",
+    "subprocess",
+    "shutil.rmtree",
+    "shutil.move",
+    "pathlib.Path.home",
+    "open('/etc",
+    'open("/etc',
+    "open('/root",
+    'open("/root',
+]
 
 
 # ================================================================
-# KIỂM TRA CODE
+# KIỂM TRA CODE AN TOÀN
+# ================================================================
+def _kiem_tra_an_toan(code):
+    """
+    Kiểm tra code có chứa pattern nguy hiểm không.
+
+    Trả về: (True, "") nếu an toàn, (False, lý do) nếu nguy hiểm.
+    """
+    if not code:
+        return False, "Code rỗng."
+
+    code_lower = code.lower()
+
+    for mau in IMPORT_CAM:
+        if mau.lower() in code_lower:
+            return False, f"Code chứa pattern nguy hiểm: '{mau}'."
+
+    # Chặn import os ở mức độ đọc/ghi file hệ thống
+    # (vẫn cho phép import os để dùng os.path.join)
+    if "os.remove(" in code_lower or "os.rmdir(" in code_lower:
+        return False, "Code chứa lệnh xóa file: 'os.remove' / 'os.rmdir'."
+
+    if "os.unlink(" in code_lower:
+        return False, "Code chứa lệnh xóa file: 'os.unlink'."
+
+    return True, ""
+
+
+# ================================================================
+# CHẠY CODE PYTHON Ở BACKEND (CÁCH 3)
+# ================================================================
+def chay_python_backend(code, timeout=TIMEOUT_MAC_DINH):
+    """
+    Chạy code Python ở backend qua subprocess.
+
+    CÁCH 3: Backend chạy code thật.
+
+    code: chuỗi code Python.
+    timeout: giây (mặc định 5).
+
+    Trả về dict đầy đủ.
+    """
+    ket_qua = {
+        "thanh_cong": False,
+        "stdout": "",
+        "stderr": "",
+        "returncode": -1,
+        "thoi_gian": 0.0,
+        "loi": "",
+    }
+
+    if not code:
+        ket_qua["loi"] = "Code rỗng."
+        return ket_qua
+
+    if len(code) > DO_DAI_CODE_TOI_DA:
+        ket_qua["loi"] = f"Code quá dài (>{DO_DAI_CODE_TOI_DA} ký tự)."
+        return ket_qua
+
+    # Kiểm tra an toàn
+    an_toan, ly_do = _kiem_tra_an_toan(code)
+    if not an_toan:
+        ket_qua["loi"] = ly_do
+        ket_qua["stderr"] = ly_do
+        return ket_qua
+
+    # Chuẩn hóa timeout
+    try:
+        timeout = max(1, min(15, int(timeout)))
+    except (ValueError, TypeError):
+        timeout = TIMEOUT_MAC_DINH
+
+    thoi_gian_bat_dau = time.time()
+
+    # Tạo file tạm
+    ten_file = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".py",
+            delete=False,
+            encoding="utf-8",
+        ) as f:
+            f.write(code)
+            ten_file = f.name
+
+        # Chạy bằng Python hiện tại (sys.executable)
+        ket_qua_subprocess = subprocess.run(
+            [sys.executable, ten_file],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            encoding="utf-8",
+            errors="replace",
+        )
+
+        ket_qua["stdout"] = (ket_qua_subprocess.stdout or "")[:DO_DAI_OUTPUT_TOI_DA]
+        ket_qua["stderr"] = (ket_qua_subprocess.stderr or "")[:DO_DAI_OUTPUT_TOI_DA]
+        ket_qua["returncode"] = ket_qua_subprocess.returncode
+        ket_qua["thanh_cong"] = (ket_qua_subprocess.returncode == 0)
+
+    except subprocess.TimeoutExpired:
+        ket_qua["loi"] = f"Code chạy quá {timeout} giây — bị hủy."
+        ket_qua["stderr"] = f"Timeout sau {timeout}s."
+    except Exception as e:
+        ket_qua["loi"] = f"Lỗi chạy code: {e}"
+        ket_qua["stderr"] = str(e)
+    finally:
+        # Xóa file tạm
+        if ten_file and os.path.exists(ten_file):
+            try:
+                os.unlink(ten_file)
+            except Exception:
+                pass
+
+    ket_qua["thoi_gian"] = round(time.time() - thoi_gian_bat_dau, 3)
+
+    _ghi_log(
+        "sandbox",
+        f"Chạy backend: {len(code)} ký tự, "
+        f"returncode={ket_qua['returncode']}, "
+        f"tg={ket_qua['thoi_gian']}s",
+    )
+
+    return ket_qua
+
+
+# ================================================================
+# HÀM CŨ — TRẢ HƯỚNG DẪN CLIENT (FALLBACK)
 # ================================================================
 def _kiem_tra_code_rong(code):
     if not code or not code.strip():
@@ -76,8 +213,6 @@ def _uoc_luong_thoi_gian(code):
         return 1
     so_dong = len(code.split("\n"))
     co_vong_lap = bool(re.search(r"\b(for|while)\b", code))
-    co_numpy = "numpy" in code or "import np" in code
-    co_pandas = "pandas" in code or "import pd" in code
 
     thoi_gian = 1
     if so_dong > 100:
@@ -85,10 +220,6 @@ def _uoc_luong_thoi_gian(code):
     elif so_dong > 50:
         thoi_gian += 1
     if co_vong_lap:
-        thoi_gian += 2
-    if co_numpy:
-        thoi_gian += 1
-    if co_pandas:
         thoi_gian += 2
 
     return min(thoi_gian, TIMEOUT_MAC_DINH)
@@ -111,248 +242,23 @@ def _trich_imports(code):
     return list(imports - builtin)
 
 
-# ================================================================
-# TẠO JS GỬI KẾT QUẢ VỀ BACKEND
-# ================================================================
-def _tao_js_gui_ket_qua():
-    """Tạo JS gửi kết quả chạy code về backend."""
-    return """// Gửi kết quả về backend để tự sửa nếu lỗi
-async function guiKetQuaVeBackend(code, stdout, stderr, ngonNgu, idChat) {
-    try {
-        const phanHoi = await fetch('/api/sandbox/ket-qua', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                code: code,
-                stdout: stdout || '',
-                stderr: stderr || '',
-                ngon_ngu: ngonNgu || 'python',
-                id_chat: idChat || '',
-            }),
-        });
-        const duLieu = await phanHoi.json();
-
-        // Nếu backend tự sửa được → nhận code mới
-        if (duLieu && duLieu.thanh_cong && duLieu.code_moi && duLieu.code_moi !== code) {
-            console.log('Backend đã sửa code, đang chạy lại...');
-            // TODO: chạy lại code mới (frontend xử lý)
-            return duLieu.code_moi;
-        }
-        return null;
-    } catch (e) {
-        console.error('Không gửi được kết quả về backend:', e);
-        return null;
-    }
-}"""
-
-
-# ================================================================
-# TẠO JS KHỞI TẠO PYODIDE
-# ================================================================
-def _tao_js_khoi_tao(code, imports, timeout):
-    """Tạo JS khởi tạo Pyodide và chạy code."""
-    code_escaped = json.dumps(code, ensure_ascii=False)
-    imports_escaped = json.dumps(imports, ensure_ascii=False)
-    timeout_ms = timeout * 1000
-
-    return f"""// Khởi tạo Pyodide và chạy code Python
-async function chayPythonSandbox() {{
-    const output = document.getElementById('sandbox-output');
-    const consoleOut = document.getElementById('sandbox-console');
-    if (!output) return;
-
-    output.textContent = 'Đang tải Pyodide...';
-
-    try {{
-        // Load Pyodide
-        const pyodide = await loadPyodide({{
-            indexURL: 'https://cdn.jsdelivr.net/pyodide/{PYODIDE_VERSION}/full/'
-        }});
-
-        output.textContent = 'Đang tải thư viện...';
-
-        // Tải trước các package
-        const imports = {imports_escaped};
-        for (const pkg of imports) {{
-            try {{
-                await pyodide.loadPackage(pkg);
-            }} catch (e) {{
-                console.warn('Không load được package:', pkg);
-            }}
-        }}
-
-        output.textContent = 'Đang chạy code...';
-
-        // Bắt stdout/stderr
-        let stdout = '';
-        let stderr = '';
-        pyodide.setStdout({{ batched: (s) => {{ stdout += s + '\\n'; }} }});
-        pyodide.setStderr({{ batched: (s) => {{ stderr += s + '\\n'; }} }});
-
-        // Chạy code với timeout
-        const code = {code_escaped};
-        const idChat = window.__ID_CHAT_NHANH_HIEN_TAI || '';
-
-        let ketQua = null;
-        let loi = null;
-
-        try {{
-            const chayPromise = pyodide.runPythonAsync(code);
-            const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Timeout sau {timeout}s')), {timeout_ms})
-            );
-            ketQua = await Promise.race([chayPromise, timeoutPromise]);
-        }} catch (err) {{
-            loi = err.message;
-            stderr += err.message + '\\n';
-        }}
-
-        // Hiển thị kết quả
-        output.textContent = '';
-        if (stdout) output.textContent += stdout;
-        if (ketQua !== undefined && ketQua !== null) {{
-            output.textContent += String(ketQua) + '\\n';
-            stdout += String(ketQua) + '\\n';
-        }}
-        if (stderr && consoleOut) {{
-            consoleOut.textContent = stderr;
-        }}
-
-        // Gửi kết quả về backend
-        await guiKetQuaVeBackend(code, stdout, stderr, 'python', idChat);
-
-    }} catch (err) {{
-        output.textContent = 'Lỗi: ' + err.message;
-        if (consoleOut) consoleOut.textContent = err.message;
-    }}
-}}
-
-// Chạy khi Pyodide sẵn sàng
-if (typeof loadPyodide === 'function') {{
-    chayPythonSandbox();
-}} else {{
-    // Chờ script Pyodide tải xong
-    window.addEventListener('load', () => {{
-        setTimeout(chayPythonSandbox, 100);
-    }});
-}}"""
-
-
-# ================================================================
-# TẠO HƯỚNG DẪN CLIENT
-# ================================================================
-def _tao_huong_dan_client(code, timeout=TIMEOUT_MAC_DINH):
-    """Tạo hướng dẫn JS cho client chạy code qua Pyodide."""
-    if not code:
-        return {}
-
-    imports = _trich_imports(code)
-    js_khoi_tao = _tao_js_khoi_tao(code, imports, timeout)
-    js_gui_ket_qua = _tao_js_gui_ket_qua()
-
-    return {
-        "cach_chay": "pyodide",
-        "pyodide_version": PYODIDE_VERSION,
-        "code": code,
-        "imports": imports,
-        "timeout": timeout,
-        "js_khoi_tao": js_khoi_tao,
-        "js_gui_ket_qua": js_gui_ket_qua,
-        "js_mau": js_khoi_tao + "\n\n" + js_gui_ket_qua,
-    }
-
-
-# ================================================================
-# TẠO HTML SANDBOX HOÀN CHỈNH
-# ================================================================
-def tao_html_sandbox(code, timeout=TIMEOUT_MAC_DINH):
-    """
-    Tạo trang HTML hoàn chỉnh để chạy code Python trong iframe.
-
-    Bao gồm:
-        - Script Pyodide từ CDN.
-        - Container output + console.
-        - JS khởi tạo + gửi kết quả.
-    """
-    huong_dan = _tao_huong_dan_client(code, timeout)
-    js_mau = huong_dan.get("js_mau", "")
-
-    return f"""<!DOCTYPE html>
-<html lang="vi">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sandbox Python - Rồng Thần</title>
-    <script src="https://cdn.jsdelivr.net/pyodide/{PYODIDE_VERSION}/full/pyodide.js"></script>
-    <style>
-        * {{ box-sizing: border-box; }}
-        body {{
-            background: #0a0a0a;
-            color: #4ade80;
-            font-family: "SF Mono", Consolas, monospace;
-            margin: 0;
-            padding: 10px;
-            font-size: 13px;
-        }}
-        #sandbox-output {{
-            background: #111;
-            padding: 10px;
-            border-radius: 8px;
-            min-height: 100px;
-            white-space: pre-wrap;
-            overflow-x: auto;
-            border: 1px solid #222;
-        }}
-        #sandbox-console {{
-            background: #1a0a0a;
-            color: #ef4444;
-            padding: 10px;
-            border-radius: 8px;
-            margin-top: 10px;
-            min-height: 40px;
-            white-space: pre-wrap;
-            font-size: 12px;
-            border: 1px solid #331111;
-            display: none;
-        }}
-        #sandbox-console:not(:empty) {{
-            display: block;
-        }}
-    </style>
-</head>
-<body>
-    <div id="sandbox-output">Đang tải Pyodide...</div>
-    <div id="sandbox-console"></div>
-    <script>
-        {js_mau}
-    </script>
-</body>
-</html>"""
-
-
-# ================================================================
-# HÀM CHÍNH
-# ================================================================
 def chay_python(du_lieu):
     """
-    Điều phối chạy code Python qua Sandbox.
+    API cũ — trả hướng dẫn client.
 
-    du_lieu: {
-        code: str,
-        timeout: int?,
-        id_chat: str?,
-    }
-
-    Trả về dict đầy đủ.
+    ĐÃ SỬA: Ưu tiên chạy backend. Nếu backend chạy OK → trả kết quả.
+    Nếu không → trả hướng dẫn client (fallback).
     """
     ket_qua = {
         "thanh_cong": False,
-        "che_do": "client_side",
+        "che_do": "backend",
         "code": "",
         "ngon_ngu": "python",
         "timeout": TIMEOUT_MAC_DINH,
+        "stdout": "",
+        "stderr": "",
+        "returncode": -1,
         "huong_dan_client": {},
-        "html_sandbox": "",
         "loi": "",
     }
 
@@ -375,37 +281,27 @@ def chay_python(du_lieu):
         ket_qua["loi"] = f"Code quá dài (>{DO_DAI_CODE_TOI_DA} ký tự)."
         return ket_qua
 
-    try:
-        timeout = max(1, min(30, int(timeout)))
-    except (ValueError, TypeError):
-        timeout = TIMEOUT_MAC_DINH
+    # CÁCH 3: Chạy backend
+    ket_qua_backend = chay_python_backend(code, timeout)
 
-    thoi_gian_uoc_tinh = _uoc_luong_thoi_gian(code)
-
-    huong_dan = _tao_huong_dan_client(code, timeout)
-    html = tao_html_sandbox(code, timeout)
-
-    ket_qua["thanh_cong"] = True
-    ket_qua["code"] = code
-    ket_qua["timeout"] = timeout
-    ket_qua["huong_dan_client"] = huong_dan
-    ket_qua["html_sandbox"] = html
-    ket_qua["thoi_gian_uoc_tinh"] = thoi_gian_uoc_tinh
-
-    _ghi_log(
-        "sandbox",
-        f"Chuẩn bị chạy Python: {len(code)} ký tự, "
-        f"timeout={timeout}s, imports={huong_dan.get('imports', [])}",
-    )
+    ket_qua.update({
+        "thanh_cong": ket_qua_backend.get("thanh_cong", False),
+        "code": code,
+        "stdout": ket_qua_backend.get("stdout", ""),
+        "stderr": ket_qua_backend.get("stderr", ""),
+        "returncode": ket_qua_backend.get("returncode", -1),
+        "loi": ket_qua_backend.get("loi", ""),
+        "thoi_gian": ket_qua_backend.get("thoi_gian", 0.0),
+    })
 
     return ket_qua
 
 
 # ================================================================
-# HÀM PHỤ: KIỂM TRA CÚ PHÁP
+# KIỂM TRA CÚ PHÁP
 # ================================================================
 def kiem_tra_cu_phap(code):
-    """Kiểm tra cú pháp Python (backend-side, dùng ast)."""
+    """Kiểm tra cú pháp Python (dùng ast)."""
     if not code:
         return False, "Code rỗng."
     try:
@@ -419,45 +315,31 @@ def kiem_tra_cu_phap(code):
 
 
 # ================================================================
-# HÀM PHỤ: SANDBOX SẴN SÀNG
+# HÀM PHỤ
 # ================================================================
 def sandbox_san_sang():
     """Kiểm tra sandbox sẵn sàng."""
-    try:
-        import requests
-        return True
-    except ImportError:
-        return False
+    return True  # Backend chạy → luôn sẵn sàng
 
 
-# ================================================================
-# HÀM PHỤ: TÓM TẮT
-# ================================================================
 def tom_tat(ket_qua):
     """Tạo chuỗi tóm tắt."""
     if not ket_qua:
         return ""
     if ket_qua.get("thanh_cong"):
-        return (
-            f"✅ Sandbox Python sẵn sàng: {len(ket_qua.get('code', ''))} ký tự, "
-            f"timeout={ket_qua.get('timeout')}s"
-        )
-    return f"❌ Sandbox lỗi: {ket_qua.get('loi', '')}"
+        so_dong = len((ket_qua.get("stdout") or "").split("\n"))
+        return f"✅ Sandbox chạy OK: {so_dong} dòng stdout."
+    return f"❌ Sandbox lỗi: {(ket_qua.get('loi') or ket_qua.get('stderr') or '')[:150]}"
 
 
-# ================================================================
-# HÀM PHỤ: DANH SÁCH PACKAGE
-# ================================================================
 def danh_sach_package_ho_tro():
-    """Trả danh sách package Pyodide hỗ trợ sẵn."""
+    """Trả danh sách package Python có sẵn."""
     return [
         "numpy", "pandas", "scipy", "matplotlib", "scikit-learn",
-        "sympy", "networkx", "statsmodels", "pillow", "lxml",
-        "beautifulsoup4", "regex", "pyyaml", "cryptography",
-        "micropip",
+        "sympy", "networkx", "statsmodels", "pillow", "requests",
     ]
 
 
 def pyodide_ho_tro_package(ten_package):
-    """Kiểm tra Pyodide có hỗ trợ package không."""
+    """Không còn dùng Pyodide — trả True nếu package có sẵn."""
     return ten_package in danh_sach_package_ho_tro()
