@@ -5,6 +5,7 @@
      - Bỏ kiemTraPhien() để không ghi đè laKhach.
      - taiThongTinPhien() là nguồn duy nhất xác định laKhach.
      - Sắp xếp chat nhanh theo ngay_tao giảm dần trước khi render.
+     - Sửa class bong bóng: tin-nhan-rong / tin-nhan-nguoi / tin-nhan-he-thong.
    ============================================================ */
 
 (function () {
@@ -30,7 +31,7 @@
 
     function taoBongBong(noiDung, loai) {
         const bong = document.createElement('div');
-        bong.classList.add('tin-nhan', 'tin-' + loai);
+        bong.classList.add('tin-nhan', 'tin-nhan-' + loai);
 
         const avt = document.createElement('div');
         avt.classList.add('tin-avatar');
@@ -126,7 +127,7 @@
         return ds.slice().sort(function (a, b) {
             const ta = Number(a[truong] || 0);
             const tb = Number(b[truong] || 0);
-            return tb - ta; // giảm dần
+            return tb - ta;
         });
     }
 
@@ -356,7 +357,6 @@
         if (!Array.isArray(ds) || ds.length === 0) {
             return;
         }
-        // SẮP XẾP MỚI NHẤT LÊN ĐẦU TRƯỚC KHI RENDER
         const dsSapXep = sapXepMoiNhatTruoc(ds);
         dsSapXep.slice(0, 10).forEach(function (c) {
             khung.appendChild(taoMucChatNhanhMenu(c));
@@ -537,7 +537,7 @@
     }
 
     /* ============================================================
-       KHỞI ĐỘNG — CHẠY TUẦN TỰ, KHÔNG GHI ĐÈ laKhach
+       KHỞI ĐỘNG
        ============================================================ */
     async function khoiDong() {
         console.log('%c🌕🐉 Rồng Thần', 'color:#4ade80;font-size:16px;font-weight:bold;');
