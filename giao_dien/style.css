@@ -1365,3 +1365,17 @@ body.sang ::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.2); }
     from { transform: rotate(0deg); }
     to   { transform: rotate(360deg); }
 }
+
+/* ============================================================ */
+/* ICON LỖI UPLOAD (⚠️) TRONG PREVIEW                           */
+/* ============================================================ */
+.preview-loi {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    font-size: 28px;
+    color: var(--do);
+    user-select: none;
+}

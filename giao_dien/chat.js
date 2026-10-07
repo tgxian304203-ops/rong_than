@@ -2,9 +2,9 @@
    chat.js - Gửi/nhận tin nhắn (chat chính + chat trong dự án)
    ------------------------------------------------------------
    ĐÃ SỬA:
-     - Khi có ảnh/file: không hiện tin nhắn người ngay.
-     - Hiện vòng tròn quay ở preview trong lúc upload.
-     - Upload xong → hiện tin nhắn người có ảnh/file.
+     - Không upload trong chat (đã upload sẵn từ xu_ly_anh/file).
+     - Khi gửi: lấy URL server từ window.DANH_SACH_ANH/FILE.
+     - Ảnh/file hiện trong tin nhắn ngay khi gửi.
    ============================================================ */
 
 (function () {
@@ -187,28 +187,22 @@
         return dem;
     }
 
-    async function uploadDinhKem() {
+    /* ============================================================
+       LẤY URL ĐÃ UPLOAD SẴN (không upload nữa)
+       ============================================================ */
+    function layDinhKemDaUpload() {
         let urls_anh = [];
         let urls_file = [];
         let ten_files = [];
 
-        try {
-            if (typeof window.uploadTatCaAnh === 'function' &&
-                window.DANH_SACH_ANH && window.DANH_SACH_ANH.length > 0) {
-                urls_anh = await window.uploadTatCaAnh();
-            }
-        } catch (e) {
-            console.error('Lỗi upload ảnh:', e);
+        if (typeof window.layUrlsAnhDaUpload === 'function') {
+            urls_anh = window.layUrlsAnhDaUpload();
         }
-
-        try {
-            if (typeof window.uploadTatCaFile === 'function' &&
-                window.DANH_SACH_FILE && window.DANH_SACH_FILE.length > 0) {
-                ten_files = window.DANH_SACH_FILE.map(function (f) { return f.file.name; });
-                urls_file = await window.uploadTatCaFile();
-            }
-        } catch (e) {
-            console.error('Lỗi upload file:', e);
+        if (typeof window.layUrlsFileDaUpload === 'function') {
+            urls_file = window.layUrlsFileDaUpload();
+        }
+        if (typeof window.layTenFilesDaUpload === 'function') {
+            ten_files = window.layTenFilesDaUpload();
         }
 
         return { urls_anh: urls_anh, urls_file: urls_file, ten_files: ten_files };
@@ -217,37 +211,6 @@
     function xoaHetPreview() {
         if (typeof window.xoaTatCaAnh === 'function') window.xoaTatCaAnh();
         if (typeof window.xoaTatCaFile === 'function') window.xoaTatCaFile();
-    }
-
-    /* ============================================================
-       HIỆN VÒNG TRÒN QUAY Ở PREVIEW
-       ============================================================ */
-    function hienVongQuayPreview() {
-        const khungPreview = document.getElementById('khung-preview');
-        if (!khungPreview) return;
-        // Ẩn tất cả preview-item
-        khungPreview.querySelectorAll('.preview-item').forEach(function (el) {
-            el.style.display = 'none';
-        });
-        // Thêm vòng tròn quay nếu chưa có
-        if (!khungPreview.querySelector('.preview-loading')) {
-            const vong = document.createElement('div');
-            vong.className = 'preview-loading';
-            vong.innerHTML = '<div class="vong-quay"></div>';
-            khungPreview.appendChild(vong);
-        }
-        khungPreview.classList.remove('an');
-    }
-
-    function anVongQuayPreview() {
-        const khungPreview = document.getElementById('khung-preview');
-        if (!khungPreview) return;
-        const vong = khungPreview.querySelector('.preview-loading');
-        if (vong) vong.remove();
-        // Hiện lại preview-item
-        khungPreview.querySelectorAll('.preview-item').forEach(function (el) {
-            el.style.display = '';
-        });
     }
 
     /* ============================================================
@@ -262,25 +225,34 @@
 
         if (!noiDung && !coAnh && !coFile) return;
 
+        // Nếu còn file/ảnh đang upload → không cho gửi
+        if (typeof window.dangUploadAnh === 'function' && window.dangUploadAnh()) return;
+        if (typeof window.dangUploadFile === 'function' && window.dangUploadFile()) return;
+        if (typeof window.coLoiUpload === 'function' && window.coLoiUpload()) return;
+
         dangGui = true;
         nutGui.disabled = true;
 
         const soTinNguoiTruoc = demTinNhanNguoiTrongChatChinh();
         const laTinDauTien = (soTinNguoiTruoc === 0);
 
-        const tenFilesTruoc = coFile
-            ? window.DANH_SACH_FILE.map(function (f) { return f.file.name; })
-            : [];
+        // Lấy URL đã upload sẵn
+        const dinhKem = layDinhKemDaUpload();
 
-        // Nếu có ảnh/file → hiện vòng tròn quay, chưa hiện tin nhắn
+        // Hiện tin nhắn người (có ảnh/file ngay)
+        let tinNhanEl;
         if (coAnh || coFile) {
-            hienVongQuayPreview();
+            tinNhanEl = taoTinNhanCoDinhKem(
+                noiDung, 'nguoi', dinhKem.urls_anh, dinhKem.urls_file, dinhKem.ten_files
+            );
         } else {
-            // Không có ảnh/file → hiện tin nhắn ngay
-            const tinNhanEl = taoTinNhan(noiDung, 'nguoi');
-            danhSach.appendChild(tinNhanEl);
-            cuonXuongCuoi(khungChat);
+            tinNhanEl = taoTinNhan(noiDung, 'nguoi');
         }
+        danhSach.appendChild(tinNhanEl);
+        cuonXuongCuoi(khungChat);
+
+        // Xóa preview + DANH_SACH sau khi đã hiện tin nhắn
+        xoaHetPreview();
 
         oNhap.value = '';
         tuDongGian(oNhap);
@@ -297,23 +269,6 @@
         hienDangTraLoi(danhSach, 'tin-nhan-dang-tra-loi');
 
         try {
-            // Upload ảnh/file
-            const dinhKem = await uploadDinhKem();
-
-            // Upload xong → ẩn vòng tròn
-            if (coAnh || coFile) {
-                anVongQuayPreview();
-                xoaHetPreview();
-
-                // Hiện tin nhắn người có ảnh/file
-                const tinNhanEl = taoTinNhanCoDinhKem(
-                    noiDung, 'nguoi', dinhKem.urls_anh, dinhKem.urls_file, dinhKem.ten_files
-                );
-                danhSach.appendChild(tinNhanEl);
-                cuonXuongCuoi(khungChat);
-            }
-
-            // Gửi tin nhắn
             const phanHoi = await fetch('/api/gui-tin-nhan', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -336,12 +291,14 @@
             }
         } catch (e) {
             xoaDangTraLoi('tin-nhan-dang-tra-loi');
-            anVongQuayPreview();
-            xoaHetPreview();
             themTinNhanHeThong('⚠️ Lỗi kết nối: ' + e.message);
         } finally {
             dangGui = false;
-            nutGui.disabled = false;
+            if (typeof window.capNhatTrangThaiNutGui === 'function') {
+                window.capNhatTrangThaiNutGui();
+            } else {
+                nutGui.disabled = false;
+            }
             oNhap.focus();
         }
     }
@@ -358,6 +315,10 @@
 
         if (!noiDung && !coAnh && !coFile) return;
 
+        if (typeof window.dangUploadAnh === 'function' && window.dangUploadAnh()) return;
+        if (typeof window.dangUploadFile === 'function' && window.dangUploadFile()) return;
+        if (typeof window.coLoiUpload === 'function' && window.coLoiUpload()) return;
+
         const idDuAn = window.__ID_DU_AN_DANG_CHAT;
         const idTroChuyen = window.__ID_TRO_CHUYEN_DANG_CHAT;
 
@@ -371,18 +332,20 @@
 
         const laKhachHienTai = window.__LA_KHACH === true || !document.getElementById('ten-nguoi-dung');
 
-        const tenFilesTruoc = coFile
-            ? window.DANH_SACH_FILE.map(function (f) { return f.file.name; })
-            : [];
+        const dinhKem = layDinhKemDaUpload();
 
-        // Nếu có ảnh/file → hiện vòng tròn quay
+        let tinNhanEl;
         if (coAnh || coFile) {
-            hienVongQuayPreview();
+            tinNhanEl = taoTinNhanCoDinhKem(
+                noiDung, 'nguoi', dinhKem.urls_anh, dinhKem.urls_file, dinhKem.ten_files
+            );
         } else {
-            const tinNhanEl = taoTinNhan(noiDung, 'nguoi');
-            danhSachDuAn.appendChild(tinNhanEl);
-            cuonXuongCuoi(khungChatDuAn);
+            tinNhanEl = taoTinNhan(noiDung, 'nguoi');
         }
+        danhSachDuAn.appendChild(tinNhanEl);
+        cuonXuongCuoi(khungChatDuAn);
+
+        xoaHetPreview();
 
         oNhapDuAn.value = '';
         tuDongGian(oNhapDuAn);
@@ -394,19 +357,6 @@
         hienDangTraLoi(danhSachDuAn, 'tin-nhan-dang-tra-loi-du-an');
 
         try {
-            const dinhKem = await uploadDinhKem();
-
-            if (coAnh || coFile) {
-                anVongQuayPreview();
-                xoaHetPreview();
-
-                const tinNhanEl = taoTinNhanCoDinhKem(
-                    noiDung, 'nguoi', dinhKem.urls_anh, dinhKem.urls_file, dinhKem.ten_files
-                );
-                danhSachDuAn.appendChild(tinNhanEl);
-                cuonXuongCuoi(khungChatDuAn);
-            }
-
             const phanHoi = await fetch('/api/gui-tin-nhan-du-an', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -438,14 +388,16 @@
             }
         } catch (e) {
             xoaDangTraLoi('tin-nhan-dang-tra-loi-du-an');
-            anVongQuayPreview();
-            xoaHetPreview();
             const loi = '⚠️ Lỗi kết nối: ' + e.message;
             danhSachDuAn.appendChild(taoTinNhan(loi, 'he-thong'));
             cuonXuongCuoi(khungChatDuAn);
         } finally {
             dangGuiDuAn = false;
-            nutGuiDuAn.disabled = false;
+            if (typeof window.capNhatTrangThaiNutGui === 'function') {
+                window.capNhatTrangThaiNutGui();
+            } else {
+                nutGuiDuAn.disabled = false;
+            }
             oNhapDuAn.focus();
         }
     }

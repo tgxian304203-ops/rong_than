@@ -1,12 +1,11 @@
 /* ============================================================
    xu_ly_file.js - Xử lý file tài liệu đính kèm + modal xem to
    ------------------------------------------------------------
-   Nhiệm vụ:
-     - Nhận file từ input #input-file-tai-lieu (do xu_ly_anh.js mở).
-     - Hiển thị preview trong #khung-preview.
-     - Click preview file → mở modal xem toàn màn hình.
-     - Lưu vào window.DANH_SACH_FILE, chờ chat.js upload.
-     - Upload kèm id_tro_chuyen + id_du_an nếu đang chat dự án.
+   ĐÃ SỬA:
+     - Upload ngay khi chọn file (không chờ bấm gửi).
+     - Hiện vòng tròn quay trong lúc upload.
+     - Lỗi upload → hiện ⚠️.
+     - Lưu URL server vào window.DANH_SACH_FILE.
    ============================================================ */
 
 (function () {
@@ -29,11 +28,12 @@
 
     /* ------------------------------------------------------------
        BIẾN TOÀN CỤC
+       Mỗi phần tử: { file, id, url_server, dangTai, loi }
        ------------------------------------------------------------ */
     window.DANH_SACH_FILE = window.DANH_SACH_FILE || [];
 
     /* ------------------------------------------------------------
-       TẠO ID NGẪU NHIÊN
+       TẠO ID
        ------------------------------------------------------------ */
     function taoId() {
         return 'file-' + Date.now() + '-' + Math.floor(Math.random() * 100000);
@@ -119,7 +119,7 @@
     }
 
     /* ------------------------------------------------------------
-       MỞ MODAL XEM FILE TOÀN MÀN HÌNH
+       MODAL XEM FILE
        ------------------------------------------------------------ */
     function moModalFile(fileItem) {
         if (!modalFile || !modalFileBody) return;
@@ -198,22 +198,39 @@
         o.classList.add('preview-item');
         o.dataset.id = fileItem.id;
 
-        const icon = document.createElement('div');
-        icon.classList.add('preview-icon');
-        icon.innerHTML = layIconFile(fileItem.file.name);
-        o.appendChild(icon);
+        // Đang upload → vòng tròn quay
+        if (fileItem.dangTai) {
+            const vong = document.createElement('div');
+            vong.className = 'vong-quay';
+            o.appendChild(vong);
+        }
+        // Lỗi → ⚠️
+        else if (fileItem.loi) {
+            const loiIcon = document.createElement('div');
+            loiIcon.className = 'preview-loi';
+            loiIcon.textContent = '⚠️';
+            o.appendChild(loiIcon);
+        }
+        // Xong → icon file + tên
+        else {
+            const icon = document.createElement('div');
+            icon.classList.add('preview-icon');
+            icon.innerHTML = layIconFile(fileItem.file.name);
+            o.appendChild(icon);
 
-        const ten = document.createElement('div');
-        ten.classList.add('ten-file');
-        ten.textContent = fileItem.file.name;
-        ten.title = fileItem.file.name;
-        o.appendChild(ten);
+            const ten = document.createElement('div');
+            ten.classList.add('ten-file');
+            ten.textContent = fileItem.file.name;
+            ten.title = fileItem.file.name;
+            o.appendChild(ten);
 
-        o.addEventListener('click', function (e) {
-            if (e.target.classList.contains('preview-xoa')) return;
-            moModalFile(fileItem);
-        });
+            o.addEventListener('click', function (e) {
+                if (e.target.classList.contains('preview-xoa')) return;
+                moModalFile(fileItem);
+            });
+        }
 
+        // Nút X
         const nutXoa = document.createElement('button');
         nutXoa.classList.add('preview-xoa');
         nutXoa.type = 'button';
@@ -228,9 +245,6 @@
         return o;
     }
 
-    /* ------------------------------------------------------------
-       VẼ LẠI PREVIEW FILE
-       ------------------------------------------------------------ */
     function veLaiPreviewFile() {
         khungPreview.querySelectorAll('.preview-item[data-loai="file"]').forEach(function (el) {
             el.remove();
@@ -243,41 +257,17 @@
         });
 
         capNhatKhungPreview();
+        if (typeof window.capNhatTrangThaiNutGui === 'function') {
+            window.capNhatTrangThaiNutGui();
+        }
     }
 
     /* ------------------------------------------------------------
-       THÊM / XÓA FILE
+       UPLOAD 1 FILE
        ------------------------------------------------------------ */
-    function themFile(files) {
-        Array.from(files).forEach(function (file) {
-            const id = taoId();
-            window.DANH_SACH_FILE.push({ file: file, id: id });
-        });
-        veLaiPreviewFile();
-    }
-
-    function xoaFile(id) {
-        const viTri = window.DANH_SACH_FILE.findIndex(function (f) { return f.id === id; });
-        if (viTri < 0) return;
-        window.DANH_SACH_FILE.splice(viTri, 1);
-        veLaiPreviewFile();
-    }
-
-    function xoaTatCaFile() {
-        window.DANH_SACH_FILE = [];
-        veLaiPreviewFile();
-    }
-
-    /* ------------------------------------------------------------
-       UPLOAD FILE — kèm id_tro_chuyen + id_du_an nếu đang chat dự án
-       ------------------------------------------------------------ */
-    async function uploadTatCaFile() {
-        if (window.DANH_SACH_FILE.length === 0) return [];
-
+    async function uploadMotFile(fileItem) {
         const formData = new FormData();
-        window.DANH_SACH_FILE.forEach(function (fileItem) {
-            formData.append('file', fileItem.file);
-        });
+        formData.append('file', fileItem.file);
 
         const idTro = window.__ID_TRO_CHUYEN_DANG_CHAT;
         const idDuAn = window.__ID_DU_AN_DANG_CHAT;
@@ -291,14 +281,75 @@
             });
             const duLieu = await phanHoi.json();
 
-            if (duLieu && duLieu.thanh_cong && Array.isArray(duLieu.urls)) {
-                return duLieu.urls;
+            if (duLieu && duLieu.thanh_cong && Array.isArray(duLieu.urls) && duLieu.urls.length > 0) {
+                fileItem.url_server = duLieu.urls[0];
+                fileItem.dangTai = false;
+                fileItem.loi = false;
+            } else {
+                fileItem.dangTai = false;
+                fileItem.loi = true;
             }
-            return [];
         } catch (e) {
             console.error('Lỗi upload file:', e);
-            return [];
+            fileItem.dangTai = false;
+            fileItem.loi = true;
         }
+
+        veLaiPreviewFile();
+    }
+
+    /* ------------------------------------------------------------
+       THÊM FILE — UPLOAD NGAY
+       ------------------------------------------------------------ */
+    function themFile(files) {
+        Array.from(files).forEach(function (file) {
+            const id = taoId();
+            window.DANH_SACH_FILE.push({
+                file: file,
+                id: id,
+                url_server: null,
+                dangTai: true,
+                loi: false,
+            });
+        });
+
+        veLaiPreviewFile();
+
+        window.DANH_SACH_FILE.forEach(function (fileItem) {
+            if (fileItem.dangTai) {
+                uploadMotFile(fileItem);
+            }
+        });
+    }
+
+    /* ------------------------------------------------------------
+       XÓA FILE
+       ------------------------------------------------------------ */
+    function xoaFile(id) {
+        const viTri = window.DANH_SACH_FILE.findIndex(function (f) { return f.id === id; });
+        if (viTri < 0) return;
+        window.DANH_SACH_FILE.splice(viTri, 1);
+        veLaiPreviewFile();
+    }
+
+    function xoaTatCaFile() {
+        window.DANH_SACH_FILE = [];
+        veLaiPreviewFile();
+    }
+
+    /* ------------------------------------------------------------
+       LẤY DANH SÁCH URL SERVER
+       ------------------------------------------------------------ */
+    function layUrlsFileDaUpload() {
+        return window.DANH_SACH_FILE
+            .filter(function (f) { return f.url_server && !f.loi; })
+            .map(function (f) { return f.url_server; });
+    }
+
+    function layTenFilesDaUpload() {
+        return window.DANH_SACH_FILE
+            .filter(function (f) { return f.url_server && !f.loi; })
+            .map(function (f) { return f.file.name; });
     }
 
     /* ------------------------------------------------------------
@@ -329,9 +380,10 @@
     window.themFile = themFile;
     window.xoaFile = xoaFile;
     window.xoaTatCaFile = xoaTatCaFile;
-    window.uploadTatCaFile = uploadTatCaFile;
     window.veLaiPreviewFile = veLaiPreviewFile;
     window.moModalFile = moModalFile;
+    window.layUrlsFileDaUpload = layUrlsFileDaUpload;
+    window.layTenFilesDaUpload = layTenFilesDaUpload;
 
     /* ------------------------------------------------------------
        KHỞI ĐỘNG

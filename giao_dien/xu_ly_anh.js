@@ -1,15 +1,11 @@
 /* ============================================================
    xu_ly_anh.js - Xử lý ảnh đính kèm + menu Ảnh/File/Camera
    ------------------------------------------------------------
-   Nhiệm vụ:
-     - Bấm nút [+] (#nut-dinh-kem) → hiện menu 3 mục:
-         Máy ảnh  → mở camera chụp ảnh
-         Hình     → chọn ảnh từ thư viện
-         Tệp      → chọn file tài liệu
-     - Ảnh chọn xong → preview trong #khung-preview.
-     - Click preview ảnh → mở modal xem toàn màn hình.
-     - Lưu vào window.DANH_SACH_ANH, chờ chat.js upload.
-     - Upload kèm id_tro_chuyen + id_du_an nếu đang chat dự án.
+   ĐÃ SỬA:
+     - Upload ngay khi chọn ảnh (không chờ bấm gửi).
+     - Hiện vòng tròn quay trong lúc upload.
+     - Lỗi upload → hiện ⚠️.
+     - Lưu URL server vào window.DANH_SACH_ANH.
    ============================================================ */
 
 (function () {
@@ -33,18 +29,20 @@
 
     /* ------------------------------------------------------------
        BIẾN TOÀN CỤC
+       Mỗi phần tử: { file, url (blob tạm), url_server (sau upload),
+                      id, dangTai, loi }
        ------------------------------------------------------------ */
     window.DANH_SACH_ANH = window.DANH_SACH_ANH || [];
 
     /* ------------------------------------------------------------
-       TẠO ID NGẪU NHIÊN
+       TẠO ID
        ------------------------------------------------------------ */
     function taoId() {
         return 'anh-' + Date.now() + '-' + Math.floor(Math.random() * 100000);
     }
 
     /* ------------------------------------------------------------
-       CẬP NHẬT TRẠNG THÁI KHUNG PREVIEW
+       CẬP NHẬT KHUNG PREVIEW
        ------------------------------------------------------------ */
     function capNhatKhungPreview() {
         if (window.DANH_SACH_ANH.length === 0 &&
@@ -56,7 +54,7 @@
     }
 
     /* ------------------------------------------------------------
-       MODAL XEM ẢNH TOÀN MÀN HÌNH
+       MODAL XEM ẢNH
        ------------------------------------------------------------ */
     function moModalAnh(urlAnh) {
         if (!modalAnh || !modalAnhImg) return;
@@ -77,23 +75,40 @@
     }
 
     /* ------------------------------------------------------------
-       TẠO 1 Ô PREVIEW ẢNH
+       TẠO PREVIEW ẢNH (dựa trên trạng thái: đang tải, lỗi, xong)
        ------------------------------------------------------------ */
     function taoPreview(anh) {
         const o = document.createElement('div');
         o.classList.add('preview-item');
         o.dataset.id = anh.id;
 
-        const img = document.createElement('img');
-        img.src = anh.url;
-        img.alt = anh.file.name;
-        o.appendChild(img);
+        // Đang upload → vòng tròn quay
+        if (anh.dangTai) {
+            const vong = document.createElement('div');
+            vong.className = 'vong-quay';
+            o.appendChild(vong);
+        }
+        // Lỗi upload → ⚠️
+        else if (anh.loi) {
+            const loiIcon = document.createElement('div');
+            loiIcon.className = 'preview-loi';
+            loiIcon.textContent = '⚠️';
+            o.appendChild(loiIcon);
+        }
+        // Xong → hiện ảnh
+        else {
+            const img = document.createElement('img');
+            img.src = anh.url;
+            img.alt = anh.file ? anh.file.name : 'ảnh';
+            o.appendChild(img);
 
-        o.addEventListener('click', function (e) {
-            if (e.target.classList.contains('preview-xoa')) return;
-            moModalAnh(anh.url);
-        });
+            o.addEventListener('click', function (e) {
+                if (e.target.classList.contains('preview-xoa')) return;
+                moModalAnh(anh.url);
+            });
+        }
 
+        // Nút X
         const nutXoa = document.createElement('button');
         nutXoa.classList.add('preview-xoa');
         nutXoa.type = 'button';
@@ -108,9 +123,6 @@
         return o;
     }
 
-    /* ------------------------------------------------------------
-       VẼ LẠI PREVIEW ẢNH
-       ------------------------------------------------------------ */
     function veLaiPreviewAnh() {
         khungPreview.querySelectorAll('.preview-item[data-loai="anh"]').forEach(function (el) {
             el.remove();
@@ -123,19 +135,107 @@
         });
 
         capNhatKhungPreview();
+        capNhatTrangThaiNutGui();
     }
 
     /* ------------------------------------------------------------
-       THÊM ẢNH
+       KIỂM TRA CÓ ĐANG UPLOAD KHÔNG
+       ------------------------------------------------------------ */
+    function dangUploadAnh() {
+        return window.DANH_SACH_ANH.some(function (a) { return a.dangTai === true; });
+    }
+
+    function dangUploadFile() {
+        if (!window.DANH_SACH_FILE) return false;
+        return window.DANH_SACH_FILE.some(function (f) { return f.dangTai === true; });
+    }
+
+    function coLoiUpload() {
+        const loiAnh = window.DANH_SACH_ANH.some(function (a) { return a.loi === true; });
+        const loiFile = (window.DANH_SACH_FILE || []).some(function (f) { return f.loi === true; });
+        return loiAnh || loiFile;
+    }
+
+    function capNhatTrangThaiNutGui() {
+        const nutGui = document.getElementById('nut-gui');
+        const nutGuiDuAn = document.getElementById('nut-gui-du-an');
+        const coUploadDangChay = dangUploadAnh() || dangUploadFile();
+        const coLoi = coLoiUpload();
+
+        if (nutGui) {
+            nutGui.disabled = coUploadDangChay || coLoi;
+        }
+        if (nutGuiDuAn) {
+            nutGuiDuAn.disabled = coUploadDangChay || coLoi;
+        }
+    }
+
+    /* ------------------------------------------------------------
+       UPLOAD 1 ẢNH
+       ------------------------------------------------------------ */
+    async function uploadMotAnh(anh) {
+        const formData = new FormData();
+        formData.append('anh', anh.file);
+
+        // Gửi kèm id_tro_chuyen + id_du_an nếu đang chat dự án
+        const idTro = window.__ID_TRO_CHUYEN_DANG_CHAT;
+        const idDuAn = window.__ID_DU_AN_DANG_CHAT;
+        if (idTro) formData.append('id_tro_chuyen', idTro);
+        if (idDuAn) formData.append('id_du_an', idDuAn);
+
+        try {
+            const phanHoi = await fetch('/api/upload-anh', {
+                method: 'POST',
+                body: formData,
+            });
+            const duLieu = await phanHoi.json();
+
+            if (duLieu && duLieu.thanh_cong && Array.isArray(duLieu.urls) && duLieu.urls.length > 0) {
+                anh.url_server = duLieu.urls[0];
+                anh.dangTai = false;
+                anh.loi = false;
+            } else {
+                anh.dangTai = false;
+                anh.loi = true;
+            }
+        } catch (e) {
+            console.error('Lỗi upload ảnh:', e);
+            anh.dangTai = false;
+            anh.loi = true;
+        }
+
+        veLaiPreviewAnh();
+    }
+
+    /* ------------------------------------------------------------
+       THÊM ẢNH — UPLOAD NGAY
        ------------------------------------------------------------ */
     function themAnh(files) {
         Array.from(files).forEach(function (file) {
             if (!file.type.startsWith('image/')) return;
+
             const id = taoId();
             const url = URL.createObjectURL(file);
-            window.DANH_SACH_ANH.push({ file: file, url: url, id: id });
+
+            const anh = {
+                file: file,
+                url: url,
+                url_server: null,
+                id: id,
+                dangTai: true,
+                loi: false,
+            };
+            window.DANH_SACH_ANH.push(anh);
         });
+
         veLaiPreviewAnh();
+
+        // Upload song song từng ảnh
+        window.DANH_SACH_ANH.forEach(function (anh) {
+            if (anh.dangTai) {
+                uploadMotAnh(anh);
+            }
+        });
     }
 
     /* ------------------------------------------------------------
@@ -151,7 +251,7 @@
     }
 
     /* ------------------------------------------------------------
-       XÓA TOÀN BỘ ẢNH
+       XÓA TẤT CẢ ẢNH
        ------------------------------------------------------------ */
     function xoaTatCaAnh() {
         window.DANH_SACH_ANH.forEach(function (anh) {
@@ -162,37 +262,12 @@
     }
 
     /* ------------------------------------------------------------
-       UPLOAD ẢNH — kèm id_tro_chuyen + id_du_an nếu đang chat dự án
+       LẤY DANH SÁCH URL SERVER (dùng trong chat.js)
        ------------------------------------------------------------ */
-    async function uploadTatCaAnh() {
-        if (window.DANH_SACH_ANH.length === 0) return [];
-
-        const formData = new FormData();
-        window.DANH_SACH_ANH.forEach(function (anh) {
-            formData.append('anh', anh.file);
-        });
-
-        // Nếu đang chat trong dự án → gửi kèm id
-        const idTro = window.__ID_TRO_CHUYEN_DANG_CHAT;
-        const idDuAn = window.__ID_DU_AN_DANG_CHAT;
-        if (idTro) formData.append('id_tro_chuyen', idTro);
-        if (idDuAn) formData.append('id_du_an', idDuAn);
-
-        try {
-            const phanHoi = await fetch('/api/upload-anh', {
-                method: 'POST',
-                body: formData,
-            });
-            const duLieu = await phanHoi.json();
-
-            if (duLieu && duLieu.thanh_cong && Array.isArray(duLieu.urls)) {
-                return duLieu.urls;
-            }
-            return [];
-        } catch (e) {
-            console.error('Lỗi upload ảnh:', e);
-            return [];
-        }
+    function layUrlsAnhDaUpload() {
+        return window.DANH_SACH_ANH
+            .filter(function (a) { return a.url_server && !a.loi; })
+            .map(function (a) { return a.url_server; });
     }
 
     /* ------------------------------------------------------------
@@ -312,10 +387,14 @@
     window.themAnh = themAnh;
     window.xoaAnh = xoaAnh;
     window.xoaTatCaAnh = xoaTatCaAnh;
-    window.uploadTatCaAnh = uploadTatCaAnh;
     window.veLaiPreviewAnh = veLaiPreviewAnh;
     window.capNhatKhungPreview = capNhatKhungPreview;
+    window.capNhatTrangThaiNutGui = capNhatTrangThaiNutGui;
+    window.dangUploadAnh = dangUploadAnh;
+    window.dangUploadFile = dangUploadFile;
+    window.coLoiUpload = coLoiUpload;
     window.moModalAnh = moModalAnh;
+    window.layUrlsAnhDaUpload = layUrlsAnhDaUpload;
 
     /* ------------------------------------------------------------
        KHỞI ĐỘNG
