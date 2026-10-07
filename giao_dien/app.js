@@ -2,8 +2,9 @@
    app.js - Khởi động chung giao diện Rồng Thần
    ------------------------------------------------------------
    ĐÃ SỬA:
-     - Thêm luuTroChuyenKhach.
-     - Sửa tên chat nhanh sau tin nhắn đầu.
+     - Bỏ kiemTraPhien() để không ghi đè laKhach.
+     - taiThongTinPhien() là nguồn duy nhất xác định laKhach.
+     - Chạy tuần tự tải dữ liệu sau khi biết chắc chế độ.
    ============================================================ */
 
 (function () {
@@ -98,14 +99,12 @@
         ghiLS(KHOA_LS_CHAT, ds);
     }
 
-    // LƯU TRÒ CHUYỆN KHÁCH (MỚI)
     function luuTroChuyenKhach(tro) {
         let ds = docLS(KHOA_LS_TRO_CHUYEN);
         ds.push(tro);
         ghiLS(KHOA_LS_TRO_CHUYEN, ds);
     }
 
-    // LƯU TIN NHẮN KHÁCH (MỚI) — dùng cho chat trong dự án
     function luuTinNhanKhach(idDuAn, idTroChuyen, vaiTro, noiDung) {
         let ds = docLS(KHOA_LS_TIN_NHAN);
         ds.push({
@@ -119,20 +118,16 @@
     }
 
     /* ============================================================
-       CẬP NHẬT TÊN CHAT NHANH (giống ChatGPT)
-       Lấy dòng đầu tiên của tin nhắn đầu làm tên.
+       CẬP NHẬT TÊN CHAT NHANH
        ============================================================ */
     function capNhatTenChatNhanh(idChat, noiDung) {
         if (!idChat || !noiDung) return;
 
-        // Lấy dòng đầu tiên (dừng ở \n hoặc hết chuỗi)
         let ten = String(noiDung).split('\n')[0].trim();
         if (!ten) return;
-        // Giới hạn 50 ký tự
         if (ten.length > 50) ten = ten.slice(0, 50) + '...';
 
         if (laKhach) {
-            // Khách → sửa trong localStorage
             const ds = docLS(KHOA_LS_CHAT);
             for (let i = 0; i < ds.length; i++) {
                 if (ds[i].id === idChat) {
@@ -143,7 +138,6 @@
             }
             ghiLS(KHOA_LS_CHAT, ds);
         } else {
-            // Tài khoản → gọi server cập nhật
             fetch('/api/doi-ten-chat-nhanh', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -151,18 +145,34 @@
             }).catch(function () {});
         }
 
-        // Vẽ lại danh sách
         taiDanhSachChatNhanh();
     }
 
     /* ============================================================
-       KIỂM TRA PHIÊN
+       TẢI THÔNG TIN PHIÊN (nguồn duy nhất set laKhach)
        ============================================================ */
-    async function kiemTraPhien() {
+    async function taiThongTinPhien() {
         try {
             const ph = await fetch('/api/phien');
             const dl = await ph.json();
-            laKhach = !(dl && dl.da_dang_nhap);
+
+            const khuKhach = document.getElementById('nguoi-dung-khach');
+            const khuDN = document.getElementById('nguoi-dung-da-dang-nhap');
+            const oTen = document.getElementById('ten-nguoi-dung');
+            const nutDoiMK = document.getElementById('nut-mo-doi-mat-khau');
+
+            if (dl && dl.da_dang_nhap) {
+                laKhach = false;
+                if (khuKhach) khuKhach.classList.add('an');
+                if (khuDN) khuDN.classList.remove('an');
+                if (oTen) oTen.textContent = dl.ten_dang_nhap || 'Người dùng';
+                if (nutDoiMK) nutDoiMK.classList.remove('an');
+            } else {
+                laKhach = true;
+                if (khuKhach) khuKhach.classList.remove('an');
+                if (khuDN) khuDN.classList.add('an');
+                if (nutDoiMK) nutDoiMK.classList.add('an');
+            }
         } catch (e) {
             laKhach = true;
         }
@@ -386,7 +396,6 @@
                     let ds = docLS(KHOA_LS_TRO_CHUYEN)
                         .filter(function (t) { return t.id !== tro.id; });
                     ghiLS(KHOA_LS_TRO_CHUYEN, ds);
-                    // Xóa tin nhắn
                     let dsTN = docLS(KHOA_LS_TIN_NHAN)
                         .filter(function (t) { return t.id_tro_chuyen !== tro.id; });
                     ghiLS(KHOA_LS_TIN_NHAN, dsTN);
@@ -468,6 +477,12 @@
             khung.appendChild(taoBongBong('Nói điều ước đi 🔥🐉', 'rong'));
             return;
         }
+
+        if (typeof window.renderTinNhanCu === 'function') {
+            window.renderTinNhanCu(ds);
+            return;
+        }
+
         ds.forEach(function (t) {
             const vaiTro = t.vai_tro === 'nguoi' ? 'nguoi'
                 : (t.vai_tro === 'rong' ? 'rong' : 'he-thong');
@@ -502,50 +517,23 @@
     }
 
     /* ============================================================
-       PHIÊN ĐĂNG NHẬP
-       ============================================================ */
-    async function taiThongTinPhien() {
-        try {
-            const ph = await fetch('/api/phien');
-            const dl = await ph.json();
-
-            const khuKhach = document.getElementById('nguoi-dung-khach');
-            const khuDN = document.getElementById('nguoi-dung-da-dang-nhap');
-            const oTen = document.getElementById('ten-nguoi-dung');
-            const nutDoiMK = document.getElementById('nut-mo-doi-mat-khau');
-
-            if (dl && dl.da_dang_nhap) {
-                laKhach = false;
-                if (khuKhach) khuKhach.classList.add('an');
-                if (khuDN) khuDN.classList.remove('an');
-                if (oTen) oTen.textContent = dl.ten_dang_nhap || 'Người dùng';
-                if (nutDoiMK) nutDoiMK.classList.remove('an');
-            } else {
-                laKhach = true;
-                if (khuKhach) khuKhach.classList.remove('an');
-                if (khuDN) khuDN.classList.add('an');
-                if (nutDoiMK) nutDoiMK.classList.add('an');
-            }
-        } catch (e) {}
-    }
-
-    /* ============================================================
-       KHỞI ĐỘNG
+       KHỞI ĐỘNG — CHẠY TUẦN TỰ, KHÔNG GHI ĐÈ laKhach
        ============================================================ */
     async function khoiDong() {
         console.log('%c🌕🐉 Rồng Thần', 'color:#4ade80;font-size:16px;font-weight:bold;');
 
+        // Bước 1: Xác định laKhach (nguồn duy nhất)
         await taiThongTinPhien();
 
+        // Bước 2: Tải dữ liệu (đã biết chắc laKhach)
+        await taiDanhSachDuAn();
+        await taiDanhSachChatNhanh();
+
+        // Bước 3: Hiển thị lời chào (chỉ khi khung chat rỗng)
         const khung = layKhungTinNhan();
         if (khung && khung.children.length === 0) {
-            themTinNhanRong('Nói điều ước đi 🔥🐉');
+            themTinNhanRong('Nói điều ước đi 🔥🌕🐉');
         }
-
-        await kiemTraPhien();
-
-        taiDanhSachDuAn();
-        taiDanhSachChatNhanh();
     }
 
     /* ============================================================
