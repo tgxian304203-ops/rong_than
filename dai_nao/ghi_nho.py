@@ -70,6 +70,9 @@ def _doc_cau_hinh():
 
 
 def _lay_uri(so_kho):
+    uri_env = os.environ.get(f"URI_KHO_{so_kho}")
+    if uri_env:
+        return uri_env
     cau_hinh = _doc_cau_hinh()
     return cau_hinh.get(f"uri_kho_{so_kho}")
 
