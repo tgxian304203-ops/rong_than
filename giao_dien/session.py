@@ -5,6 +5,8 @@ session.py - Quản lý dự án + chat nhanh + trò chuyện trong dự án.
     - ngay_tao dùng mili giây để sort chính xác.
     - Chat nhanh mới nhất lên đầu, vượt 10 xóa cũ nhất.
     - Xóa trò chuyện → xóa luôn ảnh/file GridFS.
+    - Tạo trò chuyện: nếu không tìm thấy dự án trong DB → tự lưu lại.
+    - Thêm hàm lay_tin_nhan_chat_nhanh để load chat cũ.
 """
 
 import secrets
@@ -28,6 +30,7 @@ from dai_nao.ghi_nho import (
     lay_tin_nhan_tro_chuyen_cua,
     cap_nhat_ten_chat_nhanh,
     xoa_file_theo_tro_chuyen,
+    lay_tin_nhan_chat_nhanh,
 )
 
 
@@ -48,7 +51,6 @@ def _tao_id():
 
 
 def _bay_giay():
-    """Trả về timestamp mili giây (để sort chính xác giữa các bản ghi tạo nhanh)."""
     return int(time.time() * 1000)
 
 
@@ -116,7 +118,7 @@ def xoa_du_an(du_lieu):
 
 
 # ================================================================
-# CHAT NHANH (giới hạn 10, mới nhất lên đầu)
+# CHAT NHANH
 # ================================================================
 def lay_danh_sach_chat_nhanh():
     ten = _lay_ten_dang_nhap()
@@ -145,7 +147,6 @@ def tao_chat_nhanh(du_lieu):
     chat_moi["chu_so_huu"] = ten_tk
     chat_moi["tam"] = False
 
-    # Giới hạn 10: nếu đã đủ, xóa cái cũ nhất
     danh_sach_hien_co = lay_danh_sach_chat_nhanh_cua(ten_tk) or []
     if len(danh_sach_hien_co) >= GIOI_HAN_CHAT_NHANH:
         danh_sach_hien_co.sort(key=lambda c: c.get("ngay_tao", 0))
@@ -188,9 +189,45 @@ def doi_ten_chat_nhanh(du_lieu):
     return {"thanh_cong": True}
 
 
+def lay_tin_nhan_chat_nhanh_cua(id_chat):
+    """
+    Lấy tin nhắn cũ của 1 chat nhanh.
+    Trả về { thanh_cong, danh_sach }.
+    """
+    if not id_chat:
+        return {"thanh_cong": False, "loi": "Thiếu id chat."}
+
+    ten_tk = _lay_ten_dang_nhap()
+    if not ten_tk:
+        return {"thanh_cong": True, "danh_sach": []}
+
+    danh_sach = lay_tin_nhan_chat_nhanh(id_chat, ten_tk) or []
+    return {"thanh_cong": True, "danh_sach": danh_sach}
+
+
 # ================================================================
 # TRÒ CHUYỆN TRONG DỰ ÁN
 # ================================================================
+def _dam_bao_du_an_ton_tai(id_du_an, ten_tk):
+    """
+    Đảm bảo dự án có trong DB.
+    Nếu chưa có (do khách tạo trước khi đăng nhập) → lưu lại.
+    """
+    du_an = lay_du_an(id_du_an)
+    if du_an:
+        return du_an
+    du_an_moi = {
+        "id": id_du_an,
+        "ten": "Dự án đã khôi phục",
+        "chu_so_huu": ten_tk,
+        "ngay_tao": _bay_giay(),
+        "tam": False,
+    }
+    if luu_du_an(du_an_moi):
+        return du_an_moi
+    return None
+
+
 def tao_tro_chuyen(du_lieu):
     ten_tk = _lay_ten_dang_nhap()
     id_du_an = du_lieu.get("id_du_an")
@@ -200,11 +237,9 @@ def tao_tro_chuyen(du_lieu):
         return {"thanh_cong": False, "loi": "Thiếu id dự án."}
 
     if ten_tk:
-        du_an = lay_du_an(id_du_an)
+        du_an = _dam_bao_du_an_ton_tai(id_du_an, ten_tk)
         if not du_an:
-            return {"thanh_cong": False, "loi": "Không tìm thấy dự án."}
-        if du_an.get("chu_so_huu") != ten_tk:
-            return {"thanh_cong": False, "loi": "Không có quyền."}
+            return {"thanh_cong": False, "loi": "Không thể tạo/lưu dự án."}
         chu_so_huu = ten_tk
     else:
         chu_so_huu = CHU_SO_HUU_KHACH

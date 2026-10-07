@@ -4,8 +4,7 @@
    ĐÃ SỬA:
      - Bỏ nút Share.
      - Lưu trò chuyện vào localStorage khi khách tạo.
-     - Set __ID_CHAT_NHANH_HIEN_TAI cho cả khách lẫn user để
-       cập nhật tên chat sau tin nhắn đầu.
+     - Set __ID_CHAT_NHANH_HIEN_TAI cho cả khách lẫn user.
    ============================================================ */
 
 (function () {
@@ -96,7 +95,7 @@
        TRANG CHAT TRONG DỰ ÁN
        ------------------------------------------------------------ */
     function moChatDuAn(idDuAn, idTroChuyen, tenTroChuyen) {
-        const tieuDe = lay('tieu de-chat-du-an') || lay('tieude-chat-du-an');
+        const tieuDe = lay('tieude-chat-du-an');
         if (tieuDe) tieuDe.textContent = tenTroChuyen || 'Trò chuyện';
 
         window.__ID_DU_AN_DANG_CHAT = idDuAn;
@@ -353,7 +352,7 @@
             const khung = lay('danh-sach-tin-nhan');
             if (khung) khung.innerHTML = '';
 
-            // Đặt id chat nhanh hiện tại — áp dụng cho cả khách và user
+            // Set id chat nhanh hiện tại — áp dụng cho cả khách và user
             if (dl && dl.thanh_cong && dl.chat && dl.chat.id) {
                 window.__ID_CHAT_NHANH_HIEN_TAI = dl.chat.id;
             }

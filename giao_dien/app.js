@@ -6,6 +6,7 @@
      - taiThongTinPhien() là nguồn duy nhất xác định laKhach.
      - Sắp xếp chat nhanh theo ngay_tao giảm dần trước khi render.
      - Sửa class bong bóng: tin-nhan-rong / tin-nhan-nguoi / tin-nhan-he-thong.
+     - Thêm hàm moChatNhanh(id_chat) load lịch sử chat cũ.
    ============================================================ */
 
 (function () {
@@ -119,7 +120,7 @@
     }
 
     /* ============================================================
-       HÀM SẮP XẾP CHUNG — MỚI NHẤT LÊN ĐẦU
+       SẮP XẾP
        ============================================================ */
     function sapXepMoiNhatTruoc(ds, truongThoiGian) {
         if (!Array.isArray(ds)) return [];
@@ -163,7 +164,7 @@
     }
 
     /* ============================================================
-       TẢI THÔNG TIN PHIÊN (nguồn duy nhất set laKhach)
+       TẢI THÔNG TIN PHIÊN
        ============================================================ */
     async function taiThongTinPhien() {
         try {
@@ -177,18 +178,21 @@
 
             if (dl && dl.da_dang_nhap) {
                 laKhach = false;
+                window.__LA_KHACH = false;
                 if (khuKhach) khuKhach.classList.add('an');
                 if (khuDN) khuDN.classList.remove('an');
                 if (oTen) oTen.textContent = dl.ten_dang_nhap || 'Người dùng';
                 if (nutDoiMK) nutDoiMK.classList.remove('an');
             } else {
                 laKhach = true;
+                window.__LA_KHACH = true;
                 if (khuKhach) khuKhach.classList.remove('an');
                 if (khuDN) khuDN.classList.add('an');
                 if (nutDoiMK) nutDoiMK.classList.add('an');
             }
         } catch (e) {
             laKhach = true;
+            window.__LA_KHACH = true;
         }
         return laKhach;
     }
@@ -382,6 +386,62 @@
     }
 
     /* ============================================================
+       MỞ CHAT NHANH — LOAD LỊCH SỬ
+       ============================================================ */
+    async function moChatNhanh(idChat) {
+        if (!idChat) return;
+
+        // Set id_chat hiện tại để chat.js dùng khi gửi
+        window.__ID_CHAT_NHANH_HIEN_TAI = idChat;
+
+        // Đóng menu trái nếu đang mở
+        if (typeof window.dongMenuTrai === 'function') window.dongMenuTrai();
+
+        const khung = layKhungTinNhan();
+        if (!khung) return;
+        khung.innerHTML = '';
+
+        // Nếu là khách, đọc localStorage
+        if (laKhach) {
+            const ds = docLS(KHOA_LS_TIN_NHAN)
+                .filter(function (t) { return t.id_chat === idChat; })
+                .sort(function (a, b) { return (a.thoi_gian || 0) - (b.thoi_gian || 0); });
+
+            if (ds.length === 0) {
+                themTinNhanRong('Nói điều ước đi 🌕🐉');
+                return;
+            }
+            ds.forEach(function (t) {
+                const vaiTro = (t.vai_tro === 'rong_than' || t.vai_tro === 'rong') ? 'rong' : 'nguoi';
+                khung.appendChild(taoBongBong(t.noi_dung || '', vaiTro));
+            });
+            cuonXuongCuoi();
+            return;
+        }
+
+        // Đã đăng nhập → gọi API
+        try {
+            const ph = await fetch('/api/tin-nhan-chat-nhanh?id_chat=' + encodeURIComponent(idChat));
+            const dl = await ph.json();
+            if (dl && dl.thanh_cong && Array.isArray(dl.danh_sach) && dl.danh_sach.length > 0) {
+                if (typeof window.renderTinNhanChatNhanh === 'function') {
+                    window.renderTinNhanChatNhanh(dl.danh_sach);
+                } else {
+                    dl.danh_sach.forEach(function (t) {
+                        const vaiTro = (t.vai_tro === 'rong_than' || t.vai_tro === 'rong') ? 'rong' : 'nguoi';
+                        khung.appendChild(taoBongBong(t.noi_dung || '', vaiTro));
+                    });
+                    cuonXuongCuoi();
+                }
+            } else {
+                themTinNhanRong('Nói điều ước đi 🌕🐉');
+            }
+        } catch (e) {
+            themTinNhanRong('Nói điều ước đi 🌕🐉');
+        }
+    }
+
+    /* ============================================================
        TRÒ CHUYỆN TRONG DỰ ÁN
        ============================================================ */
     function taoMucTroChuyen(tro) {
@@ -484,7 +544,7 @@
     }
 
     /* ============================================================
-       TIN NHẮN TRONG TRÒ CHUYỆN
+       TIN NHẮN TRONG TRÒ CHUYỆN DỰ ÁN
        ============================================================ */
     function veTinNhanTrongDuAn(ds) {
         const khung = document.getElementById('danh-sach-tin-nhan-du-an');
@@ -504,7 +564,7 @@
             return Number(a.thoi_gian || 0) - Number(b.thoi_gian || 0);
         });
         dsSapXep.forEach(function (t) {
-            const vaiTro = t.vai_tro === 'nguoi' ? 'nguoi'
+            const vaiTro = (t.vai_tro === 'nguoi') ? 'nguoi'
                 : (t.vai_tro === 'rong' ? 'rong' : 'he-thong');
             khung.appendChild(taoBongBong(t.noi_dung || '', vaiTro));
         });
@@ -573,6 +633,7 @@
     window.luuTroChuyenKhach = luuTroChuyenKhach;
     window.luuTinNhanKhach = luuTinNhanKhach;
     window.capNhatTenChatNhanh = capNhatTenChatNhanh;
+    window.moChatNhanh = moChatNhanh;
 
     window.addEventListener('error', function (e) {
         console.error('[Rồng Thần] Lỗi:', e.message);

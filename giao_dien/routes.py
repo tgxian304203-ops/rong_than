@@ -75,6 +75,17 @@ def dang_ky_routes(app):
         return jsonify(ham(request.get_json(silent=True) or {}))
 
     # ============================================================
+    # TIN NHẮN CHAT NHANH (load lịch sử)
+    # ============================================================
+    @app.route("/api/tin-nhan-chat-nhanh", methods=["GET"])
+    def api_tin_nhan_chat_nhanh():
+        ham = _goi_an_toan("giao_dien.session", "lay_tin_nhan_chat_nhanh_cua")
+        if ham is None:
+            return _chua_trien_khai("lấy tin nhắn chat nhanh")
+        id_chat = request.args.get("id_chat", "")
+        return jsonify(ham(id_chat))
+
+    # ============================================================
     # CHAT TRONG DỰ ÁN
     # ============================================================
     @app.route("/api/gui-tin-nhan-du-an", methods=["POST"])
@@ -356,7 +367,6 @@ def dang_ky_routes(app):
         ten_file = metadata.get("ten_file") or "file"
         duoi_file = (metadata.get("duoi_file") or "").lower()
 
-        # Đoán MIME
         mime_map = {
             "png": "image/png",
             "jpg": "image/jpeg",
@@ -374,7 +384,6 @@ def dang_ky_routes(app):
         }
         mime = mime_map.get(duoi_file, "application/octet-stream")
 
-        # Hiển thị inline (ảnh/PDF/text), tải về (các loại khác)
         hien_thi_inline = duoi_file in (
             "png", "jpg", "jpeg", "gif", "webp", "bmp", "svg",
             "pdf", "txt", "md", "json", "csv", "log",

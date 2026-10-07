@@ -577,6 +577,26 @@ def lay_lich_su_chat(ten_tk, id_chat, gioi_han=20):
     return danh_sach
 
 
+def lay_tin_nhan_chat_nhanh(id_chat, ten_tk, gioi_han=200):
+    """
+    Lấy toàn bộ tin nhắn của 1 chat nhanh theo id_chat.
+    Trả về mảng tin nhắn sắp xếp theo thời gian tăng dần.
+    """
+    if not id_chat or not ten_tk:
+        return []
+    db, _ = _ket_noi_kho_1()
+    try:
+        ket_qua = (
+            db[C_LICH_SU_CHAT]
+            .find({"chu_so_huu": ten_tk, "id_chat": id_chat})
+            .sort("thoi_gian", ASCENDING)
+            .limit(gioi_han)
+        )
+        return [_chuan_hoa_doc(t) for t in ket_qua]
+    except Exception:
+        return []
+
+
 def doc_cay():
     cay_goc = _doc_cay_local()
     cay_kho_2 = _doc_cay_kho_2()

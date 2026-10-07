@@ -2,12 +2,10 @@
    chat.js - Gửi/nhận tin nhắn (chat chính + chat trong dự án)
    ------------------------------------------------------------
    ĐÃ SỬA:
+     - Gửi kèm id_chat khi gửi tin nhắn chat chính.
      - Upload ảnh + file → render lại tin nhắn bằng URL server.
-     - Gửi kèm urls_anh + urls_file trong body API dự án.
-     - Hiển thị ảnh/file cũ khi load lại trò chuyện.
      - Xóa preview sau khi gửi thành công.
      - Cập nhật tên chat nhanh sau tin nhắn đầu.
-     - Lưu tin nhắn khách vào localStorage.
    ============================================================ */
 
 (function () {
@@ -95,9 +93,6 @@
         return div;
     }
 
-    /* ------------------------------------------------------------
-       TẠO KHUNG ĐÍNH KÈM (ảnh + file)
-       ------------------------------------------------------------ */
     function taoKhungDinhKem(urlsAnh, urlsFile, tenFiles) {
         const khung = document.createElement('div');
         khung.classList.add('tin-nhan-dinh-kem');
@@ -139,9 +134,6 @@
         return khung;
     }
 
-    /* ------------------------------------------------------------
-       TẠO TIN NHẮN CÓ ĐÍNH KÈM
-       ------------------------------------------------------------ */
     function taoTinNhanCoDinhKem(noiDung, loai, urlsAnh, urlsFile, tenFiles) {
         const div = taoTinNhan(noiDung, loai);
         if ((urlsAnh && urlsAnh.length > 0) || (urlsFile && urlsFile.length > 0)) {
@@ -168,9 +160,6 @@
         cuonXuongCuoi(khungChat);
     }
 
-    /* ============================================================
-       ĐANG TRẢ LỜI
-       ============================================================ */
     function hienDangTraLoi(khung, idThem) {
         const div = document.createElement('div');
         div.classList.add('tin-nhan', 'tin-nhan-rong');
@@ -188,9 +177,6 @@
         if (el) el.remove();
     }
 
-    /* ============================================================
-       ĐẾM TIN NHẮN
-       ============================================================ */
     function demTinNhanNguoiTrongChatChinh() {
         if (!danhSach) return 0;
         let dem = 0;
@@ -202,9 +188,6 @@
         return dem;
     }
 
-    /* ============================================================
-       UPLOAD ĐÍNH KÈM
-       ============================================================ */
     async function uploadDinhKem() {
         let urls_anh = [];
         let urls_file = [];
@@ -238,7 +221,7 @@
     }
 
     /* ============================================================
-       GỬI TIN NHẮN — CHAT CHÍNH
+       GỬI TIN NHẮN — CHAT CHÍNH (có kèm id_chat)
        ============================================================ */
     async function guiTinNhanChinh() {
         if (dangGui) return;
@@ -255,7 +238,6 @@
         const soTinNguoiTruoc = demTinNhanNguoiTrongChatChinh();
         const laTinDauTien = (soTinNguoiTruoc === 0);
 
-        // Lưu URL blob để hiển thị tạm, sau đó thay bằng URL server
         const urlsAnhLocal = coAnh
             ? window.DANH_SACH_ANH.map(function (a) { return a.url; })
             : [];
@@ -263,7 +245,6 @@
             ? window.DANH_SACH_FILE.map(function (f) { return f.file.name; })
             : [];
 
-        // Tạo phần tử tin nhắn người (có thể chèn ảnh/file tạm sau)
         let tinNhanEl;
         if (coAnh || coFile) {
             tinNhanEl = taoTinNhanCoDinhKem(noiDung, 'nguoi', urlsAnhLocal, [], tenFilesTruoc);
@@ -276,10 +257,12 @@
         oNhap.value = '';
         tuDongGian(oNhap);
 
-        if (laTinDauTien) {
-            const idChat = window.__ID_CHAT_NHANH_HIEN_TAI;
+        // Lấy id_chat nhanh hiện tại (do quan_ly_menu.js set khi bấm New Chat)
+        const idChat = window.__ID_CHAT_NHANH_HIEN_TAI || '';
+
+        if (laTinDauTien && idChat) {
             const tenChat = noiDung || 'Chat có đính kèm';
-            if (idChat && typeof window.capNhatTenChatNhanh === 'function') {
+            if (typeof window.capNhatTenChatNhanh === 'function') {
                 window.capNhatTenChatNhanh(idChat, tenChat);
             }
         }
@@ -287,16 +270,12 @@
         hienDangTraLoi(danhSach, 'tin-nhan-dang-tra-loi');
 
         try {
-            // Upload → lấy URL server
             const dinhKem = await uploadDinhKem();
 
-            // Nếu có ảnh/file: cập nhật lại tin nhắn người bằng URL server
             if (dinhKem.urls_anh.length > 0 || dinhKem.urls_file.length > 0) {
-                // Xóa khung đính kèm cũ (blob)
                 const khungCu = tinNhanEl.querySelector('.tin-nhan-dinh-kem');
                 if (khungCu) khungCu.remove();
 
-                // Thêm khung đính kèm mới (URL server)
                 const khungMoi = taoKhungDinhKem(
                     dinhKem.urls_anh,
                     dinhKem.urls_file,
@@ -305,7 +284,7 @@
                 tinNhanEl.appendChild(khungMoi);
             }
 
-            // Gửi tin nhắn
+            // Gửi tin nhắn kèm id_chat
             const phanHoi = await fetch('/api/gui-tin-nhan', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -313,6 +292,7 @@
                     noi_dung: noiDung,
                     urls_anh: dinhKem.urls_anh,
                     urls_file: dinhKem.urls_file,
+                    id_chat: idChat,
                 }),
             });
             const duLieu = await phanHoi.json();
@@ -361,7 +341,6 @@
 
         const laKhachHienTai = window.__LA_KHACH === true || !document.getElementById('ten-nguoi-dung');
 
-        // Hiển thị tin nhắn tạm bằng blob URL
         const urlsAnhLocal = coAnh
             ? window.DANH_SACH_ANH.map(function (a) { return a.url; })
             : [];
@@ -388,10 +367,8 @@
         hienDangTraLoi(danhSachDuAn, 'tin-nhan-dang-tra-loi-du-an');
 
         try {
-            // Upload → lấy URL server
             const dinhKem = await uploadDinhKem();
 
-            // Cập nhật lại tin nhắn bằng URL server
             if (dinhKem.urls_anh.length > 0 || dinhKem.urls_file.length > 0) {
                 const khungCu = tinNhanEl.querySelector('.tin-nhan-dinh-kem');
                 if (khungCu) khungCu.remove();
@@ -447,15 +424,39 @@
     }
 
     /* ============================================================
-       RENDER LẠI TIN NHẮN CŨ (khi load lại trò chuyện)
-       danh_sach: mảng tin nhắn từ API (có thể có urls_anh, urls_file)
+       RENDER TIN NHẮN CŨ CHAT NHANH
+       ============================================================ */
+    function renderTinNhanChatNhanh(danh_sach) {
+        if (!danhSach) return;
+        danhSach.innerHTML = '';
+
+        (danh_sach || []).forEach(function (tin) {
+            const vaiTro = (tin.vai_tro === 'rong_than' || tin.vai_tro === 'rong') ? 'rong' : 'nguoi';
+            const noiDung = tin.noi_dung || '';
+            const urlsAnh = tin.urls_anh || tin.anh || [];
+            const urlsFile = tin.urls_file || tin.file || [];
+
+            if (urlsAnh.length > 0 || urlsFile.length > 0) {
+                danhSach.appendChild(
+                    taoTinNhanCoDinhKem(noiDung, vaiTro, urlsAnh, urlsFile)
+                );
+            } else {
+                danhSach.appendChild(taoTinNhan(noiDung, vaiTro));
+            }
+        });
+
+        cuonXuongCuoi(khungChat);
+    }
+
+    /* ============================================================
+       RENDER TIN NHẮN CŨ DỰ ÁN
        ============================================================ */
     function renderTinNhanCu(danh_sach) {
         if (!danhSachDuAn) return;
         danhSachDuAn.innerHTML = '';
 
         (danh_sach || []).forEach(function (tin) {
-            const vaiTro = tin.vai_tro === 'rong' ? 'rong' : 'nguoi';
+            const vaiTro = (tin.vai_tro === 'rong' || tin.vai_tro === 'rong_than') ? 'rong' : 'nguoi';
             const noiDung = tin.noi_dung || '';
             const urlsAnh = tin.urls_anh || [];
             const urlsFile = tin.urls_file || [];
@@ -516,6 +517,7 @@
     window.cuonXuongCuoi = cuonXuongCuoi;
     window.guiTinNhanDuAn = guiTinNhanDuAn;
     window.renderTinNhanCu = renderTinNhanCu;
+    window.renderTinNhanChatNhanh = renderTinNhanChatNhanh;
 
     /* ============================================================
        LỜI CHÀO
