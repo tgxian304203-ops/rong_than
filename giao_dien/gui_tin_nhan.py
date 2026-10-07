@@ -11,6 +11,8 @@ Quy tắc:
     - Lưu lịch sử chat vào kho 1 (collection lich_su_chat).
     - Nhận diện tài khoản đang đăng nhập hoặc chế độ khách.
     - Nếu Đại não lỗi, trả lỗi rõ ràng cho client.
+    - Nhận cả trường "urls_anh"/"urls_file" (từ chat.js mới)
+      và "anh"/"file" (tương thích ngược).
 
 Tầng dữ liệu: dai_nao/ghi_nho.py
 Đại não: dai_nao/nhan_task.py
@@ -53,6 +55,16 @@ def _tao_id():
     return "msg-" + secrets.token_hex(8)
 
 
+def _lay_danh_sach(du_lieu, ten_moi, ten_cu):
+    """Lấy danh sách từ trường mới (urls_anh) hoặc trường cũ (anh)."""
+    ds = du_lieu.get(ten_moi)
+    if ds is None:
+        ds = du_lieu.get(ten_cu)
+    if not isinstance(ds, list):
+        return []
+    return ds
+
+
 # ----------------------------------------------------------------
 # HÀM XỬ LÝ CHÍNH
 # ----------------------------------------------------------------
@@ -61,28 +73,30 @@ def xu_ly_gui_tin_nhan(du_lieu):
     Nhận tin nhắn từ client, chuyển cho Đại não, trả kết quả.
 
     du_lieu: {
-        noi_dung: str,          # nội dung tin nhắn (có thể rỗng nếu chỉ gửi file)
-        anh: [str],             # danh sách URL ảnh đã upload (nếu có)
-        file: [str],            # danh sách URL file đã upload (nếu có)
-        id_chat: str?,          # id cuộc trò chuyện (nếu đang trong chat cụ thể)
-        id_du_an: str?,         # id dự án (nếu đang trong dự án)
+        noi_dung: str,
+        urls_anh: [str]?,       # từ chat.js mới
+        urls_file: [str]?,      # từ chat.js mới
+        anh: [str]?,            # tương thích ngược
+        file: [str]?,           # tương thích ngược
+        id_chat: str?,
+        id_du_an: str?,
     }
 
     Trả về: {
         thanh_cong: bool,
-        tra_loi: str,           # câu trả lời của Rồng Thần
-        code: str?,             # code nếu có (HTML/Python)
-        ngon_ngu: str?,         # ngôn ngữ code
-        id_tin_nhan: str,       # id tin nhắn vừa gửi
-        loi: str?,              # lỗi nếu có
+        tra_loi: str,
+        code: str?,
+        ngon_ngu: str?,
+        id_tin_nhan: str,
+        loi: str?,
     }
     """
     # ------------------------------------------------------------
     # 1. Kiểm tra dữ liệu đầu vào
     # ------------------------------------------------------------
     noi_dung = (du_lieu.get("noi_dung") or "").strip()
-    danh_sach_anh = du_lieu.get("anh") or []
-    danh_sach_file = du_lieu.get("file") or []
+    danh_sach_anh = _lay_danh_sach(du_lieu, "urls_anh", "anh")
+    danh_sach_file = _lay_danh_sach(du_lieu, "urls_file", "file")
 
     # Nếu không có chữ, không có ảnh, không có file → lỗi
     if not noi_dung and not danh_sach_anh and not danh_sach_file:
@@ -112,7 +126,6 @@ def xu_ly_gui_tin_nhan(du_lieu):
         "thoi_gian": thoi_gian,
     }
 
-    # Chỉ lưu lịch sử nếu đã đăng nhập
     if ten_tk:
         try:
             luu_tin_nhan_chat(tin_nhan_nguoi)
@@ -120,7 +133,7 @@ def xu_ly_gui_tin_nhan(du_lieu):
             _ghi_log("dai-nao", f"Lỗi lưu tin nhắn người dùng: {e}")
 
     # ------------------------------------------------------------
-    # 3. Lấy lịch sử chat gần đây (nếu đang trong chat cụ thể)
+    # 3. Lấy lịch sử chat gần đây
     # ------------------------------------------------------------
     lich_su = []
     if ten_tk and id_chat:
@@ -173,7 +186,7 @@ def xu_ly_gui_tin_nhan(du_lieu):
     ngon_ngu = ket_qua.get("ngon_ngu")
 
     # ------------------------------------------------------------
-    # 6. Lưu tin nhắn trả lời của Rồng Thần vào kho 1
+    # 6. Lưu tin nhắn trả lời của Rồng Thần
     # ------------------------------------------------------------
     tin_nhan_rong = {
         "id_tin_nhan": _tao_id(),
