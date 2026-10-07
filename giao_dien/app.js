@@ -2,8 +2,11 @@
    app.js - Khởi động chung giao diện Rồng Thần
    ------------------------------------------------------------
    ĐÃ SỬA:
-     - Đồng bộ laKhach nội bộ với window.__LA_KHACH.
-     - Dùng dangLaKhach() thay vì đọc biến closure.
+     - taiThongTinPhien(goiLai): nếu goiLai = true → tải lại
+       danh sách dự án + chat nhanh (dùng sau khi đăng nhập).
+     - Sắp xếp chat nhanh theo ngay_tao giảm dần trước khi render.
+     - Sửa class bong bóng: tin-nhan-rong / tin-nhan-nguoi / tin-nhan-he-thong.
+     - Thêm hàm moChatNhanh(id_chat) load lịch sử chat cũ.
    ============================================================ */
 
 (function () {
@@ -13,17 +16,7 @@
     const KHOA_LS_CHAT = 'rong_than_chat_nhanh_khach';
     const KHOA_LS_TRO_CHUYEN = 'rong_than_tro_chuyen_khach';
     const KHOA_LS_TIN_NHAN = 'rong_than_tin_nhan_khach';
-
-    /* ============================================================
-       TRẠNG THÁI KHÁCH — ĐỒNG BỘ VỚI window.__LA_KHACH
-       ============================================================ */
-    function dangLaKhach() {
-        return window.__LA_KHACH === true;
-    }
-
-    function datCheDoKhach(laKhach) {
-        window.__LA_KHACH = !!laKhach;
-    }
+    let laKhach = false;
 
     /* ============================================================
        HÀM TIỆN ÍCH CHUNG
@@ -149,7 +142,7 @@
         if (!ten) return;
         if (ten.length > 50) ten = ten.slice(0, 50) + '...';
 
-        if (dangLaKhach()) {
+        if (laKhach) {
             const ds = docLS(KHOA_LS_CHAT);
             for (let i = 0; i < ds.length; i++) {
                 if (ds[i].id === idChat) {
@@ -159,21 +152,25 @@
                 }
             }
             ghiLS(KHOA_LS_CHAT, ds);
+            taiDanhSachChatNhanh();
         } else {
             fetch('/api/doi-ten-chat-nhanh', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: idChat, ten: ten }),
-            }).catch(function () {});
+            }).then(function () {
+                taiDanhSachChatNhanh();
+            }).catch(function () {
+                taiDanhSachChatNhanh();
+            });
         }
-
-        taiDanhSachChatNhanh();
     }
 
     /* ============================================================
        TẢI THÔNG TIN PHIÊN
+       goiLai = true → tải lại danh sách sau khi đổi trạng thái
        ============================================================ */
-    async function taiThongTinPhien() {
+    async function taiThongTinPhien(goiLai) {
         try {
             const ph = await fetch('/api/phien');
             const dl = await ph.json();
@@ -184,21 +181,31 @@
             const nutDoiMK = document.getElementById('nut-mo-doi-mat-khau');
 
             if (dl && dl.da_dang_nhap) {
-                datCheDoKhach(false);
+                laKhach = false;
                 if (khuKhach) khuKhach.classList.add('an');
                 if (khuDN) khuDN.classList.remove('an');
                 if (oTen) oTen.textContent = dl.ten_dang_nhap || 'Người dùng';
                 if (nutDoiMK) nutDoiMK.classList.remove('an');
             } else {
-                datCheDoKhach(true);
+                laKhach = true;
                 if (khuKhach) khuKhach.classList.remove('an');
                 if (khuDN) khuDN.classList.add('an');
                 if (nutDoiMK) nutDoiMK.classList.add('an');
             }
+
+            // Nếu goiLai → tải lại dữ liệu (dùng sau khi đăng nhập)
+            if (goiLai === true) {
+                await taiDanhSachDuAn();
+                await taiDanhSachChatNhanh();
+            }
         } catch (e) {
-            datCheDoKhach(true);
+            laKhach = true;
+            if (goiLai === true) {
+                await taiDanhSachDuAn();
+                await taiDanhSachChatNhanh();
+            }
         }
-        return !dangLaKhach();
+        return laKhach;
     }
 
     /* ============================================================
@@ -228,7 +235,7 @@
             e.stopPropagation();
             const noiDung = 'Bạn có chắc muốn xóa dự án "' + duAn.ten + '"?';
             const hamDongY = async function () {
-                if (dangLaKhach()) {
+                if (laKhach) {
                     const ds = docLS(KHOA_LS_DU_AN)
                         .filter(function (d) { return d.id !== duAn.id; });
                     ghiLS(KHOA_LS_DU_AN, ds);
@@ -277,7 +284,7 @@
     }
 
     async function taiDanhSachDuAn() {
-        if (dangLaKhach()) {
+        if (laKhach) {
             veDanhSachDuAn(docLS(KHOA_LS_DU_AN));
             return;
         }
@@ -324,7 +331,7 @@
             const tenChat = chat.ten || 'chat này';
             const noiDung = 'Bạn có chắc muốn xóa "' + tenChat + '"?';
             const hamDongY = async function () {
-                if (dangLaKhach()) {
+                if (laKhach) {
                     const ds = docLS(KHOA_LS_CHAT)
                         .filter(function (c) { return c.id !== chat.id; });
                     ghiLS(KHOA_LS_CHAT, ds);
@@ -372,7 +379,7 @@
     }
 
     async function taiDanhSachChatNhanh() {
-        if (dangLaKhach()) {
+        if (laKhach) {
             veDanhSachChatNhanhMenu(docLS(KHOA_LS_CHAT));
             return;
         }
@@ -403,7 +410,7 @@
         if (!khung) return;
         khung.innerHTML = '';
 
-        if (dangLaKhach()) {
+        if (laKhach) {
             const ds = docLS(KHOA_LS_TIN_NHAN)
                 .filter(function (t) { return t.id_chat === idChat; })
                 .sort(function (a, b) { return (a.thoi_gian || 0) - (b.thoi_gian || 0); });
@@ -468,7 +475,7 @@
             e.stopPropagation();
             const noiDung = 'Bạn có chắc muốn xóa trò chuyện "' + tro.ten + '"?';
             const hamDongY = async function () {
-                if (dangLaKhach()) {
+                if (laKhach) {
                     let ds = docLS(KHOA_LS_TRO_CHUYEN)
                         .filter(function (t) { return t.id !== tro.id; });
                     ghiLS(KHOA_LS_TRO_CHUYEN, ds);
@@ -524,7 +531,7 @@
 
     async function taiDanhSachTroChuyen(idDuAn) {
         if (!idDuAn) return;
-        if (dangLaKhach()) {
+        if (laKhach) {
             const ds = docLS(KHOA_LS_TRO_CHUYEN)
                 .filter(function (t) { return t.id_du_an === idDuAn; });
             veDanhSachTroChuyen(ds);
@@ -573,7 +580,7 @@
 
     async function taiTinNhanTroChuyen(idDuAn, idTroChuyen) {
         if (!idDuAn || !idTroChuyen) return;
-        if (dangLaKhach()) {
+        if (laKhach) {
             const ds = docLS(KHOA_LS_TIN_NHAN)
                 .filter(function (t) {
                     return t.id_du_an === idDuAn && t.id_tro_chuyen === idTroChuyen;
@@ -634,7 +641,6 @@
     window.luuTinNhanKhach = luuTinNhanKhach;
     window.capNhatTenChatNhanh = capNhatTenChatNhanh;
     window.moChatNhanh = moChatNhanh;
-    window.datCheDoKhach = datCheDoKhach;
 
     window.addEventListener('error', function (e) {
         console.error('[Rồng Thần] Lỗi:', e.message);

@@ -2,8 +2,8 @@
    dang_nhap.js - Xử lý form đăng nhập Rồng Thần
    ------------------------------------------------------------
    ĐÃ SỬA:
-     - Sau khi đăng nhập thành công → tải lại danh sách chat nhanh
-       và dự án (vì lúc load trang chưa có session).
+     - Sau khi đăng nhập thành công → gọi taiThongTinPhien(true)
+       để app.js tự cập nhật laKhach + tải lại danh sách.
    ============================================================ */
 
 (function () {
@@ -46,27 +46,6 @@
     }
 
     /* ------------------------------------------------------------
-       SAU KHI ĐĂNG NHẬP THÀNH CÔNG — CẬP NHẬT LẠI GIAO DIỆN
-       ------------------------------------------------------------ */
-    function capNhatSauDangNhap(tenNguoiDung) {
-        // 1. Đổi giao diện sang chế độ tài khoản
-        if (typeof window.chuyenSangCheDoTaiKhoan === 'function') {
-            window.chuyenSangCheDoTaiKhoan(tenNguoiDung);
-        }
-
-        // 2. Đánh dấu không còn là khách
-        window.__LA_KHACH = false;
-
-        // 3. Tải lại danh sách dự án + chat nhanh (vì lúc load trang chưa có session)
-        if (typeof window.taiDanhSachDuAn === 'function') {
-            window.taiDanhSachDuAn();
-        }
-        if (typeof window.taiDanhSachChatNhanh === 'function') {
-            window.taiDanhSachChatNhanh();
-        }
-    }
-
-    /* ------------------------------------------------------------
        GỬI ĐĂNG NHẬP
        ------------------------------------------------------------ */
     async function guiDangNhap() {
@@ -97,7 +76,15 @@
             if (duLieu && duLieu.thanh_cong) {
                 hienThongBao('Đăng nhập thành công!', true);
 
-                capNhatSauDangNhap(duLieu.ten_dang_nhap || ten);
+                // Đổi giao diện sang chế độ tài khoản (từ dang_ky.js)
+                if (typeof window.chuyenSangCheDoTaiKhoan === 'function') {
+                    window.chuyenSangCheDoTaiKhoan(duLieu.ten_dang_nhap || ten);
+                }
+
+                // Bảo app.js cập nhật lại laKhach + tải danh sách
+                if (typeof window.taiThongTinPhien === 'function') {
+                    window.taiThongTinPhien(true);
+                }
 
                 oTen.value = '';
                 oMatKhau.value = '';
