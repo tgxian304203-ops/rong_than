@@ -1,21 +1,14 @@
 /* ============================================================
    dang_nhap.js - Xử lý form đăng nhập Rồng Thần
    ------------------------------------------------------------
-   Nhiệm vụ:
-     - Lấy tên đăng nhập + mật khẩu từ popup #popup-dang-nhap.
-     - Kiểm tra dữ liệu cơ bản (không rỗng).
-     - Gửi POST /api/dang-nhap.
-     - Hiển thị thông báo lỗi/thành công trong #dang-nhap-thong-bao.
-     - Khi thành công: đóng popup, cập nhật giao diện sang chế độ
-       tài khoản (dùng lại window.chuyenSangCheDoTaiKhoan từ dang_ky.js).
+   ĐÃ SỬA:
+     - Sau khi đăng nhập thành công → tải lại danh sách chat nhanh
+       và dự án (vì lúc load trang chưa có session).
    ============================================================ */
 
 (function () {
     'use strict';
 
-    /* ------------------------------------------------------------
-       THAM CHIẾU DOM
-       ------------------------------------------------------------ */
     const popup      = document.getElementById('popup-dang-nhap');
     const oTen        = document.getElementById('dang-nhap-ten');
     const oMatKhau    = document.getElementById('dang-nhap-mat-khau');
@@ -23,11 +16,11 @@
     const oThongBao   = document.getElementById('dang-nhap-thong-bao');
 
     if (!popup || !oTen || !oMatKhau || !nutXacNhan || !oThongBao) {
-        return; // Thiếu DOM thì thoát.
+        return;
     }
 
     /* ------------------------------------------------------------
-       HÀM HIỂN THỊ THÔNG BÁO
+       THÔNG BÁO
        ------------------------------------------------------------ */
     function hienThongBao(noiDung, thanhCong) {
         oThongBao.textContent = noiDung || '';
@@ -40,7 +33,7 @@
     }
 
     /* ------------------------------------------------------------
-       KIỂM TRA DỮ LIỆU
+       KIỂM TRA
        ------------------------------------------------------------ */
     function kiemTraDuLieu(ten, matKhau) {
         if (!ten || !ten.trim()) {
@@ -49,7 +42,28 @@
         if (!matKhau) {
             return 'Vui lòng nhập mật khẩu.';
         }
-        return null; // Không có lỗi
+        return null;
+    }
+
+    /* ------------------------------------------------------------
+       SAU KHI ĐĂNG NHẬP THÀNH CÔNG — CẬP NHẬT LẠI GIAO DIỆN
+       ------------------------------------------------------------ */
+    function capNhatSauDangNhap(tenNguoiDung) {
+        // 1. Đổi giao diện sang chế độ tài khoản
+        if (typeof window.chuyenSangCheDoTaiKhoan === 'function') {
+            window.chuyenSangCheDoTaiKhoan(tenNguoiDung);
+        }
+
+        // 2. Đánh dấu không còn là khách
+        window.__LA_KHACH = false;
+
+        // 3. Tải lại danh sách dự án + chat nhanh (vì lúc load trang chưa có session)
+        if (typeof window.taiDanhSachDuAn === 'function') {
+            window.taiDanhSachDuAn();
+        }
+        if (typeof window.taiDanhSachChatNhanh === 'function') {
+            window.taiDanhSachChatNhanh();
+        }
     }
 
     /* ------------------------------------------------------------
@@ -83,16 +97,11 @@
             if (duLieu && duLieu.thanh_cong) {
                 hienThongBao('Đăng nhập thành công!', true);
 
-                // Đổi giao diện sang chế độ tài khoản
-                if (typeof window.chuyenSangCheDoTaiKhoan === 'function') {
-                    window.chuyenSangCheDoTaiKhoan(duLieu.ten_dang_nhap || ten);
-                }
+                capNhatSauDangNhap(duLieu.ten_dang_nhap || ten);
 
-                // Xóa input
                 oTen.value = '';
                 oMatKhau.value = '';
 
-                // Đóng popup sau 0.8s
                 setTimeout(function () {
                     popup.classList.remove('dang-mo');
                 }, 800);
@@ -118,7 +127,6 @@
         guiDangNhap();
     });
 
-    // Nhấn Enter trong ô nhập → gửi
     [oTen, oMatKhau].forEach(function (o) {
         o.addEventListener('keydown', function (e) {
             if (e.key === 'Enter') {
@@ -128,7 +136,6 @@
         });
     });
 
-    // Xóa thông báo + input khi đóng popup
     popup.addEventListener('transitionend', function () {
         if (!popup.classList.contains('dang-mo')) {
             xoaThongBao();
