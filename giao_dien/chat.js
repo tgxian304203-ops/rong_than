@@ -2,6 +2,9 @@
    chat.js - Gửi/nhận tin nhắn (chat chính + chat trong dự án)
    ------------------------------------------------------------
    ĐÃ SỬA:
+     - LỖI C: Sửa URL LiveCodes ES module cho đúng (không có
+       /esm/index.js).
+     - Thêm fallback load Pyodide nếu chưa có.
      - L22: Thêm chaySandboxVaGuiKetQua() — chạy code qua
        LiveCodes/Pyodide, gửi kết quả về /api/sandbox/ket-qua.
      - Thêm xuLyCodeMoiTuBackend() — nhận code mới từ backend
@@ -295,8 +298,9 @@
         try {
             if (ngonNgu === 'html') {
                 // HTML → LiveCodes
+                // SỬA LỖI C: URL đúng, không có /esm/index.js
                 const { createPlayground } = await import(
-                    'https://cdn.jsdelivr.net/npm/livecodes@0.14.1/esm/index.js'
+                    'https://cdn.jsdelivr.net/npm/livecodes@0.14.1'
                 );
 
                 const playground = await createPlayground(container, {
@@ -322,6 +326,22 @@
                 return ketQua;
             } else {
                 // Python → Pyodide
+                // Fallback: tự load Pyodide nếu chưa có
+                if (typeof loadPyodide !== 'function') {
+                    try {
+                        await new Promise((resolve, reject) => {
+                            const script = document.createElement('script');
+                            script.src = 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js';
+                            script.onload = resolve;
+                            script.onerror = () => reject(new Error('Không tải được Pyodide'));
+                            document.head.appendChild(script);
+                        });
+                    } catch (e) {
+                        ketQua.stderr = 'Pyodide chưa tải.';
+                        return ketQua;
+                    }
+                }
+
                 if (typeof loadPyodide !== 'function') {
                     ketQua.stderr = 'Pyodide chưa tải.';
                     return ketQua;

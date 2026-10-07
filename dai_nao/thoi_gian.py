@@ -6,13 +6,17 @@ Nhiệm vụ:
     - Nhom 1: gio Viet Nam -> tra loi ngay bang Python (UTC+7).
     - Nhom 2: gio khu vuc khac -> goi Tra web.
 
-Quy tac:
-    - Chi xu ly khi cau hoi THUAN ve thoi gian.
-    - Cau hoi thoi gian tuong lai/qua khu -> khong xu ly (tra None).
-    - Moi ham deu co try/except, khong sap luong chinh.
+ĐÃ SỬA:
+    - LỖI A: Truyền chu_so_huu vào goi_tra_web để lấy đúng key.
+    - LỖI A: Lấy tom_tat (chuỗi) từ dict goi_tra_web, không in dict thô.
 
-Tra ve:
-    - dict { thanh_cong, tra_loi, nguon } hoac None neu khong xu ly.
+Quy tắc:
+    - Chỉ xử lý khi câu hỏi THUẦN về thời gian.
+    - Câu hỏi thời gian tương lai/quá khứ → không xử lý (trả None).
+    - Mọi hàm đều có try/except, không sập luồng chính.
+
+Trả về:
+    - dict { thanh_cong, tra_loi, nguon } hoặc None nếu không xử lý.
 """
 
 import re
@@ -31,21 +35,21 @@ def _ghi_log(loai, noi_dung):
 
 
 # ================================================================
-# HANG SO
+# HẰNG SỐ
 # ================================================================
 MUI_GIO_VN = timezone(timedelta(hours=7))
 
 THU_TRONG_TUAN = {
-    0: "Thu Hai",
-    1: "Thu Ba",
-    2: "Thu Tu",
-    3: "Thu Nam",
-    4: "Thu Sau",
-    5: "Thu Bay",
-    6: "Chu Nhat",
+    0: "Thứ Hai",
+    1: "Thứ Ba",
+    2: "Thứ Tư",
+    3: "Thứ Năm",
+    4: "Thứ Sáu",
+    5: "Thứ Bảy",
+    6: "Chủ Nhật",
 }
 
-# Cac tu khoa nhan dien cau hoi thoi gian VN
+# Các từ khóa nhận diện câu hỏi thời gian VN
 TU_KHOA_VN = [
     "hom nay", "hom qua", "ngay mai", "ngay kia", "ngay mot",
     "bay gio", "hien tai", "may gio", "gio hien tai",
@@ -56,7 +60,7 @@ TU_KHOA_VN = [
     "bay gio la", "hom nay la",
 ]
 
-# Cac tu khoa nhan dien cau hoi thoi gian khu vuc khac
+# Các từ khóa nhận diện câu hỏi thời gian khu vực khác
 TU_KHOA_KHU_VUC = [
     "o nhat", "ở nhật", "o my", "ở mỹ", "o anh", "ở anh",
     "o trung quoc", "ở trung quốc", "o han quoc", "ở hàn quốc",
@@ -71,7 +75,7 @@ TU_KHOA_KHU_VUC = [
     "o ai cap", "ở ai cập", "o nam phi", "ở nam phi",
 ]
 
-# Cac tu khoa loai tru (khong phai hoi thoi gian thuc te)
+# Các từ khóa loại trừ (không phải hỏi thời gian thực tế)
 TU_KHOA_LOAI_TRU = [
     "thoi tiet", "thời tiết", "mua", "mưa", "nang", "nắng",
     "bao", "bão", "nhiet do", "nhiệt độ",
@@ -82,10 +86,10 @@ TU_KHOA_LOAI_TRU = [
 
 
 # ================================================================
-# TIEN ICH
+# TIỆN ÍCH
 # ================================================================
 def _bo_dau(s):
-    """Bo dau tieng Viet don gian."""
+    """Bỏ dấu tiếng Việt đơn giản."""
     if not s:
         return ""
     bang = {
@@ -110,7 +114,7 @@ def _bo_dau(s):
 
 
 def _co_tu_khoa(noi_dung, danh_sach):
-    """Kiem tra noi_dung co chua bat ky tu khoa nao trong danh sach."""
+    """Kiểm tra noi_dung có chứa bất kỳ từ khóa nào trong danh sách."""
     t = _bo_dau(noi_dung)
     for tk in danh_sach:
         tk_kd = _bo_dau(tk)
@@ -120,39 +124,38 @@ def _co_tu_khoa(noi_dung, danh_sach):
 
 
 # ================================================================
-# NHAN DIEN
+# NHẬN DIỆN
 # ================================================================
 def la_cau_hoi_thoi_gian(noi_dung):
     """
-    Kiem tra cau co phai cau hoi thoi gian khong.
+    Kiểm tra câu có phải câu hỏi thời gian không.
 
-    Tra ve: (True, "vn" | "khuvuc") hoac (False, "")
+    Trả về: (True, "vn" | "khuvuc") hoặc (False, "")
     """
     if not noi_dung:
         return False, ""
 
     t = noi_dung.lower().strip()
 
-    # Loai tru truoc
+    # Loại trừ trước
     co_loai_tru, _ = _co_tu_khoa(t, TU_KHOA_LOAI_TRU)
     if co_loai_tru:
-        # Van co the la cau hoi gio khu vuc
         co_kv, _ = _co_tu_khoa(t, TU_KHOA_KHU_VUC)
         if co_kv:
             return True, "khuvuc"
         return False, ""
 
-    # Kiem tra khu vuc khac truoc
+    # Kiểm tra khu vực khác trước
     co_kv, _ = _co_tu_khoa(t, TU_KHOA_KHU_VUC)
     if co_kv:
         return True, "khuvuc"
 
-    # Kiem tra VN
+    # Kiểm tra VN
     co_vn, _ = _co_tu_khoa(t, TU_KHOA_VN)
     if co_vn:
         return True, "vn"
 
-    # Kiem tra mau cau dac biet
+    # Kiểm tra mẫu câu đặc biệt
     if re.search(r"\b\d{1,2}\s*(gio|h)\b", t) and ("bay gio" in _bo_dau(t) or "hien tai" in _bo_dau(t)):
         return True, "vn"
 
@@ -160,45 +163,39 @@ def la_cau_hoi_thoi_gian(noi_dung):
 
 
 # ================================================================
-# TRA LOI THOI GIAN VIET NAM
+# TRẢ LỜI THỜI GIAN VIỆT NAM
 # ================================================================
 def _lay_thoi_gian_vn():
-    """Lay thoi gian hien tai theo gio VN (UTC+7)."""
-    now = datetime.now(MUI_GIO_VN)
-    return now
+    """Lấy thời gian hiện tại theo giờ VN (UTC+7)."""
+    return datetime.now(MUI_GIO_VN)
 
 
 def _dinh_dang_gio(now):
-    """Dinh dang: 'HH:MM'."""
+    """Định dạng: 'HH:MM'."""
     return now.strftime("%H:%M")
 
 
 def _dinh_dang_ngay(now):
-    """Dinh dang: 'Thu X, ngay DD/MM/YYYY'."""
+    """Định dạng: 'Thứ X, ngày DD/MM/YYYY'."""
     thu = THU_TRONG_TUAN.get(now.weekday(), "")
-    return f"{thu}, ngay {now.strftime('%d/%m/%Y')}"
+    return f"{thu}, ngày {now.strftime('%d/%m/%Y')}"
 
 
 def _dinh_dang_day_du(now):
-    """Dinh dang: 'HH:MM, Thu X ngay DD/MM/YYYY (gio Viet Nam)'."""
+    """Định dạng: 'HH:MM, Thứ X ngày DD/MM/YYYY (giờ Việt Nam)'."""
     gio = _dinh_dang_gio(now)
     ngay = _dinh_dang_ngay(now)
-    return f"{gio}, {ngay} (gio Viet Nam)"
+    return f"{gio}, {ngay} (giờ Việt Nam)"
 
 
 def tra_loi_thoi_gian_vn(noi_dung):
-    """
-    Tra loi cau hoi thoi gian VN bang Python.
-
-    Tra ve dict { thanh_cong, tra_loi, nguon }.
-    """
+    """Trả lời câu hỏi thời gian VN bằng Python."""
     now = _lay_thoi_gian_vn()
     t = _bo_dau(noi_dung.lower())
 
     gio = _dinh_dang_gio(now)
     ngay = _dinh_dang_ngay(now)
 
-    # Xac dinh dang cau hoi
     chi_gio = any(kw in t for kw in ["may gio", "gio may", "bay gio", "gio hien tai", "gio la"])
     chi_ngay = any(kw in t for kw in ["ngay may", "thu may", "hom nay", "hom qua", "ngay mai", "ngay kia"])
     chi_thang = "thang may" in t or "thang bao nhieu" in t
@@ -206,28 +203,27 @@ def tra_loi_thoi_gian_vn(noi_dung):
     chi_thang_nam = chi_thang and chi_nam
 
     if chi_gio and not chi_ngay:
-        tra_loi = f"🕐 Bay gio la {gio}, {ngay} (gio Viet Nam)."
+        tra_loi = f"🕐 Bây giờ là {gio}, {ngay} (giờ Việt Nam)."
     elif chi_nam and not chi_thang:
-        tra_loi = f"🗓️ Nam nay la nam {now.year}."
+        tra_loi = f"🗓️ Năm nay là năm {now.year}."
     elif chi_thang_nam:
-        tra_loi = f"🗓️ Thang nay la thang {now.month}, nam {now.year}."
+        tra_loi = f"🗓️ Tháng này là tháng {now.month}, năm {now.year}."
     elif "hom qua" in t:
         hom_qua = now - timedelta(days=1)
         thu = THU_TRONG_TUAN.get(hom_qua.weekday(), "")
-        tra_loi = f"Hom qua la {thu}, ngay {hom_qua.strftime('%d/%m/%Y')}."
+        tra_loi = f"Hôm qua là {thu}, ngày {hom_qua.strftime('%d/%m/%Y')}."
     elif "ngay mai" in t:
         ngay_mai = now + timedelta(days=1)
         thu = THU_TRONG_TUAN.get(ngay_mai.weekday(), "")
-        tra_loi = f"Ngay mai la {thu}, ngay {ngay_mai.strftime('%d/%m/%Y')}."
+        tra_loi = f"Ngày mai là {thu}, ngày {ngay_mai.strftime('%d/%m/%Y')}."
     elif "ngay kia" in t:
         ngay_kia = now + timedelta(days=2)
         thu = THU_TRONG_TUAN.get(ngay_kia.weekday(), "")
-        tra_loi = f"Ngay kia la {thu}, ngay {ngay_kia.strftime('%d/%m/%Y')}."
+        tra_loi = f"Ngày kia là {thu}, ngày {ngay_kia.strftime('%d/%m/%Y')}."
     else:
-        # Mac dinh: tra loi day du
-        tra_loi = f"🕐 Bay gio la {gio}, {ngay} (gio Viet Nam)."
+        tra_loi = f"🕐 Bây giờ là {gio}, {ngay} (giờ Việt Nam)."
 
-    _ghi_log("dai-nao", f"Tra loi thoi gian VN: {tra_loi}")
+    _ghi_log("dai-nao", f"Trả lời thời gian VN: {tra_loi}")
 
     return {
         "thanh_cong": True,
@@ -237,46 +233,86 @@ def tra_loi_thoi_gian_vn(noi_dung):
 
 
 # ================================================================
-# TRA LOI THOI GIAN KHU VUC KHAC (QUA TRA WEB)
+# TRẢ LỜI THỜI GIAN KHU VỰC KHÁC (QUA TRA WEB)
 # ================================================================
-def _goi_tra_web(cau_hoi):
-    """Goi Tra web — import dong."""
+def _goi_tra_web(cau_hoi, chu_so_huu=""):
+    """
+    Gọi Tra web — SỬA LỖI A:
+        - Truyền chu_so_huu để lấy đúng key tra web.
+        - Lấy tom_tat (chuỗi) từ dict, không in dict thô.
+    """
     try:
         from dai_nao.goi_tra_web import goi_tra_web
-        return goi_tra_web(cau_hoi) or ""
+        ket_qua = goi_tra_web(cau_hoi, chu_so_huu)
+
+        if not ket_qua or not ket_qua.get("thanh_cong"):
+            _ghi_log("tra-web", f"Tra web thất bại: {ket_qua.get('loi', '') if ket_qua else 'rỗng'}")
+            return ""
+
+        # Lấy chuỗi tổng hợp
+        tom_tat = ket_qua.get("tom_tat") or ""
+        if tom_tat:
+            return tom_tat
+
+        # Fallback: tổng hợp từ danh sách
+        danh_sach = ket_qua.get("ket_qua", [])
+        return _tong_hop_don_gian(danh_sach)
+
     except ImportError:
+        _ghi_log("loi", "goi_tra_web.py chưa có.")
         return ""
-    except Exception:
+    except Exception as e:
+        _ghi_log("loi", f"Tra web lỗi: {e}")
         return ""
 
 
-def tra_loi_thoi_gian_khu_vuc(noi_dung):
+def _tong_hop_don_gian(danh_sach):
+    """Fallback tổng hợp nếu goi_tra_web không trả tom_tat."""
+    if not danh_sach:
+        return ""
+    phan = []
+    for i, item in enumerate(danh_sach[:5], 1):
+        if not isinstance(item, dict):
+            continue
+        tieu_de = (item.get("tieu_de") or "").strip()
+        mo_ta = (item.get("mo_ta") or "").strip()
+        url = (item.get("url") or "").strip()
+        dong = f"{i}. {tieu_de}" if tieu_de else f"{i}."
+        if mo_ta:
+            dong += f"\n   {mo_ta[:300]}"
+        if url:
+            dong += f"\n   🔗 {url}"
+        phan.append(dong)
+    return "\n\n".join(phan)
+
+
+def tra_loi_thoi_gian_khu_vuc(noi_dung, chu_so_huu=""):
     """
-    Tra loi cau hoi thoi gian khu vuc khac qua Tra web.
-    Kem gio VN de so sanh.
+    Trả lời câu hỏi thời gian khu vực khác qua Tra web.
+    Kèm giờ VN để so sánh.
 
-    Tra ve dict { thanh_cong, tra_loi, nguon }.
+    SỬA LỖI A: Nhận chu_so_huu, truyền xuống _goi_tra_web.
     """
     now_vn = _lay_thoi_gian_vn()
     gio_vn = _dinh_dang_gio(now_vn)
 
-    # Goi tra web
-    ket_qua_web = _goi_tra_web(noi_dung)
+    # Gọi tra web (truyền chu_so_huu)
+    ket_qua_web = _goi_tra_web(noi_dung, chu_so_huu)
 
     if not ket_qua_web:
-        # Khong tra duoc -> tra loi gio VN + xin loi
-        _ghi_log("tra-web", f"Tra web that bai cho cau hoi: {noi_dung[:80]}")
+        # Không tra được → trả lời giờ VN + xin lỗi
+        _ghi_log("tra-web", f"Tra web thất bại cho câu hỏi: {noi_dung[:80]}")
         return {
             "thanh_cong": True,
-            "tra_loi": f"🕐 Ta chua tra cuu duoc gio khu vuc ban hoi. "
-                       f"Bay gio o Viet Nam la {gio_vn}.",
+            "tra_loi": f"🕐 Ta chưa tra cứu được giờ khu vực bạn hỏi. "
+                       f"Bây giờ ở Việt Nam là {gio_vn}.",
             "nguon": "thoi_gian_khuvuc_fallback",
         }
 
-    # Tra web thanh cong -> them gio VN
-    tra_loi = f"{ket_qua_web}\n\n🕐 De so sanh, bay gio o Viet Nam la {gio_vn}."
+    # Tra web thành công → thêm giờ VN
+    tra_loi = f"{ket_qua_web}\n\n🕐 Để so sánh, bây giờ ở Việt Nam là {gio_vn}."
 
-    _ghi_log("tra-web", f"Tra loi thoi gian khu vuc: {tra_loi[:100]}")
+    _ghi_log("tra-web", f"Trả lời thời gian khu vực: {tra_loi[:100]}")
 
     return {
         "thanh_cong": True,
@@ -286,15 +322,17 @@ def tra_loi_thoi_gian_khu_vuc(noi_dung):
 
 
 # ================================================================
-# HAM CHINH — DIEM VAO
+# HÀM CHÍNH — ĐIỂM VÀO
 # ================================================================
-def xu_ly_cau_hoi_thoi_gian(noi_dung):
+def xu_ly_cau_hoi_thoi_gian(noi_dung, chu_so_huu=""):
     """
-    Diem vao chinh — xu ly cau hoi thoi gian.
+    Điểm vào chính — xử lý câu hỏi thời gian.
 
-    Tra ve:
-        - dict { thanh_cong, tra_loi, nguon } neu xu ly duoc.
-        - None neu khong phai cau hoi thoi gian.
+    SỬA LỖI A: Nhận chu_so_huu, truyền xuống nhánh khu vực.
+
+    Trả về:
+        - dict { thanh_cong, tra_loi, nguon } nếu xử lý được.
+        - None nếu không phải câu hỏi thời gian.
     """
     if not noi_dung:
         return None
@@ -307,24 +345,24 @@ def xu_ly_cau_hoi_thoi_gian(noi_dung):
     if loai == "vn":
         return tra_loi_thoi_gian_vn(noi_dung)
     elif loai == "khuvuc":
-        return tra_loi_thoi_gian_khu_vuc(noi_dung)
+        return tra_loi_thoi_gian_khu_vuc(noi_dung, chu_so_huu)
 
     return None
 
 
 # ================================================================
-# TIEN ICH XUAT
+# TIỆN ÍCH XUẤT
 # ================================================================
 def lay_gio_vn():
-    """Tra ve chuoi gio VN hien tai — tien cho module khac dung."""
+    """Trả về chuỗi giờ VN hiện tại."""
     return _dinh_dang_gio(_lay_thoi_gian_vn())
 
 
 def lay_ngay_vn():
-    """Tra ve chuoi ngay VN hien tai."""
+    """Trả về chuỗi ngày VN hiện tại."""
     return _dinh_dang_ngay(_lay_thoi_gian_vn())
 
 
 def lay_day_du_vn():
-    """Tra ve chuoi day du (gio + ngay) VN."""
+    """Trả về chuỗi đầy đủ (giờ + ngày) VN."""
     return _dinh_dang_day_du(_lay_thoi_gian_vn())

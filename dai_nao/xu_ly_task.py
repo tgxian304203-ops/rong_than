@@ -7,18 +7,19 @@ Nhiệm vụ:
     - Gọi Tiểu não khi bí, gọi Tra web khi cần, gọi Sandbox khi chạy code.
     - Cập nhật cây quyết định sau mỗi task.
 
-ĐÃ SỬA (Nhóm 1 + Nhóm 2):
+ĐÃ SỬA:
     L1: Bước 3 chỉ hỏi lại khi THỰC SỰ mơ hồ.
     L2a: _thuc_thi_nhanh chuyển Nut → dict.
     L18: Không chạy sandbox backend.
     L24: _goi_tra_web không slice dict.
-    L34: Thêm _ghi_that_bai_vao_cay (cho route /api/sandbox/ket-qua).
+    L34: _ghi_that_bai_vao_cay (cho route /api/sandbox/ket-qua).
     L35: Gọi tu_dong_chia_se sau khi sinh node mới.
     L36: Gọi tim_va_muon trước khi gọi Tiểu não.
     L38: Gọi cap_nhat_uu_tien sau khi node thay đổi.
-    L39: Gọi lay_ngu_canh ở BƯỚC 1 (đầu vào).
+    L39: Gọi lay_ngu_canh ở BƯỚC 0.5 (đầu vào).
     L42: Gọi tao_code thay vì lấy code thô.
     L43: Gọi phan_biet_code để nhận diện ngôn ngữ.
+    LỖI A: Truyền chu_so_huu vào xu_ly_cau_hoi_thoi_gian.
 """
 
 import time
@@ -169,9 +170,7 @@ def _tong_hop_don_gian(danh_sach):
 # HÀM PHỤ: MƯỢN NHÁNH (L36)
 # ----------------------------------------------------------------
 def _thu_muon_nhanh(noi_dung, loai_task, yeu_to, ngu_canh):
-    """
-    Thử mượn nhánh gần giống. Trả về node mới hoặc None.
-    """
+    """Thử mượn nhánh gần giống. Trả về node mới hoặc None."""
     try:
         from dai_nao.muon_nhanh import tim_va_muon
         node_moi, node_goc = tim_va_muon(noi_dung, loai_task, yeu_to)
@@ -297,12 +296,12 @@ def xu_ly_task(du_lieu):
     chu_so_huu = du_lieu.get("chu_so_huu", "khach")
 
     # ============================================================
-    # BƯỚC 0: CÂU HỎI THỜI GIAN
+    # BƯỚC 0: CÂU HỎI THỜI GIAN (LỖI A — truyền chu_so_huu)
     # ============================================================
     if noi_dung:
         try:
             from dai_nao.thoi_gian import xu_ly_cau_hoi_thoi_gian
-            ket_qua_tg = xu_ly_cau_hoi_thoi_gian(noi_dung)
+            ket_qua_tg = xu_ly_cau_hoi_thoi_gian(noi_dung, chu_so_huu)
             if ket_qua_tg and ket_qua_tg.get("tra_loi"):
                 return ket_qua_tg
         except ImportError:
@@ -311,7 +310,7 @@ def xu_ly_task(du_lieu):
             _ghi_log("loi", f"Xử lý thời gian lỗi: {e}")
 
     # ============================================================
-    # BƯỚC 0.5: LẤY NGỮ CẢNH (L39 — gọi ở đầu vào)
+    # BƯỚC 0.5: LẤY NGỮ CẢNH (L39)
     # ============================================================
     ngu_canh = _lay_ngu_canh(du_lieu)
 
@@ -354,7 +353,7 @@ def xu_ly_task(du_lieu):
         return _hoi_lai("Task chưa đủ rõ để thực hiện.", cau_hoi)
 
     # ============================================================
-    # BƯỚC 4: PHÂN LOẠI TASK (truyền ngữ cảnh)
+    # BƯỚC 4: PHÂN LOẠI TASK
     # ============================================================
     try:
         from dai_nao.phan_loai import phan_loai
@@ -422,7 +421,6 @@ def xu_ly_task(du_lieu):
     node_muon = _thu_muon_nhanh(noi_dung_chuan, loai_task, yeu_to, ngu_canh)
     if node_muon:
         _ghi_log("dai-nao", "Đã mượn nhánh gần giống — không cần gọi Tiểu não.")
-        # Lưu node mượn vào cây
         try:
             from dai_nao.ghi_nho import luu_node
             node_dict = _node_sang_dict(node_muon)
@@ -431,7 +429,6 @@ def xu_ly_task(du_lieu):
         except Exception as e:
             _ghi_log("loi", f"Lưu node mượn lỗi: {e}")
 
-        # Chia sẻ nhánh
         _thu_chia_se_nhanh(node_muon)
 
         return _thuc_thi_nhanh(
@@ -456,7 +453,6 @@ def xu_ly_task(du_lieu):
                        "Bạn có thể nói cụ thể hơn không?",
         }
 
-    # Lưu node mới vào cây
     try:
         from dai_nao.ghi_nho import luu_node
         node_dict = _node_sang_dict(node_moi)
@@ -465,10 +461,7 @@ def xu_ly_task(du_lieu):
     except Exception as e:
         _ghi_log("loi", f"Lưu node mới lỗi: {e}")
 
-    # Chia sẻ nhánh tự động (L35)
     _thu_chia_se_nhanh(node_moi)
-
-    # Cập nhật ưu tiên (L38)
     _cap_nhat_uu_tien_node(node_moi)
 
     return _thuc_thi_nhanh(
@@ -515,14 +508,12 @@ def _thuc_thi_nhanh(nhanh, noi_dung, yeu_to, loai_task, chu_so_huu,
     ngon_ngu = hanh_dong.get("ngon_ngu") or nhanh_dict.get("ngon_ngu") or ""
 
     if code_mau:
-        # L42: Tạo code (thay placeholder nếu có)
         code_final, ngon_ngu_final = _tao_code_tu_node(nhanh_dict, yeu_to, noi_dung)
 
         if not code_final:
             code_final = code_mau
             ngon_ngu_final = ngon_ngu or "python"
 
-        # L43: Phân biệt ngôn ngữ
         ngon_ngu_final = _phan_biet_ngon_ngu(code_final, ngon_ngu_final)
 
         _cap_nhat_node_sau_thanh_cong(nhanh_dict)
@@ -588,7 +579,6 @@ def _cap_nhat_node_sau_thanh_cong(nhanh_dict):
         node_hien_tai["thanh_cong"] = thanh_cong
         node_hien_tai["lan_dung_cuoi"] = int(time.time())
 
-        # Cập nhật uu_tien
         try:
             from dai_nao.uu_tien import tinh_uu_tien
             node_hien_tai["uu_tien"] = int(tinh_uu_tien(node_hien_tai) * 100)
@@ -604,15 +594,7 @@ def _cap_nhat_node_sau_thanh_cong(nhanh_dict):
 # HÀM CÔNG KHAI: GHI THẤT BẠI VÀO CÂY (L34)
 # ----------------------------------------------------------------
 def ghi_that_bai_vao_cay(id_node, noi_dung, ly_do=""):
-    """
-    Ghi 1 vết sai vào node. Được gọi từ route /api/sandbox/ket-qua.
-
-    id_node: id node đã dùng.
-    noi_dung: task gốc.
-    ly_do: mô tả lỗi.
-
-    Trả về: dict thống kê hoặc {} nếu lỗi.
-    """
+    """Ghi 1 vết sai vào node."""
     if not id_node or not noi_dung:
         return {}
 
@@ -631,7 +613,6 @@ def ghi_that_bai_vao_cay(id_node, noi_dung, ly_do=""):
         cap_nhat_blacklist(node)
         giam_score_neu_fail_nhieu(node)
 
-        # Cập nhật ưu tiên
         try:
             from dai_nao.uu_tien import tinh_uu_tien
             node["uu_tien"] = int(tinh_uu_tien(node) * 100)
@@ -649,12 +630,7 @@ def ghi_that_bai_vao_cay(id_node, noi_dung, ly_do=""):
 
 
 def ghi_thanh_cong_vao_cay(id_node, noi_dung=""):
-    """
-    Ghi 1 lần thành công vào node. Được gọi từ route /api/sandbox/ket-qua
-    khi client báo code chạy thành công.
-
-    Trả về: dict thống kê hoặc {} nếu lỗi.
-    """
+    """Ghi 1 lần thành công vào node."""
     if not id_node:
         return {}
 
@@ -672,7 +648,6 @@ def ghi_thanh_cong_vao_cay(id_node, noi_dung=""):
         node["thanh_cong"] = thanh_cong
         node["lan_dung_cuoi"] = int(time.time())
 
-        # Cập nhật ưu tiên
         try:
             from dai_nao.uu_tien import tinh_uu_tien
             node["uu_tien"] = int(tinh_uu_tien(node) * 100)
