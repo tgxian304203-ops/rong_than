@@ -6,14 +6,16 @@ Nhiệm vụ:
     - kiem_tra_key_serpjet(key): kiểm tra key.
     - lay_quota_serpjet(key): lấy quota từ API.
     - serpjet_san_sang(): kiểm tra module sẵn sàng.
-    - _chuan_hoa_ket_qua(du_lieu): chuẩn hóa kết quả.
+
+ĐÃ SỬA:
+    - L31: Thêm FALLBACK cho endpoint + header auth. Thử lần lượt
+      nhiều tổ hợp endpoint/header khi gặp 404/401/403.
 
 Quy tắc:
-    - Endpoint: https://api.serpjet.io/v1/search
-    - Auth: header X-API-KEY hoặc ?api_key=
     - Key format: sj_xxxxx
-    - Free tier: 1.000 lượt/tháng, reset ngày 1 [citation:1][citation:5].
-    - Hỗ trợ 10 loại: search, images, videos, news, shopping, maps, places, scholar, patents, autocomplete [citation:1].
+    - Free tier: 1.000 lượt/tháng, reset ngày 1.
+    - Hỗ trợ 10 loại: search, images, videos, news, shopping, maps,
+      places, scholar, patents, autocomplete.
 
 Trả về:
     {
@@ -42,11 +44,38 @@ def _ghi_log(loai, noi_dung):
 
 
 # ================================================================
-# HẰNG SỐ
+# HẰNG SỐ — FALLBACK ENDPOINT & AUTH (L31)
 # ================================================================
-URL_SERPJET = "https://api.serpjet.io/v1/search"
-URL_SERPJET_ACCOUNT = "https://api.serpjet.io/v1/account"
+# Danh sách endpoint khả dụng
+CAC_ENDPOINT_TIM_KIEM = [
+    "https://api.serpjet.io/v1/search",
+    "https://api.serpjet.io/search",
+    "https://serpjet.io/api/v1/search",
+]
+
+# Danh sách endpoint kiểm tra tài khoản
+CAC_ENDPOINT_TAI_KHOAN = [
+    "https://api.serpjet.io/v1/account",
+    "https://api.serpjet.io/account",
+    "https://serpjet.io/api/v1/account",
+]
+
+# Danh sách kiểu auth khả dụng
+CAC_KIEP_AUTH = ["x_api_key", "bearer"]
+
 TIMEOUT = 30
+
+
+# ================================================================
+# TẠO HEADER AUTH
+# ================================================================
+def _tao_header_auth(key, kieu_auth="x_api_key"):
+    """Tạo header Authorization theo kiểu."""
+    if kieu_auth == "x_api_key":
+        return {"X-API-KEY": key}
+    elif kieu_auth == "bearer":
+        return {"Authorization": f"Bearer {key}"}
+    return {}
 
 
 # ================================================================
@@ -54,16 +83,9 @@ TIMEOUT = 30
 # ================================================================
 def tim_kiem_serpjet(key, cau_hoi, so_ket_qua=5, loai="search", gl="vn", hl="vi"):
     """
-    Tìm kiếm qua SERPJET.
+    Tìm kiếm qua SERPJET (có fallback endpoint + auth).
 
-    key: API key (sj_xxx).
-    cau_hoi: từ khóa tìm kiếm.
-    so_ket_qua: số kết quả (1-100).
-    loai: search | images | videos | news | shopping | maps | places | scholar | patents | autocomplete.
-    gl: mã quốc gia (vn, us, de, jp...).
-    hl: ngôn ngữ (vi, en, zh-cn...).
-
-    Trả về: dict kết quả.
+    ĐÃ SỬA L31: Thử lần lượt nhiều tổ hợp (endpoint × auth) khi lỗi.
     """
     ket_qua = {
         "thanh_cong": False,
@@ -96,70 +118,78 @@ def tim_kiem_serpjet(key, cau_hoi, so_ket_qua=5, loai="search", gl="vn", hl="vi"
         "hl": hl,
         "num": so_ket_qua,
     }
-    headers = {
-        "X-API-KEY": key,
-    }
 
-    try:
-        r = requests.get(
-            URL_SERPJET,
-            params=params,
-            headers=headers,
-            timeout=TIMEOUT,
-        )
+    lich_su = []
 
-        # Xử lý lỗi
-        if r.status_code != 200:
+    # Thử lần lượt endpoint × auth
+    for url in CAC_ENDPOINT_TIM_KIEM:
+        for kieu_auth in CAC_KIEP_AUTH:
+            headers = _tao_header_auth(key, kieu_auth)
             try:
-                from tra_web.xu_ly_loi_api import phan_tich_loi
-                mo_ta, loai_loi = phan_tich_loi(r.status_code, r.text[:500], "SERPJET")
-                ket_qua["loi"] = mo_ta
-                ket_qua["loai_loi"] = loai_loi
-            except ImportError:
-                ket_qua["loi"] = f"SERPJET trả {r.status_code}."
-                ket_qua["loai_loi"] = "khac"
-            return ket_qua
+                r = requests.get(
+                    url,
+                    params=params,
+                    headers=headers,
+                    timeout=TIMEOUT,
+                )
 
-        # Parse JSON
-        du_lieu = r.json()
+                lich_su.append({
+                    "url": url,
+                    "auth": kieu_auth,
+                    "status": r.status_code,
+                })
 
-        # Chuẩn hóa kết quả
-        danh_sach = _trich_ket_qua(du_lieu, loai)
-        ket_qua["thanh_cong"] = True
-        ket_qua["ket_qua"] = _chuan_hoa_ket_qua(danh_sach)
+                if r.status_code == 200:
+                    du_lieu = r.json()
+                    danh_sach = _trich_ket_qua(du_lieu, loai)
+                    ket_qua["thanh_cong"] = True
+                    ket_qua["ket_qua"] = _chuan_hoa_ket_qua(danh_sach)
+                    ket_qua["url_dung"] = url
+                    ket_qua["auth_dung"] = kieu_auth
 
-        _ghi_log(
-            "tra-web",
-            f"SERPJET: {len(ket_qua['ket_qua'])} kết quả cho '{cau_hoi[:50]}'",
-        )
+                    _ghi_log(
+                        "tra-web",
+                        f"SERPJET OK ({url}, {kieu_auth}): "
+                        f"{len(ket_qua['ket_qua'])} kết quả",
+                    )
+                    return ket_qua
 
-        return ket_qua
+                # Lỗi auth/endpoint → thử tổ hợp khác
+                if r.status_code in (401, 403, 404):
+                    continue
 
-    except Exception as e:
-        try:
-            from tra_web.xu_ly_loi_api import xu_ly_exception
-            ket_qua_loi = xu_ly_exception(e, "SERPJET")
-            ket_qua["loi"] = ket_qua_loi.get("loi", str(e))
-            ket_qua["loai_loi"] = ket_qua_loi.get("loai_loi", "khac")
-        except ImportError:
-            ket_qua["loi"] = f"Lỗi SERPJET: {e}"
-            ket_qua["loai_loi"] = "khac"
-        return ket_qua
+                # Lỗi 429 → hết quota
+                if r.status_code == 429:
+                    ket_qua["loi"] = "Hết quota (429)."
+                    ket_qua["loai_loi"] = "het_quota"
+                    ket_qua["lich_su"] = lich_su
+                    return ket_qua
+
+                # Lỗi khác → thử tiếp
+                continue
+
+            except Exception as e:
+                lich_su.append({
+                    "url": url,
+                    "auth": kieu_auth,
+                    "loi": str(e)[:100],
+                })
+                continue
+
+    # Hết tất cả tổ hợp
+    ket_qua["loi"] = "Tất cả endpoint/auth SERPJET đều thất bại."
+    ket_qua["loai_loi"] = "khac"
+    ket_qua["lich_su"] = lich_su
+    return ket_qua
 
 
 # ================================================================
 # TRÍCH KẾT QUẢ TỪ JSON
 # ================================================================
 def _trich_ket_qua(du_lieu, loai):
-    """
-    Trích kết quả từ JSON của SERPJET.
-
-    Cấu trúc JSON trả về có thể có nhiều dạng tùy loại.
-    """
     if not du_lieu or not isinstance(du_lieu, dict):
         return []
 
-    # SERPJET trả về các mảng tùy loại: web, organic, results, shopping...
     danh_sach = (
         du_lieu.get("organic")
         or du_lieu.get("web")
@@ -167,6 +197,7 @@ def _trich_ket_qua(du_lieu, loai):
         or du_lieu.get("news")
         or du_lieu.get("shopping")
         or du_lieu.get("places")
+        or du_lieu.get("items")
         or []
     )
 
@@ -180,9 +211,6 @@ def _trich_ket_qua(du_lieu, loai):
 # CHUẨN HÓA KẾT QUẢ
 # ================================================================
 def _chuan_hoa_ket_qua(danh_sach):
-    """
-    Chuẩn hóa kết quả về format {tieu_de, mo_ta, url}.
-    """
     if not danh_sach:
         return []
 
@@ -191,25 +219,15 @@ def _chuan_hoa_ket_qua(danh_sach):
         if not isinstance(item, dict):
             continue
 
-        tieu_de = (
-            item.get("title")
-            or item.get("name")
-            or ""
-        )
+        tieu_de = item.get("title") or item.get("name") or ""
         mo_ta = (
             item.get("snippet")
             or item.get("description")
             or item.get("snippet_highlighted")
             or ""
         )
-        url = (
-            item.get("link")
-            or item.get("url")
-            or item.get("href")
-            or ""
-        )
+        url = item.get("link") or item.get("url") or item.get("href") or ""
 
-        # Nếu không có URL → bỏ qua
         if not url and not tieu_de:
             continue
 
@@ -226,31 +244,32 @@ def _chuan_hoa_ket_qua(danh_sach):
 # KIỂM TRA KEY
 # ================================================================
 def kiem_tra_key_serpjet(key):
-    """
-    Kiểm tra key SERPJET còn hiệu lực không.
-
-    Trả về: (True, "") hoặc (False, "lỗi").
-    """
+    """Kiểm tra key SERPJET (có fallback endpoint + auth)."""
     if not key:
         return False, "Thiếu key."
 
-    # Kiểm tra format key
     if not key.startswith("sj_"):
         return False, "Key không đúng format (phải bắt đầu bằng sj_)."
 
     try:
         import requests
-        r = requests.get(
-            URL_SERPJET_ACCOUNT,
-            headers={"X-API-KEY": key},
-            timeout=10,
-        )
+        for url in CAC_ENDPOINT_TAI_KHOAN:
+            for kieu_auth in CAC_KIEP_AUTH:
+                try:
+                    r = requests.get(
+                        url,
+                        headers=_tao_header_auth(key, kieu_auth),
+                        timeout=10,
+                    )
+                    if r.status_code == 200:
+                        return True, ""
+                    if r.status_code in (401, 403):
+                        return False, "Key sai hoặc hết hạn."
+                    # 404 → thử tổ hợp khác
+                except Exception:
+                    continue
 
-        if r.status_code == 200:
-            return True, ""
-        if r.status_code in (401, 403):
-            return False, "Key sai hoặc hết hạn."
-        return False, f"SERPJET trả {r.status_code}."
+        return False, "Không kiểm tra được key."
     except ImportError:
         return False, "Chưa cài requests."
     except Exception as e:
@@ -261,13 +280,7 @@ def kiem_tra_key_serpjet(key):
 # LẤY QUOTA
 # ================================================================
 def lay_quota_serpjet(key):
-    """
-    Lấy quota SERPJET.
-
-    SERPJET free tier: 1.000 lượt/tháng [citation:1][citation:5].
-
-    Trả về dict { phan_tram, con_lai, tong, loai_quota }.
-    """
+    """Lấy quota SERPJET (có fallback)."""
     ket_qua = {
         "phan_tram": 100,
         "con_lai": None,
@@ -280,79 +293,68 @@ def lay_quota_serpjet(key):
 
     try:
         import requests
-        r = requests.get(
-            URL_SERPJET_ACCOUNT,
-            headers={"X-API-KEY": key},
-            timeout=10,
-        )
-
-        if r.status_code != 200:
-            if r.status_code in (401, 403):
-                ket_qua["phan_tram"] = 0
-                ket_qua["loai_quota"] = "key_sai"
-            return ket_qua
-
-        du_lieu = r.json()
-        da_dung = du_lieu.get("used", 0) or 0
-        tong = du_lieu.get("quota", 1000) or 1000
-
-        con_lai = max(0, tong - da_dung)
-        phan_tram = int(con_lai / tong * 100) if tong > 0 else 100
-
-        return {
-            "phan_tram": phan_tram,
-            "con_lai": con_lai,
-            "tong": tong,
-            "loai_quota": "thang",
-        }
-
+        for url in CAC_ENDPOINT_TAI_KHOAN:
+            for kieu_auth in CAC_KIEP_AUTH:
+                try:
+                    r = requests.get(
+                        url,
+                        headers=_tao_header_auth(key, kieu_auth),
+                        timeout=10,
+                    )
+                    if r.status_code == 200:
+                        du_lieu = r.json()
+                        da_dung = du_lieu.get("used", 0) or 0
+                        tong = du_lieu.get("quota", 1000) or 1000
+                        con_lai = max(0, tong - da_dung)
+                        phan_tram = int(con_lai / tong * 100) if tong > 0 else 100
+                        return {
+                            "phan_tram": phan_tram,
+                            "con_lai": con_lai,
+                            "tong": tong,
+                            "loai_quota": "thang",
+                        }
+                    if r.status_code in (401, 403):
+                        ket_qua["phan_tram"] = 0
+                        ket_qua["loai_quota"] = "key_sai"
+                        return ket_qua
+                except Exception:
+                    continue
     except ImportError:
-        return ket_qua
+        pass
     except Exception:
-        return ket_qua
+        pass
+
+    return ket_qua
 
 
 # ================================================================
-# HÀM PHỤ: TÌM KIẾM NHANH
+# HÀM PHỤ
 # ================================================================
 def tim_kiem_nhanh(key, cau_hoi):
-    """Tìm kiếm nhanh với mặc định (search, vn, vi, 5 kết quả)."""
     return tim_kiem_serpjet(key, cau_hoi, so_ket_qua=5)
 
 
-# ================================================================
-# HÀM PHỤ: CÁC LOẠI TÌM KIẾM
-# ================================================================
 def tim_kiem_tin_tuc(key, cau_hoi, so_ket_qua=5):
-    """Tìm tin tức."""
     return tim_kiem_serpjet(key, cau_hoi, so_ket_qua, loai="news")
 
 
 def tim_kiem_hinh_anh(key, cau_hoi, so_ket_qua=5):
-    """Tìm hình ảnh."""
     return tim_kiem_serpjet(key, cau_hoi, so_ket_qua, loai="images")
 
 
 def tim_kiem_video(key, cau_hoi, so_ket_qua=5):
-    """Tìm video."""
     return tim_kiem_serpjet(key, cau_hoi, so_ket_qua, loai="videos")
 
 
 def tim_kiem_mua_sam(key, cau_hoi, so_ket_qua=5, gl="us"):
-    """Tìm shopping (có giá)."""
     return tim_kiem_serpjet(key, cau_hoi, so_ket_qua, loai="shopping", gl=gl, hl="en")
 
 
 def tim_kiem_hoc_thuat(key, cau_hoi, so_ket_qua=5):
-    """Tìm scholar."""
     return tim_kiem_serpjet(key, cau_hoi, so_ket_qua, loai="scholar")
 
 
-# ================================================================
-# HÀM PHỤ: KIỂM TRA SẴN SÀNG
-# ================================================================
 def serpjet_san_sang():
-    """Kiểm tra module SERPJET sẵn sàng."""
     try:
         import requests
         return True
@@ -360,25 +362,15 @@ def serpjet_san_sang():
         return False
 
 
-# ================================================================
-# HÀM PHỤ: TÓM TẮT
-# ================================================================
 def tom_tat(ket_qua):
-    """Tạo chuỗi tóm tắt kết quả SERPJET."""
     if not ket_qua:
         return ""
-
     if ket_qua.get("thanh_cong"):
         return f"✅ SERPJET: {len(ket_qua.get('ket_qua', []))} kết quả"
-
     return f"❌ SERPJET [{ket_qua.get('loai_loi', '')}]: {ket_qua.get('loi', '')[:100]}"
 
 
-# ================================================================
-# HÀM PHỤ: DANH SÁCH LOẠI TÌM KIẾM
-# ================================================================
 def danh_sach_loai_tim_kiem():
-    """Trả danh sách 10 loại tìm kiếm SERPJET hỗ trợ [citation:1]."""
     return [
         "search", "images", "videos", "news", "shopping",
         "maps", "places", "scholar", "patents", "autocomplete",

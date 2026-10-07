@@ -1,5 +1,11 @@
 """
 routes.py - Định nghĩa toàn bộ route API cho Rồng Thần.
+
+ĐÃ SỬA:
+    - L3: Route /api/logs và /api/logs/loc trả về object {thanh_cong, danh_sach}.
+    - L22: Route /api/sandbox/ket-qua nhận kết quả chạy code từ client.
+    - L34: Route /api/sandbox/ket-qua gọi ghi_that_bai_vao_cay khi có lỗi.
+    - L44: Route /api/sandbox/ket-qua gọi hoc_tu_loi_moi khi tự sửa thành công.
 """
 
 import os
@@ -75,7 +81,7 @@ def dang_ky_routes(app):
         return jsonify(ham(request.get_json(silent=True) or {}))
 
     # ============================================================
-    # TIN NHẮN CHAT NHANH (load lịch sử)
+    # TIN NHẮN CHAT NHANH
     # ============================================================
     @app.route("/api/tin-nhan-chat-nhanh", methods=["GET"])
     def api_tin_nhan_chat_nhanh():
@@ -122,7 +128,7 @@ def dang_ky_routes(app):
             return _chua_trien_khai("đại não xử lý")
 
         try:
-            ket_qua = ham_xu_ly({"noi_dung": noi_dung})
+            ket_qua = ham_xu_ly({"noi_dung": noi_dung, "chu_so_huu": ten_tk or "khach"})
             tra_loi = ""
             if isinstance(ket_qua, dict):
                 tra_loi = ket_qua.get("tra_loi") or ket_qua.get("ket_qua") or ""
@@ -257,14 +263,26 @@ def dang_ky_routes(app):
         return jsonify(ham())
 
     # ============================================================
-    # LOGS
+    # LOGS — L3
     # ============================================================
     @app.route("/api/logs", methods=["GET"])
     def api_logs():
         ham = _goi_an_toan("logs.doc_log", "doc_log")
         if ham is None:
             return _chua_trien_khai("đọc log")
-        return jsonify(ham())
+        try:
+            danh_sach = ham() or []
+        except Exception as e:
+            return jsonify({
+                "thanh_cong": False,
+                "loi": f"Lỗi đọc log: {e}",
+                "danh_sach": [],
+            })
+        return jsonify({
+            "thanh_cong": True,
+            "danh_sach": danh_sach,
+            "da_loc": False,
+        })
 
     @app.route("/api/logs/loc", methods=["GET"])
     def api_logs_loc():
@@ -272,14 +290,36 @@ def dang_ky_routes(app):
         ham = _goi_an_toan("logs.loc_log", "loc_log")
         if ham is None:
             return _chua_trien_khai("lọc log")
-        return jsonify(ham(loai))
+        try:
+            danh_sach = ham(loai) or []
+        except Exception as e:
+            return jsonify({
+                "thanh_cong": False,
+                "loi": f"Lỗi lọc log: {e}",
+                "danh_sach": [],
+            })
+        return jsonify({
+            "thanh_cong": True,
+            "danh_sach": danh_sach,
+            "da_loc": True,
+        })
 
     @app.route("/api/logs/xoa", methods=["POST"])
     def api_logs_xoa():
         ham = _goi_an_toan("logs.doc_log", "xoa_log")
         if ham is None:
             return _chua_trien_khai("xóa log")
-        return jsonify(ham())
+        try:
+            so_xoa = ham() or 0
+        except Exception as e:
+            return jsonify({
+                "thanh_cong": False,
+                "loi": f"Lỗi xóa log: {e}",
+            })
+        return jsonify({
+            "thanh_cong": True,
+            "so_xoa": so_xoa,
+        })
 
     # ============================================================
     # TÀI KHOẢN
@@ -368,19 +408,11 @@ def dang_ky_routes(app):
         duoi_file = (metadata.get("duoi_file") or "").lower()
 
         mime_map = {
-            "png": "image/png",
-            "jpg": "image/jpeg",
-            "jpeg": "image/jpeg",
-            "gif": "image/gif",
-            "webp": "image/webp",
-            "bmp": "image/bmp",
-            "svg": "image/svg+xml",
-            "pdf": "application/pdf",
-            "txt": "text/plain; charset=utf-8",
-            "md": "text/plain; charset=utf-8",
-            "json": "application/json",
-            "csv": "text/csv",
-            "log": "text/plain",
+            "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+            "gif": "image/gif", "webp": "image/webp", "bmp": "image/bmp",
+            "svg": "image/svg+xml", "pdf": "application/pdf",
+            "txt": "text/plain; charset=utf-8", "md": "text/plain; charset=utf-8",
+            "json": "application/json", "csv": "text/csv", "log": "text/plain",
         }
         mime = mime_map.get(duoi_file, "application/octet-stream")
 
@@ -456,7 +488,7 @@ def dang_ky_routes(app):
         return jsonify(ham(request.get_json(silent=True) or {}))
 
     # ============================================================
-    # SANDBOX
+    # SANDBOX — CHẠY CODE
     # ============================================================
     @app.route("/api/sandbox/chay", methods=["POST"])
     def api_sandbox_chay():
@@ -471,6 +503,201 @@ def dang_ky_routes(app):
         return jsonify(ham(du_lieu))
 
     # ============================================================
+    # SANDBOX — NHẬN KẾT QUẢ TỪ CLIENT (L22 + L34 + L44)
+    # ============================================================
+    @app.route("/api/sandbox/ket-qua", methods=["POST"])
+    def api_sandbox_ket_qua():
+        """
+        Nhận kết quả chạy code từ client (LiveCodes/Pyodide).
+
+        Body:
+            {
+                code: str,
+                stdout: str,
+                stderr: str,
+                ngon_ngu: "python" | "html" | "javascript",
+                id_chat: str?,
+                id_node: str?,        # id node đã dùng (nếu có)
+                la_lan_hai: bool?,    # nếu True → không tự sửa nữa
+            }
+
+        Backend:
+            1. Chuẩn hóa kết quả (tra_ket_qua).
+            2. Kiểm tra lỗi (kiem_tra_loi).
+            3. Nếu có lỗi → ghi failed_path (L34) → gọi tu_sua_loi.
+            4. Nếu tự sửa thành công → học lỗi mới (L44).
+            5. Nếu không lỗi → ghi thành công (L34).
+        """
+        du_lieu = request.get_json(silent=True) or {}
+        code = du_lieu.get("code") or ""
+        stdout = du_lieu.get("stdout") or ""
+        stderr = du_lieu.get("stderr") or ""
+        ngon_ngu = du_lieu.get("ngon_ngu") or "python"
+        id_chat = du_lieu.get("id_chat") or ""
+        id_node = du_lieu.get("id_node") or ""
+        la_lan_hai = bool(du_lieu.get("la_lan_hai", False))
+
+        if not code:
+            return jsonify({
+                "thanh_cong": False,
+                "loi": "Thiếu code.",
+            })
+
+        # 1. Chuẩn hóa kết quả
+        ket_qua_client = {
+            "console": [],
+            "error": stderr if stderr else None,
+        }
+        if stdout:
+            for dong in stdout.split("\n"):
+                if dong.strip():
+                    ket_qua_client["console"].append({
+                        "method": "log",
+                        "args": [dong],
+                    })
+        if stderr:
+            for dong in stderr.split("\n"):
+                if dong.strip():
+                    ket_qua_client["console"].append({
+                        "method": "error",
+                        "args": [dong],
+                    })
+
+        # 2. tra_ket_qua
+        ket_qua_chuan = {}
+        try:
+            from sanbox.tra_ket_qua import tra_ket_qua
+            ket_qua_chuan = tra_ket_qua(ket_qua_client) or {}
+        except ImportError:
+            ket_qua_chuan = {
+                "thanh_cong": not bool(stderr),
+                "stdout": stdout,
+                "stderr": stderr,
+                "result_html": "",
+                "tests": [],
+                "loi": "",
+            }
+        except Exception as e:
+            return jsonify({
+                "thanh_cong": False,
+                "loi": f"Lỗi chuẩn hóa kết quả: {e}",
+            })
+
+        # 3. kiem_tra_loi
+        ket_qua_loi = {}
+        try:
+            from sanbox.kiem_tra_loi import kiem_tra_loi
+            ket_qua_loi = kiem_tra_loi(ket_qua_client) or {}
+        except ImportError:
+            ket_qua_loi = {
+                "thanh_cong": not bool(stderr),
+                "co_loi": bool(stderr),
+                "loai_loi": "runtime" if stderr else "",
+                "thong_diep": stderr[:500] if stderr else "",
+                "dong": None,
+                "goi_y": [],
+            }
+        except Exception as e:
+            return jsonify({
+                "thanh_cong": False,
+                "loi": f"Lỗi kiểm tra lỗi: {e}",
+            })
+
+        # 4. Không có lỗi → ghi thành công vào cây (L34)
+        if not ket_qua_loi.get("co_loi"):
+            if id_node:
+                try:
+                    from dai_nao.xu_ly_task import ghi_thanh_cong_vao_cay
+                    ghi_thanh_cong_vao_cay(id_node, code)
+                except ImportError:
+                    pass
+                except Exception as e:
+                    print(f"Lỗi ghi thành công: {e}")
+
+            return jsonify({
+                "thanh_cong": True,
+                "co_loi": False,
+                "stdout": ket_qua_chuan.get("stdout", ""),
+                "result_html": ket_qua_chuan.get("result_html", ""),
+                "tests": ket_qua_chuan.get("tests", []),
+                "thong_bao": "Code chạy thành công.",
+            })
+
+        # 5. Có lỗi → ghi failed_path (L34)
+        thong_diep_loi = ket_qua_loi.get("thong_diep") or stderr
+        loai_loi = ket_qua_loi.get("loai_loi") or "runtime"
+
+        if id_node:
+            try:
+                from dai_nao.xu_ly_task import ghi_that_bai_vao_cay
+                ghi_that_bai_vao_cay(id_node, code, thong_diep_loi[:200])
+            except ImportError:
+                pass
+            except Exception as e:
+                print(f"Lỗi ghi thất bại: {e}")
+
+        # 6. Nếu là lần 2 → không tự sửa nữa (tránh vòng lặp)
+        if la_lan_hai:
+            return jsonify({
+                "thanh_cong": True,
+                "co_loi": True,
+                "loai_loi": loai_loi,
+                "thong_diep_loi": thong_diep_loi[:500],
+                "dong_loi": ket_qua_loi.get("dong"),
+                "goi_y": ket_qua_loi.get("goi_y", []),
+                "code_moi": code,
+                "da_sua": False,
+                "thong_bao": "Đã thử sửa nhưng vẫn còn lỗi.",
+            })
+
+        # 7. Gọi tu_sua_loi
+        code_moi = code
+        cach_sua = ""
+        nguon = ""
+        da_sua = False
+
+        try:
+            from dai_nao.tu_sua_loi import tu_sua_loi
+            ket_qua_sua = tu_sua_loi(code, thong_diep_loi, ngon_ngu)
+            if ket_qua_sua and ket_qua_sua.get("thanh_cong"):
+                code_moi = ket_qua_sua.get("code_moi", code)
+                cach_sua = ket_qua_sua.get("cach_sua", "")
+                nguon = ket_qua_sua.get("nguon", "")
+                da_sua = code_moi != code
+        except ImportError:
+            pass
+        except Exception as e:
+            return jsonify({
+                "thanh_cong": False,
+                "co_loi": True,
+                "loi": f"Lỗi tự sửa: {e}",
+                "thong_diep_loi": thong_diep_loi,
+            })
+
+        # 8. Nếu tự sửa thành công → học lỗi mới (L44)
+        if da_sua and loai_loi:
+            try:
+                from dai_nao.cap_nhat_tu_dien_loi import hoc_tu_loi_moi
+                hoc_tu_loi_moi(loai_loi, thong_diep_loi, cach_sua, code_moi)
+            except ImportError:
+                pass
+            except Exception as e:
+                print(f"Lỗi học lỗi mới: {e}")
+
+        return jsonify({
+            "thanh_cong": True,
+            "co_loi": True,
+            "loai_loi": loai_loi,
+            "thong_diep_loi": thong_diep_loi[:500],
+            "dong_loi": ket_qua_loi.get("dong"),
+            "goi_y": ket_qua_loi.get("goi_y", []),
+            "code_moi": code_moi,
+            "da_sua": da_sua,
+            "cach_sua": cach_sua,
+            "nguon": nguon,
+        })
+
+    # ============================================================
     # CÂY QUYẾT ĐỊNH
     # ============================================================
     @app.route("/api/cay", methods=["GET"])
@@ -479,27 +706,3 @@ def dang_ky_routes(app):
         if ham is None:
             return _chua_trien_khai("đọc cây quyết định")
         return jsonify(ham())
-
-    # ============================================================
-    # TEST URI (TẠM - XÓA SAU KHI DEBUG XONG)
-    # ============================================================
-    @app.route("/api/test-uri", methods=["GET"])
-    def api_test_uri():
-        uri1 = os.environ.get("URI_KHO_1", "")
-        uri2 = os.environ.get("URI_KHO_2", "")
-
-        def che(uri):
-            if not uri:
-                return "TRONG"
-            if "@" in uri:
-                truoc = uri.split("@")[0].replace("mongodb+srv://", "")
-                sau = uri.split("@")[1]
-                if ":" in truoc:
-                    user = truoc.split(":")[0]
-                    return {"user": user, "cluster": sau}
-            return uri[:60]
-
-        return jsonify({
-            "uri_1": che(uri1),
-            "uri_2": che(uri2),
-        })

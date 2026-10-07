@@ -5,14 +5,16 @@ Nhiệm vụ:
     - xu_ly_gui_tin_nhan(du_lieu): nhận tin nhắn từ client, chuyển
       cho Đại não xử lý, trả kết quả về client.
 
+ĐÃ SỬA:
+    - L2b: Không còn che giấu lỗi từ Đại não.
+    - Truyền chu_so_huu xuống nhan_task để tra web lấy đúng key.
+    - Trả về thêm code + ngon_ngu + sandbox (nếu Đại não sinh code).
+
 Quy tắc:
     - Đây là CẦU NỐI giữa giao diện và Đại não.
     - Đại não xử lý chính — file này KHÔNG chứa logic nghiệp vụ.
     - Lưu lịch sử chat vào kho 1 (collection lich_su_chat).
     - Nhận diện tài khoản đang đăng nhập hoặc chế độ khách.
-    - Nếu Đại não lỗi, trả lỗi rõ ràng cho client.
-    - Nhận cả trường "urls_anh"/"urls_file" (từ chat.js mới)
-      và "anh"/"file" (tương thích ngược).
 
 Tầng dữ liệu: dai_nao/ghi_nho.py
 Đại não: dai_nao/nhan_task.py
@@ -23,9 +25,6 @@ import secrets
 
 from flask import session as phien_flask
 
-# ----------------------------------------------------------------
-# IMPORT TẦNG DỮ LIỆU
-# ----------------------------------------------------------------
 from dai_nao.ghi_nho import (
     luu_tin_nhan_chat,
     lay_lich_su_chat,
@@ -74,20 +73,21 @@ def xu_ly_gui_tin_nhan(du_lieu):
 
     du_lieu: {
         noi_dung: str,
-        urls_anh: [str]?,       # từ chat.js mới
-        urls_file: [str]?,      # từ chat.js mới
-        anh: [str]?,            # tương thích ngược
-        file: [str]?,           # tương thích ngược
+        urls_anh: [str]?,
+        urls_file: [str]?,
+        anh: [str]?,
+        file: [str]?,
         id_chat: str?,
         id_du_an: str?,
     }
 
     Trả về: {
         thanh_cong: bool,
-        tra_loi: str,
+        tra_loi: str?,
         code: str?,
         ngon_ngu: str?,
-        id_tin_nhan: str,
+        sandbox: dict?,
+        id_tin_nhan: str?,
         loi: str?,
     }
     """
@@ -98,7 +98,6 @@ def xu_ly_gui_tin_nhan(du_lieu):
     danh_sach_anh = _lay_danh_sach(du_lieu, "urls_anh", "anh")
     danh_sach_file = _lay_danh_sach(du_lieu, "urls_file", "file")
 
-    # Nếu không có chữ, không có ảnh, không có file → lỗi
     if not noi_dung and not danh_sach_anh and not danh_sach_file:
         return {
             "thanh_cong": False,
@@ -148,6 +147,7 @@ def xu_ly_gui_tin_nhan(du_lieu):
     try:
         from dai_nao.nhan_task import nhan_task
     except ImportError:
+        _ghi_log("loi", "nhan_task.py chưa có hoặc import lỗi.")
         return {
             "thanh_cong": False,
             "loi": "Đại não chưa sẵn sàng (dai_nao/nhan_task.py chưa có).",
@@ -173,17 +173,39 @@ def xu_ly_gui_tin_nhan(du_lieu):
         }
 
     if not ket_qua or not isinstance(ket_qua, dict):
+        _ghi_log("loi", "Đại não không trả về kết quả hợp lệ.")
         return {
             "thanh_cong": False,
             "loi": "Đại não không trả về kết quả hợp lệ.",
         }
 
-    # ------------------------------------------------------------
-    # 5. Chuẩn bị câu trả lời
-    # ------------------------------------------------------------
+    # ============================================================
+    # 5. KIỂM TRA KẾT QUẢ ĐẠI NÃO (L2b)
+    # ============================================================
+    thanh_cong_dai_nao = bool(ket_qua.get("thanh_cong", False))
     tra_loi = ket_qua.get("tra_loi") or ""
     code = ket_qua.get("code")
     ngon_ngu = ket_qua.get("ngon_ngu")
+    sandbox = ket_qua.get("sandbox")
+    loi_dai_nao = ket_qua.get("loi") or ""
+
+    # --- Trường hợp 1: Đại não báo thất bại ---
+    if not thanh_cong_dai_nao:
+        _ghi_log("loi", f"Đại não thất bại: {loi_dai_nao or 'không rõ'}")
+        return {
+            "thanh_cong": False,
+            "loi": loi_dai_nao or "Đại não không xử lý được task này.",
+            "id_tin_nhan": id_tin_nhan,
+        }
+
+    # --- Trường hợp 2: Đại não thành công nhưng tra_loi rỗng và không có code ---
+    if not tra_loi and not code:
+        _ghi_log("loi", "Đại não thành công nhưng không có nội dung trả lời.")
+        return {
+            "thanh_cong": False,
+            "loi": "Đại não không tạo ra câu trả lời. Bạn thử lại giúp ta nhé.",
+            "id_tin_nhan": id_tin_nhan,
+        }
 
     # ------------------------------------------------------------
     # 6. Lưu tin nhắn trả lời của Rồng Thần
@@ -209,10 +231,17 @@ def xu_ly_gui_tin_nhan(du_lieu):
     # ------------------------------------------------------------
     # 7. Trả kết quả về client
     # ------------------------------------------------------------
-    return {
+    ket_qua_tra = {
         "thanh_cong": True,
         "tra_loi": tra_loi,
-        "code": code,
-        "ngon_ngu": ngon_ngu,
         "id_tin_nhan": id_tin_nhan,
     }
+
+    if code:
+        ket_qua_tra["code"] = code
+    if ngon_ngu:
+        ket_qua_tra["ngon_ngu"] = ngon_ngu
+    if sandbox:
+        ket_qua_tra["sandbox"] = sandbox
+
+    return ket_qua_tra

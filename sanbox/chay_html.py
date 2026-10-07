@@ -3,18 +3,21 @@ chay_html.py - Chạy code HTML qua Sandbox Rồng Thần.
 
 Nhiệm vụ:
     - chay_html(du_lieu): điều phối chạy code HTML/CSS/JS qua LiveCodes.
-    - _chuan_bi_du_lieu(code, timeout): chuẩn bị dữ liệu cho client.
-    - _tao_huong_dan_client(code, timeout): tạo hướng dẫn JS cho client.
-    - _tach_code_html(code): tách HTML/CSS/JS từ code tổng hợp.
-    - _tao_html_mau(code): tạo HTML mẫu nếu thiếu.
+    - tao_html_sandbox(code, timeout): tạo HTML hoàn chỉnh để client chạy.
+    - _tao_js_khoi_tao(container_id, config, timeout): JS khởi tạo playground.
+    - _tao_js_gui_ket_qua(): JS gửi kết quả về backend.
+    - _tach_code_html(code): tách HTML/CSS/JS.
+
+ĐÃ SỬA:
+    - L20: Sửa API LiveCodes — dùng ES module import thay vì window.livecodes.
+    - Đổi version LiveCodes sang 0.14.1 (ổn định).
+    - Tích hợp JS gửi kết quả về /api/sandbox/ket-qua.
 
 Quy tắc:
     - Sandbox chạy CLIENT-SIDE bằng LiveCodes SDK.
     - Backend KHÔNG chạy code HTML thật.
-    - LiveCodes chạy trong trình duyệt, hỗ trợ 90+ ngôn ngữ.
-    - Code HTML/CSS/JS được tách riêng cho từng editor.
-    - Kết quả hiển thị trong iframe cách ly.
-    - Timeout mặc định 10 giây.
+    - Client chạy code → gửi stdout/stderr về backend.
+    - Backend nhận → tự sửa nếu lỗi → gửi code mới.
 
 Trả về:
     {
@@ -24,14 +27,14 @@ Trả về:
         ngon_ngu: "html",
         timeout: int,
         huong_dan_client: dict,
+        html_sandbox: str,
         loi: str,
     }
-
-Tầng dữ liệu: Không.
 """
 
 import re
 import time
+import json
 
 
 # ================================================================
@@ -57,24 +60,17 @@ LIVECODES_VERSION = "0.14.1"
 # KIỂM TRA CODE
 # ================================================================
 def _kiem_tra_code_rong(code):
-    """Kiểm tra code rỗng hoặc chỉ có comment/khoảng trắng."""
     if not code or not code.strip():
         return True
-
-    # Bỏ comment HTML
     code_clean = re.sub(r"<!--[\s\S]*?-->", "", code)
-    # Bỏ comment CSS/JS
     code_clean = re.sub(r"/\*[\s\S]*?\*/", "", code_clean)
     code_clean = re.sub(r"//[^\n]*", "", code_clean)
-
     return not code_clean.strip()
 
 
 def _uoc_luong_thoi_gian(code):
-    """Ước lượng thời gian chạy dựa trên code."""
     if not code:
         return 1
-
     so_dong = len(code.split("\n"))
     co_js = "<script" in code.lower() or "function" in code.lower()
     co_vong_lap = bool(re.search(r"\b(for|while)\b", code))
@@ -93,43 +89,33 @@ def _uoc_luong_thoi_gian(code):
 
 
 # ================================================================
-# TÁCH CODE HTML/CSS/JS
+# TÁCH CODE HTML
 # ================================================================
 def _tach_code_html(code):
-    """
-    Tách code HTML thành 3 phần: HTML, CSS, JS.
-
-    Trả về: dict { markup, style, script }.
-    """
-    ket_qua = {
-        "markup": "",
-        "style": "",
-        "script": "",
-    }
+    """Tách code HTML thành markup, style, script."""
+    ket_qua = {"markup": "", "style": "", "script": ""}
 
     if not code:
         return ket_qua
 
-    # 1. Tách <style>...</style>
+    # Tách <style>
     khop_style = re.findall(r"<style[^>]*>([\s\S]*?)</style>", code, re.I)
     if khop_style:
         ket_qua["style"] = "\n".join(khop_style).strip()
 
-    # 2. Tách <script>...</script>
+    # Tách <script>
     khop_script = re.findall(r"<script[^>]*>([\s\S]*?)</script>", code, re.I)
     if khop_script:
         ket_qua["script"] = "\n".join(khop_script).strip()
 
-    # 3. Phần HTML còn lại (bỏ style + script)
+    # HTML còn lại
     html_con_lai = re.sub(r"<style[^>]*>[\s\S]*?</style>", "", code, flags=re.I)
     html_con_lai = re.sub(r"<script[^>]*>[\s\S]*?</script>", "", html_con_lai, flags=re.I)
     html_con_lai = html_con_lai.strip()
 
-    # 4. Nếu HTML còn lại có <html>, <body>, <div>... → giữ
     if html_con_lai:
         ket_qua["markup"] = html_con_lai
     else:
-        # Không có HTML → tạo HTML mẫu
         ket_qua["markup"] = _tao_html_mau(code)
 
     return ket_qua
@@ -137,32 +123,143 @@ def _tach_code_html(code):
 
 def _tao_html_mau(code):
     """Tạo HTML mẫu nếu user chỉ cung cấp CSS hoặc JS."""
-    # Nếu chỉ có CSS
     if not re.search(r"<[a-zA-Z]", code) and "{" in code:
-        return "<div class=\"container\">Hello World</div>"
+        return '<div class="container">Hello World</div>'
 
-    # Nếu chỉ có JS
     if re.search(r"\b(console\.log|function|const|let|var)\b", code):
-        return "<div id=\"app\">Hello World</div>"
+        return '<div id="app">Hello World</div>'
 
-    # Mặc định
     return "<h1>Hello Rồng Thần 🐉</h1>"
 
 
 # ================================================================
-# TẠO HƯỚNG DẪN CHO CLIENT
+# TẠO JS GỬI KẾT QUẢ VỀ BACKEND
 # ================================================================
-def _tao_huong_dan_client(code, timeout=TIMEOUT_MAC_DINH):
-    """
-    Tạo hướng dẫn JS cho client chạy code HTML qua LiveCodes SDK.
+def _tao_js_gui_ket_qua(container_id):
+    """Tạo JS gửi kết quả chạy về backend."""
+    return f"""// Gửi kết quả về backend để tự sửa nếu lỗi
+async function guiKetQuaVeBackend_{container_id}(code, stdout, stderr) {{
+    try {{
+        const phanHoi = await fetch('/api/sandbox/ket-qua', {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{
+                code: code,
+                stdout: stdout || '',
+                stderr: stderr || '',
+                ngon_ngu: 'html',
+                id_chat: window.__ID_CHAT_NHANH_HIEN_TAI || '',
+            }}),
+        }});
+        const duLieu = await phanHoi.json();
 
-    Trả về dict hướng dẫn.
-    """
-    # Tách code
+        if (duLieu && duLieu.thanh_cong && duLieu.code_moi && duLieu.code_moi !== code) {{
+            console.log('Backend đã sửa code HTML, cần chạy lại.');
+            return duLieu.code_moi;
+        }}
+        return null;
+    }} catch (e) {{
+        console.error('Không gửi được kết quả về backend:', e);
+        return null;
+    }}
+}}"""
+
+
+# ================================================================
+# TẠO JS KHỞI TẠO PLAYGROUND
+# ================================================================
+def _tao_js_khoi_tao(container_id, config, timeout):
+    """Tạo JS khởi tạo LiveCodes playground đúng API."""
+    config_json = json.dumps(config, ensure_ascii=False)
+    timeout_ms = timeout * 1000
+
+    return f"""// Khởi tạo LiveCodes playground
+const container_{container_id} = document.getElementById('{container_id}');
+if (container_{container_id}) {{
+    (async () => {{
+        try {{
+            // Import ES module — đúng API LiveCodes
+            const {{ createPlayground }} = await import(
+                'https://cdn.jsdelivr.net/npm/livecodes@{LIVECODES_VERSION}/esm/index.js'
+            );
+
+            // Tạo playground
+            const playground = await createPlayground(container_{container_id}, {{
+                config: {config_json},
+                headless: false,
+                view: 'result',
+            }});
+
+            // Lưu toàn cục
+            window['__playground_{container_id}'] = playground;
+
+            // Bắt console
+            let stdout = '';
+            let stderr = '';
+            playground.watch('console', ({{ method, args }}) => {{
+                const dong = (args || []).map(a => String(a)).join(' ') + '\\n';
+                if (method === 'error' || method === 'warn') {{
+                    stderr += dong;
+                }} else {{
+                    stdout += dong;
+                }}
+
+                const out = document.getElementById('{container_id}-console');
+                if (out) {{
+                    out.textContent += `[${{method}}] ${{dong}}`;
+                }}
+            }});
+
+            // Chạy
+            await playground.run();
+
+            // Chờ 1s cho code chạy xong
+            await new Promise(r => setTimeout(r, 1000));
+
+            // Lấy kết quả
+            const codeObj = await playground.getCode();
+            const codeHienTai = codeObj.markup || '';
+
+            // Gửi kết quả về backend
+            await guiKetQuaVeBackend_{container_id}(codeHienTai, stdout, stderr);
+
+            // Timeout cảnh báo
+            setTimeout(() => {{
+                console.warn('Sandbox chạy quá {timeout}s.');
+            }}, {timeout_ms});
+
+        }} catch (err) {{
+            const container = document.getElementById('{container_id}');
+            if (container) {{
+                container.textContent = 'Lỗi khởi tạo sandbox: ' + err.message;
+            }}
+            console.error('LiveCodes lỗi:', err);
+        }}
+    }})();
+}}"""
+
+
+# ================================================================
+# TẠO HƯỚNG DẪN CLIENT
+# ================================================================
+def _tao_huong_dan_client(code, timeout=TIMEOUT_MAC_DINH, container_id=""):
+    """Tạo hướng dẫn JS cho client chạy HTML qua LiveCodes SDK."""
     phan = _tach_code_html(code)
 
-    # Tạo mã JS mẫu cho client
-    js_mau = _tao_js_mau(phan, timeout)
+    if not container_id:
+        import secrets
+        container_id = "sandbox_" + secrets.token_hex(6)
+
+    config = {}
+    if phan.get("markup"):
+        config["markup"] = {"language": "html", "content": phan["markup"]}
+    if phan.get("style"):
+        config["style"] = {"language": "css", "content": phan["style"]}
+    if phan.get("script"):
+        config["script"] = {"language": "javascript", "content": phan["script"]}
+
+    js_khoi_tao = _tao_js_khoi_tao(container_id, config, timeout)
+    js_gui_ket_qua = _tao_js_gui_ket_qua(container_id)
 
     return {
         "cach_chay": "livecodes",
@@ -170,96 +267,75 @@ def _tao_huong_dan_client(code, timeout=TIMEOUT_MAC_DINH):
         "code": code,
         "phan": phan,
         "timeout": timeout,
-        "js_mau": js_mau,
+        "container_id": container_id,
+        "js_khoi_tao": js_khoi_tao,
+        "js_gui_ket_qua": js_gui_ket_qua,
+        "js_mau": js_khoi_tao + "\n\n" + js_gui_ket_qua,
     }
 
 
-def _tao_js_mau(phan, timeout):
-    """Tạo mã JS mẫu để client chạy code qua LiveCodes SDK."""
-    import json
+# ================================================================
+# TẠO HTML SANDBOX HOÀN CHỈNH
+# ================================================================
+def tao_html_sandbox(code, timeout=TIMEOUT_MAC_DINH):
+    """Tạo HTML hoàn chỉnh để chạy code HTML/CSS/JS trong iframe."""
+    import secrets
+    container_id = "sandbox_" + secrets.token_hex(6)
 
-    markup = json.dumps(phan.get("markup", ""))
-    style = json.dumps(phan.get("style", ""))
-    script = json.dumps(phan.get("script", ""))
-    timeout_ms = timeout * 1000
+    huong_dan = _tao_huong_dan_client(code, timeout, container_id)
+    js_mau = huong_dan.get("js_mau", "")
 
-    js = f"""// Chạy code HTML/CSS/JS qua LiveCodes SDK
-async function chayHtml() {{
-    const container = document.getElementById('sandbox-output');
-    if (!container) return;
-
-    // Xóa playground cũ nếu có
-    if (window.__livecodes_playground) {{
-        try {{
-            await window.__livecodes_playground.destroy();
-        }} catch (e) {{}}
-        window.__livecodes_playground = null;
-    }}
-
-    // Tạo playground mới
-    const {{ createPlayground }} = window.livecodes || {{}};
-    if (!createPlayground) {{
-        container.textContent = 'Lỗi: LiveCodes chưa tải xong.';
-        return;
-    }}
-
-    try {{
-        const playground = await createPlayground(container, {{
-            config: {{
-                markup: {{ language: 'html', content: {markup} }},
-                style: {{ language: 'css', content: {style} }},
-                script: {{ language: 'javascript', content: {script} }},
-            }},
-            headless: false,
-            view: 'result',
-        }});
-
-        window.__livecodes_playground = playground;
-
-        // Chạy
-        await playground.run();
-
-        // Theo dõi console
-        playground.watch('console', (data) => {{
-            const out = document.getElementById('sandbox-console');
-            if (out) {{
-                out.textContent += `[${{data.method}}] ${{data.args.join(' ')}}\\n`;
-            }}
-        }});
-
-        // Timeout cảnh báo
-        setTimeout(() => {{
-            console.warn('Sandbox chạy quá {timeout}s.');
-        }}, {timeout_ms});
-    }} catch (err) {{
-        container.textContent = 'Lỗi: ' + err.message;
-    }}
-}}
-
-// Chờ LiveCodes tải xong
-if (window.livecodes) {{
-    chayHtml();
-}} else {{
-    window.addEventListener('load', chayHtml);
-}}"""
-
-    return js
+    return f"""<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sandbox HTML - Rồng Thần</title>
+    <style>
+        * {{ box-sizing: border-box; }}
+        html, body {{
+            margin: 0;
+            padding: 0;
+            background: #000;
+            color: #4ade80;
+            font-family: -apple-system, monospace;
+        }}
+        #{container_id} {{
+            width: 100%;
+            min-height: 400px;
+            background: #fff;
+            border-radius: 8px;
+            overflow: hidden;
+        }}
+        #{container_id}-console {{
+            background: #0a0a0a;
+            color: #facc15;
+            padding: 10px;
+            margin-top: 8px;
+            border-radius: 8px;
+            font-family: "SF Mono", Consolas, monospace;
+            font-size: 12px;
+            min-height: 40px;
+            white-space: pre-wrap;
+            border: 1px solid #222;
+        }}
+    </style>
+</head>
+<body>
+    <div id="{container_id}"></div>
+    <div id="{container_id}-console"></div>
+    <script type="module">
+        {js_mau}
+    </script>
+</body>
+</html>"""
 
 
 # ================================================================
 # HÀM CHÍNH
 # ================================================================
 def chay_html(du_lieu):
-    """
-    Điều phối chạy code HTML/CSS/JS qua Sandbox.
-
-    du_lieu: {
-        code: str,          # Code HTML/CSS/JS cần chạy
-        timeout: int?,      # Timeout (giây)
-    }
-
-    Trả về dict đầy đủ.
-    """
+    """Điều phối chạy code HTML/CSS/JS qua Sandbox."""
     ket_qua = {
         "thanh_cong": False,
         "che_do": "client_side",
@@ -267,6 +343,7 @@ def chay_html(du_lieu):
         "ngon_ngu": "html",
         "timeout": TIMEOUT_MAC_DINH,
         "huong_dan_client": {},
+        "html_sandbox": "",
         "loi": "",
     }
 
@@ -277,7 +354,6 @@ def chay_html(du_lieu):
     code = du_lieu.get("code") or ""
     timeout = du_lieu.get("timeout") or TIMEOUT_MAC_DINH
 
-    # Kiểm tra code
     if not code:
         ket_qua["loi"] = "Code rỗng."
         return ket_qua
@@ -290,19 +366,19 @@ def chay_html(du_lieu):
         ket_qua["loi"] = f"Code quá dài (>{DO_DAI_CODE_TOI_DA} ký tự)."
         return ket_qua
 
-    # Chuẩn hóa timeout
     try:
         timeout = max(1, min(30, int(timeout)))
     except (ValueError, TypeError):
         timeout = TIMEOUT_MAC_DINH
 
-    # Tạo hướng dẫn
     huong_dan = _tao_huong_dan_client(code, timeout)
+    html = tao_html_sandbox(code, timeout)
 
     ket_qua["thanh_cong"] = True
     ket_qua["code"] = code
     ket_qua["timeout"] = timeout
     ket_qua["huong_dan_client"] = huong_dan
+    ket_qua["html_sandbox"] = html
     ket_qua["thoi_gian_uoc_tinh"] = _uoc_luong_thoi_gian(code)
 
     _ghi_log(
@@ -314,89 +390,22 @@ def chay_html(du_lieu):
 
 
 # ================================================================
-# HÀM PHỤ: TẠO HTML SANDBOX HOÀN CHỈNH
-# ================================================================
-def tao_html_sandbox(code, timeout=TIMEOUT_MAC_DINH):
-    """
-    Tạo trang HTML hoàn chỉnh để chạy code trong iframe.
-    Dùng khi cần hiển thị sandbox độc lập.
-    """
-    huong_dan = _tao_huong_dan_client(code, timeout)
-    js_mau = huong_dan.get("js_mau", "")
-    phan = huong_dan.get("phan", {})
-
-    return f"""<!DOCTYPE html>
-<html lang="vi">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sandbox HTML - Rồng Thần</title>
-    <script src="https://cdn.jsdelivr.net/npm/livecodes@{LIVECODES_VERSION}"></script>
-    <style>
-        * {{ box-sizing: border-box; }}
-        body {{
-            background: #000;
-            color: #4ade80;
-            font-family: -apple-system, monospace;
-            margin: 0;
-            padding: 10px;
-        }}
-        #sandbox-output {{
-            background: #111;
-            border-radius: 8px;
-            min-height: 300px;
-            border: 1px solid #333;
-        }}
-        #sandbox-console {{
-            background: #0a0a0a;
-            padding: 10px;
-            border-radius: 8px;
-            margin-top: 10px;
-            font-family: monospace;
-            font-size: 12px;
-            color: #facc15;
-            min-height: 60px;
-            white-space: pre-wrap;
-            border: 1px solid #333;
-        }}
-    </style>
-</head>
-<body>
-    <div id="sandbox-output">Đang tải LiveCodes...</div>
-    <div id="sandbox-console"></div>
-    <script>
-        {js_mau}
-    </script>
-</body>
-</html>"""
-
-
-# ================================================================
-# HÀM PHỤ: KIỂM TRA CÚ PHÁP HTML CƠ BẢN
+# HÀM PHỤ: KIỂM TRA CÚ PHÁP HTML
 # ================================================================
 def kiem_tra_cu_phap_html(code):
-    """
-    Kiểm tra cú pháp HTML cơ bản (backend-side).
-    Chỉ kiểm tra cân bằng thẻ cơ bản.
-    """
+    """Kiểm tra cú pháp HTML cơ bản."""
     if not code:
         return False, "Code rỗng."
 
-    # Đếm thẻ mở/đóng cho các thẻ phổ biến
     the_can_kiem_tra = ["div", "span", "p", "a", "ul", "li", "table", "tr", "td"]
-
     for the in the_can_kiem_tra:
         so_mo = len(re.findall(rf"<{the}\b[^>]*>", code, re.I))
         so_dong = len(re.findall(rf"</{the}>", code, re.I))
         if so_mo != so_dong:
             return False, f"Thẻ <{the}> không cân bằng ({so_mo} mở, {so_dong} đóng)."
-
     return True, ""
 
 
-# ================================================================
-# HÀM PHỤ: KIỂM TRA SANDBOX SẴN SÀNG
-# ================================================================
 def sandbox_san_sang():
     """Kiểm tra sandbox sẵn sàng."""
     try:
@@ -406,30 +415,13 @@ def sandbox_san_sang():
         return False
 
 
-# ================================================================
-# HÀM PHỤ: TÓM TẮT
-# ================================================================
 def tom_tat(ket_qua):
-    """Tạo chuỗi tóm tắt kết quả."""
+    """Tạo chuỗi tóm tắt."""
     if not ket_qua:
         return ""
-
     if ket_qua.get("thanh_cong"):
         return (
             f"✅ Sandbox HTML sẵn sàng: {len(ket_qua.get('code', ''))} ký tự, "
             f"timeout={ket_qua.get('timeout')}s"
         )
-
     return f"❌ Sandbox HTML lỗi: {ket_qua.get('loi', '')}"
-
-
-# ================================================================
-# HÀM PHỤ: DANH SÁCH TEMPLATE
-# ================================================================
-def danh_sach_template():
-    """Trả danh sách template LiveCodes hỗ trợ."""
-    return [
-        "blank", "html", "react", "vue", "svelte", "solid",
-        "typescript", "python", "go", "ruby", "php", "cpp",
-        "markdown", "mdx", "astro", "tailwind",
-    ]

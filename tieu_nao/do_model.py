@@ -2,31 +2,35 @@
 do_model.py - Bước 2 Tiểu não: Dò model, xoay quota Rồng Thần.
 
 Nhiệm vụ:
-    - do_model(chu_so_huu, task, ngu_canh): dò model theo thứ tự gọi.
-    - _goi_model(key_info, prompt): gọi 1 model cụ thể.
+    - do_model(chu_so_huu, prompt): dò model theo thứ tự gọi.
+    - _goi_model(key_info, prompt, model): gọi 1 model cụ thể.
     - _xu_ly_loi(key_info, ket_qua): xử lý lỗi (hết quota, model lỗi).
-    - _chuyen_key_tiep(danh_sach_key, vi_tri): chuyển sang key tiếp theo.
+    - _chuyen_key_tiep(danh_sach_key, vi_tri): chuyển sang key tiếp.
 
-Quy tắc (theo Phần 4, bước 2):
-    - Gọi lần lượt theo thứ tự: Groq#1 → Groq#2 → OpenRouter#1 → Gemini#1.
-    - Key nào hết quota → nhảy key tiếp theo.
-    - Hết tất cả → quay lại key #1 nếu hồi quota.
-    - Model lỗi 3 lần → blacklist model.
+ĐÃ SỬA:
+    - L7: Thêm timeout tổng (25 giây). Nếu vượt → dừng, trả lỗi.
+    - L14: Check blacklist trước khi gọi model. Set blacklist đúng
+      qua quan_ly_loi.ghi_loi_model.
+
+Quy tắc:
+    - Gọi lần lượt: Groq#1 → Groq#2 → OpenRouter#1 → Gemini#1.
+    - Key nào hết quota → nhảy key tiếp.
+    - Model nào bị blacklist → bỏ qua.
+    - Model lỗi 3 lần → blacklist.
     - Không gọi cùng lúc — gọi tuần tự.
 
 Trả về:
     {
         thanh_cong: bool,
-        ket_qua: str,          # Nội dung model trả về
+        ket_qua: str,
         provider: str,
         key_id: str,
         model: str,
         so_lan_thu: int,
-        lich_su: list,         # [{key_id, model, thanh_cong, loi}]
+        lich_su: list,
         loi: str?,
+        het_thoi_gian: bool?,
     }
-
-Tầng dữ liệu: dai_nao/ghi_nho.py
 """
 
 import time
@@ -48,23 +52,47 @@ def _ghi_log(loai, noi_dung):
 # ================================================================
 SO_LAN_THU_TOI_DA = 3      # mỗi model thử tối đa 3 lần
 SO_LAN_BLACKLIST = 3       # lỗi 3 lần → blacklist
-TIMEOUT_GOI = 30           # giây
+TIMEOUT_GOI = 30           # giây — timeout mỗi lần gọi API
+TIMEOUT_TONG = 25          # giây — timeout tổng toàn bộ do_model (L7)
+
+
+# ================================================================
+# KIỂM TRA BLACKLIST (L14)
+# ================================================================
+def _bi_blacklist(provider, model):
+    """Kiểm tra model có bị blacklist không."""
+    if not provider or not model:
+        return False
+    try:
+        from tieu_nao.quan_ly_loi import kiem_tra_blacklist
+        return bool(kiem_tra_blacklist(provider, model))
+    except ImportError:
+        return False
+    except Exception:
+        return False
+
+
+# ================================================================
+# GHI LỖI MODEL (L14)
+# ================================================================
+def _ghi_loi(provider, model, loi, loai_loi="khac"):
+    """Ghi lỗi vào từ điển blacklist qua quan_ly_loi."""
+    if not provider or not model:
+        return
+    try:
+        from tieu_nao.quan_ly_loi import ghi_loi_model
+        ghi_loi_model(provider, model, loi, loai_loi)
+    except ImportError:
+        pass
+    except Exception:
+        pass
 
 
 # ================================================================
 # GỌI MODEL QUA API
 # ================================================================
 def _goi_model(key_info, prompt, model=None):
-    """
-    Gọi 1 model cụ thể qua API tương ứng provider.
-
-    key_info: dict { id, key, provider, model_co_the_dung }.
-    prompt: câu hỏi / nội dung gửi model.
-    model: tên model cụ thể (nếu None → chọn model đầu tiên).
-
-    Trả về:
-        { thanh_cong, ket_qua, loi, loai_loi }
-    """
+    """Gọi 1 model cụ thể qua API tương ứng provider."""
     ket_qua = {"thanh_cong": False, "ket_qua": "", "loi": "", "loai_loi": ""}
 
     if not key_info or not prompt:
@@ -78,7 +106,6 @@ def _goi_model(key_info, prompt, model=None):
         ket_qua["loi"] = "Thiếu provider hoặc key."
         return ket_qua
 
-    # Chọn model
     if not model:
         ds_model = key_info.get("model_co_the_dung") or []
         if ds_model:
@@ -87,7 +114,6 @@ def _goi_model(key_info, prompt, model=None):
             ket_qua["loi"] = "Không có model khả dụng."
             return ket_qua
 
-    # Gọi API theo provider
     provider_chuan = provider.lower()
 
     if provider_chuan == "groq":
@@ -105,7 +131,6 @@ def _goi_model(key_info, prompt, model=None):
 # GỌI GROQ
 # ================================================================
 def _goi_groq(key, model, prompt):
-    """Gọi Groq API."""
     ket_qua = {"thanh_cong": False, "ket_qua": "", "loi": "", "loai_loi": ""}
 
     try:
@@ -134,7 +159,6 @@ def _goi_groq(key, model, prompt):
                 ket_qua["loi"] = "Groq trả về không đúng format."
             return ket_qua
 
-        # Xử lý lỗi
         if r.status_code == 429:
             ket_qua["loi"] = "Hết quota (429)."
             ket_qua["loai_loi"] = "het_quota"
@@ -163,7 +187,6 @@ def _goi_groq(key, model, prompt):
 # GỌI OPENROUTER
 # ================================================================
 def _goi_openrouter(key, model, prompt):
-    """Gọi OpenRouter API."""
     ket_qua = {"thanh_cong": False, "ket_qua": "", "loi": "", "loai_loi": ""}
 
     try:
@@ -224,7 +247,6 @@ def _goi_openrouter(key, model, prompt):
 # GỌI GEMINI
 # ================================================================
 def _goi_gemini(key, model, prompt):
-    """Gọi Gemini API."""
     ket_qua = {"thanh_cong": False, "ket_qua": "", "loi": "", "loai_loi": ""}
 
     try:
@@ -281,17 +303,18 @@ def _goi_gemini(key, model, prompt):
 # ================================================================
 # XỬ LÝ LỖI
 # ================================================================
-def _xu_ly_loi(key_info, ket_qua_loi):
+def _xu_ly_loi(key_info, ket_qua_loi, model=""):
     """
-    Xử lý lỗi: cập nhật quota, blacklist model nếu cần.
+    Xử lý lỗi: cập nhật quota, blacklist model.
 
-    Trả về: hành động tiếp theo: "chuyen_key" | "chuyen_model" | "bo_qua".
+    Trả về hành động: "chuyen_key" | "chuyen_model" | "thu_lai" | "bo_qua".
     """
     if not key_info or not ket_qua_loi:
         return "bo_qua"
 
     loai_loi = ket_qua_loi.get("loai_loi", "")
     key_id = key_info.get("id", "")
+    provider = key_info.get("provider", "")
 
     # Hết quota → chuyển key
     if loai_loi == "het_quota":
@@ -300,42 +323,32 @@ def _xu_ly_loi(key_info, ket_qua_loi):
             cap_nhat_quota_key(key_id, 0)
         except Exception:
             pass
-        _ghi_log("tieu-nao", f"Key {key_id} hết quota → chuyển key.")
+        _ghi_log("tieu-nao", f"Key {key_id[:8]} hết quota → chuyển key.")
         return "chuyen_key"
 
-    # Key sai → xóa key
+    # Key sai → chuyển key
     if loai_loi == "key_sai":
-        _ghi_log("tieu-nao", f"Key {key_id} sai → bỏ qua.")
+        _ghi_log("tieu-nao", f"Key {key_id[:8]} sai → bỏ qua.")
         return "chuyen_key"
 
-    # Model chết → blacklist model
+    # Model chết → blacklist + chuyển model
     if loai_loi == "model_chet":
-        _ghi_log("tieu-nao", f"Model {ket_qua_loi.get('model', '')} đã chết.")
+        _ghi_loi(provider, model, ket_qua_loi.get("loi", ""), "model_chet")
+        _ghi_log("tieu-nao", f"Model {model} chết → blacklist.")
         return "chuyen_model"
 
     # Lỗi khác → thử lại
     return "thu_lai"
 
 
-def _blacklist_model(provider, model):
-    """Blacklist 1 model lỗi 3 lần."""
-    try:
-        from dai_nao.ghi_nho import _ket_noi_kho_2
-        db = _ket_noi_kho_2()
-        db["model_blacklist"].update_one(
-            {"provider": provider, "model": model},
-            {
-                "$inc": {"so_lan_loi": 1},
-                "$set": {
-                    "provider": provider,
-                    "model": model,
-                    "thoi_gian_cuoi": int(time.time()),
-                },
-            },
-            upsert=True,
-        )
-    except Exception:
-        pass
+# ================================================================
+# BLACKLIST MODEL (qua quan_ly_loi — L14)
+# ================================================================
+def _blacklist_model(provider, model, loi="", loai_loi="khac"):
+    """Blacklist model qua quan_ly_loi (set blacklist đúng)."""
+    if not provider or not model:
+        return
+    _ghi_loi(provider, model, loi, loai_loi)
 
 
 # ================================================================
@@ -345,11 +358,17 @@ def do_model(chu_so_huu, prompt):
     """
     Bước 2: Dò model theo thứ tự gọi.
 
+    ĐÃ SỬA:
+        - L7: Timeout tổng 25 giây. Vượt → dừng.
+        - L14: Check blacklist trước khi gọi.
+
     chu_so_huu: tên đăng nhập.
     prompt: câu hỏi gửi model.
 
     Trả về dict đầy đủ.
     """
+    thoi_gian_bat_dau = time.time()
+
     ket_qua = {
         "thanh_cong": False,
         "ket_qua": "",
@@ -359,13 +378,14 @@ def do_model(chu_so_huu, prompt):
         "so_lan_thu": 0,
         "lich_su": [],
         "loi": "",
+        "het_thoi_gian": False,
     }
 
     if not chu_so_huu or not prompt:
         ket_qua["loi"] = "Thiếu tài khoản hoặc prompt."
         return ket_qua
 
-    # 1. Kiểm kê key → lấy thứ tự gọi
+    # 1. Kiểm kê key
     try:
         from tieu_nao.kiem_ke_key import kiem_ke_key
         kiem_ke = kiem_ke_key(chu_so_huu)
@@ -382,15 +402,51 @@ def do_model(chu_so_huu, prompt):
         ket_qua["loi"] = "Không có key nào để gọi."
         return ket_qua
 
-    # 2. Duyệt từng key theo thứ tự
+    # 2. Duyệt từng key
     for key_info in thu_tu_goi:
+        # L7: Kiểm tra timeout tổng
+        if time.time() - thoi_gian_bat_dau >= TIMEOUT_TONG:
+            ket_qua["loi"] = f"Hết thời gian tổng ({TIMEOUT_TONG}s)."
+            ket_qua["het_thoi_gian"] = True
+            _ghi_log("tieu-nao", f"Hết timeout tổng sau {TIMEOUT_TONG}s.")
+            break
+
         provider = key_info.get("provider", "")
         key_id = key_info.get("id", "")
         ds_model = key_info.get("model_co_the_dung") or []
 
+        # L14: Lọc model bị blacklist (đã làm ở kiem_ke_key, nhưng check lại)
+        ds_model_sach = []
+        for m in ds_model:
+            if _bi_blacklist(provider, m):
+                continue
+            ds_model_sach.append(m)
+
+        if not ds_model_sach:
+            _ghi_log(
+                "tieu-nao",
+                f"Key {key_id[:8]} ({provider}) không có model khả dụng "
+                f"(tất cả bị blacklist).",
+            )
+            continue
+
         # Thử từng model trong key này
-        for model in ds_model:
+        for model in ds_model_sach:
+            # L7: Kiểm tra timeout trước mỗi lần gọi
+            if time.time() - thoi_gian_bat_dau >= TIMEOUT_TONG:
+                ket_qua["loi"] = f"Hết thời gian tổng ({TIMEOUT_TONG}s)."
+                ket_qua["het_thoi_gian"] = True
+                break
+
+            hanh_dong = ""  # reset trước mỗi vòng
+
             for lan_thu in range(1, SO_LAN_THU_TOI_DA + 1):
+                # L7: Kiểm tra timeout trước mỗi lần gọi
+                if time.time() - thoi_gian_bat_dau >= TIMEOUT_TONG:
+                    ket_qua["loi"] = f"Hết thời gian tổng ({TIMEOUT_TONG}s)."
+                    ket_qua["het_thoi_gian"] = True
+                    break
+
                 ket_qua["so_lan_thu"] += 1
 
                 _ghi_log(
@@ -398,7 +454,6 @@ def do_model(chu_so_huu, prompt):
                     f"Gọi {provider} key={key_id[:8]} model={model} lần {lan_thu}",
                 )
 
-                # Gọi model
                 kq_goi = _goi_model(key_info, prompt, model)
 
                 lich_su_item = {
@@ -420,36 +475,43 @@ def do_model(chu_so_huu, prompt):
                         "key_id": key_id,
                         "model": model,
                     })
-                    _ghi_log(
-                        "tieu-nao",
-                        f"Thành công: {provider} / {model}",
-                    )
+                    _ghi_log("tieu-nao", f"Thành công: {provider} / {model}")
                     return ket_qua
 
                 # Xử lý lỗi
-                hanh_dong = _xu_ly_loi(key_info, kq_goi)
+                hanh_dong = _xu_ly_loi(key_info, kq_goi, model)
 
                 if hanh_dong == "chuyen_key":
-                    # Thoát khỏi vòng model + vòng lần thử, chuyển key tiếp
                     break
 
                 if hanh_dong == "chuyen_model":
-                    # Blacklist model + chuyển model tiếp
-                    _blacklist_model(provider, model)
+                    _blacklist_model(provider, model,
+                                     kq_goi.get("loi", ""),
+                                     kq_goi.get("loai_loi", "khac"))
                     break
 
                 # Lỗi khác → thử lại (vòng lặp tiếp tục)
 
-            else:
-                # Vòng lặp lần thử hết mà không break → thử model tiếp
-                continue
-            # Nếu break khỏi vòng lần thử → check xem có break khỏi vòng model không
+            # Kết thúc vòng lần thử
             if hanh_dong == "chuyen_key":
                 break
 
-    # 3. Hết tất cả key + model
-    ket_qua["loi"] = "Đã thử tất cả key và model nhưng không thành công."
-    _ghi_log("tieu-nao", "Dò model thất bại hoàn toàn.")
+            # Nếu hết thời gian tổng → thoát luôn
+            if ket_qua.get("het_thoi_gian"):
+                break
+
+        # Kết thúc vòng model
+        if hanh_dong == "chuyen_key":
+            continue
+
+        if ket_qua.get("het_thoi_gian"):
+            break
+
+    # 3. Hết tất cả
+    if not ket_qua["loi"]:
+        ket_qua["loi"] = "Đã thử tất cả key và model nhưng không thành công."
+
+    _ghi_log("tieu-nao", f"Dò model thất bại: {ket_qua['loi']}")
     return ket_qua
 
 
@@ -457,7 +519,6 @@ def do_model(chu_so_huu, prompt):
 # HÀM PHỤ: GỌI 1 KEY CỤ THỂ
 # ================================================================
 def goi_voi_key(chu_so_huu, key_id, prompt):
-    """Gọi 1 key cụ thể theo id."""
     try:
         from tieu_nao.kiem_ke_key import kiem_ke_key
         kiem_ke = kiem_ke_key(chu_so_huu)
@@ -478,7 +539,6 @@ def goi_voi_key(chu_so_huu, key_id, prompt):
 # HÀM PHỤ: GỌI 1 PROVIDER CỤ THỂ
 # ================================================================
 def goi_voi_provider(chu_so_huu, provider, prompt):
-    """Gọi 1 provider cụ thể (Groq/OpenRouter/Gemini)."""
     try:
         from tieu_nao.kiem_ke_key import kiem_ke_key
         kiem_ke = kiem_ke_key(chu_so_huu)
@@ -496,31 +556,23 @@ def goi_voi_provider(chu_so_huu, provider, prompt):
 
 
 # ================================================================
-# HÀM PHỤ: TÓM TẮT LỊCH SỬ DÒ
+# HÀM PHỤ: TÓM TẮT
 # ================================================================
 def tom_tat_lich_su(ket_qua):
-    """Tạo chuỗi tóm tắt lịch sử dò model."""
     if not ket_qua:
         return ""
-
     phan = []
     lich_su = ket_qua.get("lich_su", [])
-
     for item in lich_su[-10:]:
         ok = "✅" if item.get("thanh_cong") else "❌"
         phan.append(
             f"{ok} {item.get('provider')} / {item.get('model')} "
             f"(lần {item.get('lan_thu')})"
         )
-
     return "\n".join(phan)
 
 
-# ================================================================
-# HÀM PHỤ: ĐẾM SỐ LẦN THỬ
-# ================================================================
 def dem_so_lan_thu(ket_qua):
-    """Đếm số lần thử trong lịch sử."""
     if not ket_qua:
         return 0
     return ket_qua.get("so_lan_thu", 0)

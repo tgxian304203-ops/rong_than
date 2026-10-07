@@ -8,6 +8,9 @@ Nhiệm vụ:
     - luu_ngu_canh(ngu_canh, chu_so_huu): lưu vào kho 1.
     - doc_ngu_canh_cu(chu_so_huu): đọc ngữ cảnh đã lưu.
 
+ĐÃ SỬA:
+    - L40: _thoi_gian_10_khia_canh dùng giờ VN (UTC+7) thay vì giờ server.
+
 10 loại ngữ cảnh, mỗi loại 10 khía cạnh (tổng 100 khía cạnh).
 
 Tầng dữ liệu: dai_nao/ghi_nho.py
@@ -240,7 +243,6 @@ def _file_10_khia_canh(noi_dung):
     tat_ca_file = re.findall(mau_file, noi_dung)
     ket_qua["file_lien_quan"] = list(set([f[0] for f in tat_ca_file]))[:10]
 
-    # Phân tích chi tiết code nếu có
     if len(noi_dung) > 50:
         ket_qua["kich_thuoc"] = len(noi_dung)
         ket_qua["so_dong"] = len(noi_dung.split("\n"))
@@ -372,7 +374,6 @@ def _ngon_ngu_10_khia_canh(noi_dung):
 
     t = noi_dung.lower()
 
-    # Ngôn ngữ chính
     bang_ngon_ngu = {
         "python": "Python", "pandas": "Python", "numpy": "Python",
         "javascript": "JavaScript", "typescript": "TypeScript",
@@ -388,7 +389,6 @@ def _ngon_ngu_10_khia_canh(noi_dung):
             ket_qua["ngon_ngu_chinh"] = v
             break
 
-    # Framework
     bang_framework = {
         "react": "React", "vue": "Vue", "angular": "Angular",
         "django": "Django", "flask": "Flask", "fastapi": "FastAPI",
@@ -401,14 +401,12 @@ def _ngon_ngu_10_khia_canh(noi_dung):
             ket_qua["framework"] = v
             break
 
-    # Library
     bang_lib = {
         "requests": "requests", "pandas": "pandas", "numpy": "numpy",
         "axios": "axios", "jquery": "jquery", "lodash": "lodash",
     }
     ket_qua["library"] = [v for k, v in bang_lib.items() if k in t][:5]
 
-    # Package manager
     if "pip" in t or "pip install" in t:
         ket_qua["package_manager"] = "pip"
     elif "npm" in t:
@@ -418,7 +416,6 @@ def _ngon_ngu_10_khia_canh(noi_dung):
     elif "cargo" in t:
         ket_qua["package_manager"] = "cargo"
 
-    # Build system
     if "webpack" in t:
         ket_qua["build_system"] = "webpack"
     elif "vite" in t:
@@ -428,7 +425,6 @@ def _ngon_ngu_10_khia_canh(noi_dung):
     elif "maven" in t:
         ket_qua["build_system"] = "maven"
 
-    # Test framework
     if "pytest" in t:
         ket_qua["test_framework"] = "pytest"
     elif "unittest" in t:
@@ -436,7 +432,6 @@ def _ngon_ngu_10_khia_canh(noi_dung):
     elif "jest" in t:
         ket_qua["test_framework"] = "jest"
 
-    # Style code
     if re.search(r"\b[a-z]+_[a-z]+\b", noi_dung):
         ket_qua["style_code"] = "snake_case"
     elif re.search(r"\b[a-z]+[A-Z][a-z]+\b", noi_dung):
@@ -460,7 +455,6 @@ def _moi_truong_10_khia_canh(noi_dung):
 
     t = noi_dung.lower()
 
-    # Môi trường
     bang_mt = {
         "render": "Render", "heroku": "Heroku", "vercel": "Vercel",
         "netlify": "Netlify", "aws": "AWS", "gcp": "GCP",
@@ -474,7 +468,6 @@ def _moi_truong_10_khia_canh(noi_dung):
             ket_qua["moi_truong"] = v
             break
 
-    # OS
     if "windows" in t or "win" in t:
         ket_qua["os"] = "Windows"
     elif "linux" in t or "ubuntu" in t:
@@ -482,17 +475,14 @@ def _moi_truong_10_khia_canh(noi_dung):
     elif "macos" in t or "mac " in t:
         ket_qua["os"] = "macOS"
 
-    # Python version
     khop_py = re.search(r"python\s*(\d+\.\d+)", t)
     if khop_py:
         ket_qua["python_version"] = khop_py.group(1)
 
-    # Node version
     khop_node = re.search(r"node\s*(\d+)", t)
     if khop_node:
         ket_qua["node_version"] = khop_node.group(1)
 
-    # Database
     bang_db = {
         "mongodb": "MongoDB", "mysql": "MySQL",
         "postgresql": "PostgreSQL", "postgres": "PostgreSQL",
@@ -504,13 +494,11 @@ def _moi_truong_10_khia_canh(noi_dung):
             ket_qua["database"] = v
             break
 
-    # Cache
     if "redis" in t:
         ket_qua["cache"] = "Redis"
     elif "memcached" in t:
         ket_qua["cache"] = "Memcached"
 
-    # Storage
     if "s3" in t:
         ket_qua["storage"] = "S3"
     elif "gridfs" in t:
@@ -518,7 +506,6 @@ def _moi_truong_10_khia_canh(noi_dung):
     elif "disk" in t or "ổ đĩa" in t:
         ket_qua["storage"] = "Disk"
 
-    # Network
     if "http" in t:
         ket_qua["network"] = "HTTP"
     elif "https" in t:
@@ -526,13 +513,11 @@ def _moi_truong_10_khia_canh(noi_dung):
     elif "websocket" in t:
         ket_qua["network"] = "WebSocket"
 
-    # SSL
     if "ssl" in t or "https" in t:
         ket_qua["ssl"] = "Bật"
     elif "không ssl" in t:
         ket_qua["ssl"] = "Tắt"
 
-    # Region
     khop_region = re.search(r"\b(us|eu|ap|sg|vn)-[a-z]+\b", t)
     if khop_region:
         ket_qua["region"] = khop_region.group(0)
@@ -556,27 +541,22 @@ def _rang_buoc_10_khia_canh(noi_dung):
 
     t = noi_dung.lower()
 
-    # Số dòng tối đa
     khop = re.search(r"(?:tối đa|dưới|ít hơn)\s*(\d+)\s*dòng", t)
     if khop:
         ket_qua["so_dong_toi_da"] = khop.group(1)
 
-    # Số ký tự
     khop = re.search(r"(?:tối đa|dưới)\s*(\d+)\s*(?:ký tự|chữ|character)", t)
     if khop:
         ket_qua["so_ky_tu_toi_da"] = khop.group(1)
 
-    # Thời gian
     khop = re.search(r"(?:trong vòng|tối đa)\s*(\d+)\s*(giây|phút|giờ|ngày)", t)
     if khop:
         ket_qua["thoi_gian_toi_da"] = f"{khop.group(1)} {khop.group(2)}"
 
-    # Dung lượng
     khop = re.search(r"(?:tối đa|dưới)\s*(\d+)\s*(kb|mb|gb)", t)
     if khop:
         ket_qua["dung_luong_toi_da"] = f"{khop.group(1)} {khop.group(2).upper()}"
 
-    # Không dùng / Chỉ dùng / Bắt buộc / Tùy chọn
     mau_khong_dung = r"không\s+(?:dùng|sử dụng|cần)\s+([\w\s]+?)(?:[,.]|$)"
     for khop in re.finditer(mau_khong_dung, t):
         ket_qua["khong_dung"].append(khop.group(1).strip()[:50])
@@ -593,19 +573,16 @@ def _rang_buoc_10_khia_canh(noi_dung):
     for khop in re.finditer(mau_tuy_chon, t):
         ket_qua["tuy_chon"].append(khop.group(1).strip()[:50])
 
-    # Ngân sách
     khop = re.search(r"(?:ngân sách|chi phí|giá)\s*[:]?\s*(\d+[\w\s]+)", t)
     if khop:
         ket_qua["ngan_sach"] = khop.group(1).strip()[:50]
 
-    # License
     bang_license = ["mit", "apache", "gpl", "bsd", "creative commons"]
     for lic in bang_license:
         if lic in t:
             ket_qua["license"] = lic.upper()
             break
 
-    # Giới hạn list
     ket_qua["khong_dung"] = ket_qua["khong_dung"][:5]
     ket_qua["chi_dung"] = ket_qua["chi_dung"][:5]
     ket_qua["bat_buoc"] = ket_qua["bat_buoc"][:5]
@@ -615,11 +592,23 @@ def _rang_buoc_10_khia_canh(noi_dung):
 
 
 # ================================================================
-# 9. NGỮ CẢNH THỜI GIAN (10 khía cạnh)
+# 9. NGỮ CẢNH THỜI GIAN (10 khía cạnh) — SỬA L40: DÙNG GIỜ VN
 # ================================================================
 def _thoi_gian_10_khia_canh():
-    now = time.localtime()
-    gio = now.tm_hour
+    """
+    Lấy thông tin thời gian theo giờ Việt Nam (UTC+7).
+
+    SỬA L40: Dùng datetime với timezone VN thay vì time.localtime()
+    (giờ server Render thường là UTC).
+    """
+    from datetime import datetime, timedelta, timezone
+
+    mui_gio_vn = timezone(timedelta(hours=7))
+    now = datetime.now(mui_gio_vn)
+
+    gio = now.hour
+    thang = now.month
+    thu_index = now.weekday()  # 0 = Thứ 2, 6 = Chủ nhật
 
     if 5 <= gio < 12:
         buoi = "sáng"
@@ -631,7 +620,7 @@ def _thoi_gian_10_khia_canh():
         buoi = "đêm"
 
     thu_map = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"]
-    thang = now.tm_mon
+
     if 3 <= thang <= 5:
         mua = "xuân"
     elif 6 <= thang <= 8:
@@ -641,25 +630,29 @@ def _thoi_gian_10_khia_canh():
     else:
         mua = "đông"
 
-    # Ngày lễ VN đơn giản
+    # Ngày lễ VN
     ngay_le = ""
-    if now.tm_mon == 1 and now.tm_mday == 1:
+    if thang == 1 and now.day == 1:
         ngay_le = "Tết Dương lịch"
-    elif now.tm_mon == 4 and now.tm_mday == 30:
+    elif thang == 4 and now.day == 30:
         ngay_le = "30/4"
-    elif now.tm_mon == 5 and now.tm_mday == 1:
+    elif thang == 5 and now.day == 1:
         ngay_le = "1/5"
-    elif now.tm_mon == 9 and now.tm_mday == 2:
+    elif thang == 9 and now.day == 2:
         ngay_le = "Quốc khánh"
+    elif thang == 1 and 20 <= now.day <= 31:
+        ngay_le = "cận Tết"
+    elif thang == 2 and 1 <= now.day <= 15:
+        ngay_le = "Tết Nguyên Đán"
 
     return {
-        "thoi_gian": int(time.time()),
+        "thoi_gian": int(now.timestamp()),
         "gio": gio,
-        "phut": now.tm_min,
-        "ngay": now.tm_mday,
+        "phut": now.minute,
+        "ngay": now.day,
         "thang": thang,
-        "nam": now.tm_year,
-        "thu": thu_map[now.tm_wday],
+        "nam": now.year,
+        "thu": thu_map[thu_index],
         "buoi": buoi,
         "mua": mua,
         "ngay_le": ngay_le,
@@ -696,7 +689,6 @@ def _cam_xuc_10_khia_canh(noi_dung):
             diem[cam_xuc] = so_khop
             ket_qua["tu_khoa"].extend(tu_da_khop)
 
-    # Dấu hiệu
     if "!!!" in noi_dung or "??" in noi_dung:
         diem["bực"] = diem.get("bực", 0) + 1
         ket_qua["dau_hieu"].append("dấu !!! hoặc ??")
@@ -711,14 +703,12 @@ def _cam_xuc_10_khia_canh(noi_dung):
         ket_qua["cam_xuc_chinh"] = "trung_tinh"
         return ket_qua
 
-    # Sắp xếp cảm xúc
     sap_xep = sorted(diem.items(), key=lambda x: x[1], reverse=True)
     ket_qua["cam_xuc_chinh"] = sap_xep[0][0]
     ket_qua["cam_xuc_phu"] = [cx for cx, _ in sap_xep[1:3]]
     ket_qua["do_manh"] = min(1.0, sap_xep[0][1] / 3)
     ket_qua["do_tin_cay"] = ket_qua["do_manh"]
 
-    # Xu hướng
     if ket_qua["cam_xuc_chinh"] in ("vui",):
         ket_qua["xu_huong"] = "tích_cực"
     elif ket_qua["cam_xuc_chinh"] in ("buồn", "bực"):
@@ -726,7 +716,6 @@ def _cam_xuc_10_khia_canh(noi_dung):
     else:
         ket_qua["xu_huong"] = "trung_tinh"
 
-    # Ảnh hưởng tới trả lời
     anh_huong = {
         "vui": "Trả lời vui vẻ, thân thiện.",
         "buồn": "Trả lời nhẹ nhàng, động viên.",
@@ -736,7 +725,6 @@ def _cam_xuc_10_khia_canh(noi_dung):
     }
     ket_qua["anh_huong_tra_loi"] = anh_huong.get(ket_qua["cam_xuc_chinh"], "")
 
-    # Cách xưng hô
     if "anh" in t or "chị" in t:
         ket_qua["cach_xung_ho"] = "lịch_sự"
     elif "mày" in t or "tao" in t or "tui" in t:
@@ -744,7 +732,6 @@ def _cam_xuc_10_khia_canh(noi_dung):
     elif "bạn" in t or "mình" in t:
         ket_qua["cach_xung_ho"] = "thân_thiện"
 
-    # Mức độ khẩn cấp
     if ket_qua["cam_xuc_chinh"] == "gấp" or "!!!" in noi_dung:
         ket_qua["muc_do_khan_cap"] = "cao"
     elif "gấp" in t or "nhanh" in t:
@@ -757,10 +744,6 @@ def _cam_xuc_10_khia_canh(noi_dung):
 # HỌC NGỮ CẢNH TỪ LỊCH SỬ
 # ================================================================
 def hoc_ngu_canh(du_lieu):
-    """
-    Học ngữ cảnh từ lịch sử + dữ liệu hiện tại.
-    Phân tích sâu hơn bằng cách so sánh nhiều nguồn.
-    """
     if not du_lieu:
         return {}
 
@@ -776,7 +759,6 @@ def hoc_ngu_canh(du_lieu):
         "chu_de_dang_lam": "",
     }
 
-    # Phân tích 20 tin gần nhất
     for tin in lich_su[-20:]:
         if not isinstance(tin, dict):
             continue
@@ -784,7 +766,6 @@ def hoc_ngu_canh(du_lieu):
         if not nd:
             continue
 
-        # Học lĩnh vực
         try:
             from dai_nao.phan_loai import phan_loai
             ket_qua = phan_loai(nd, {})
@@ -795,22 +776,18 @@ def hoc_ngu_canh(du_lieu):
         except ImportError:
             pass
 
-        # Học cảm xúc gần đây
         cx = _cam_xuc_10_khia_canh(nd)
         if cx["cam_xuc_chinh"] != "trung_tinh":
             hoc["cam_xuc_gan_day"].append(cx["cam_xuc_chinh"])
 
-        # Học từ khóa
         for tu in re.findall(r"\b[a-zA-Zàáảãạăằắẳẵặâầấẩẫậđèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵ]{4,}\b", nd.lower()):
             hoc["tu_khoa_thuong_gap"][tu] = hoc["tu_khoa_thuong_gap"].get(tu, 0) + 1
 
-    # Sắp xếp
     hoc["tu_khoa_thuong_gap"] = dict(sorted(
         hoc["tu_khoa_thuong_gap"].items(),
         key=lambda x: x[1], reverse=True,
     )[:20])
 
-    # Chủ đề đang làm
     if lich_su and isinstance(lich_su[-1], dict):
         hoc["chu_de_dang_lam"] = (lich_su[-1].get("noi_dung") or "")[:100]
 
@@ -821,17 +798,11 @@ def hoc_ngu_canh(du_lieu):
 # PHÁT HIỆN MÂU THUẪN
 # ================================================================
 def phat_hien_mau_thuan(ngu_canh_moi, ngu_canh_cu):
-    """
-    So sánh ngữ cảnh mới và cũ để tìm mâu thuẫn.
-
-    Trả về: list mâu thuẫn [{ truong, gia_tri_cu, gia_tri_moi, muc_do }].
-    """
     if not ngu_canh_moi or not ngu_canh_cu:
         return []
 
     ket_qua = []
 
-    # So sánh ngôn ngữ
     nn_cu = (ngu_canh_cu.get("ngon_ngu") or {}).get("ngon_ngu_chinh", "")
     nn_moi = (ngu_canh_moi.get("ngon_ngu") or {}).get("ngon_ngu_chinh", "")
     if nn_cu and nn_moi and nn_cu != nn_moi:
@@ -843,7 +814,6 @@ def phat_hien_mau_thuan(ngu_canh_moi, ngu_canh_cu):
             "mo_ta": f"Ngôn ngữ đổi từ {nn_cu} sang {nn_moi}",
         })
 
-    # So sánh framework
     fw_cu = (ngu_canh_cu.get("ngon_ngu") or {}).get("framework", "")
     fw_moi = (ngu_canh_moi.get("ngon_ngu") or {}).get("framework", "")
     if fw_cu and fw_moi and fw_cu != fw_moi:
@@ -854,7 +824,6 @@ def phat_hien_mau_thuan(ngu_canh_moi, ngu_canh_cu):
             "muc_do": "cao",
         })
 
-    # So sánh dự án
     da_cu = (ngu_canh_cu.get("du_an") or {}).get("id_du_an", "")
     da_moi = (ngu_canh_moi.get("du_an") or {}).get("id_du_an", "")
     if da_cu and da_moi and da_cu != da_moi:
@@ -866,7 +835,6 @@ def phat_hien_mau_thuan(ngu_canh_moi, ngu_canh_cu):
             "mo_ta": "Chuyển dự án — bình thường.",
         })
 
-    # So sánh môi trường
     mt_cu = (ngu_canh_cu.get("moi_truong") or {}).get("moi_truong", "")
     mt_moi = (ngu_canh_moi.get("moi_truong") or {}).get("moi_truong", "")
     if mt_cu and mt_moi and mt_cu != mt_moi and "khong_ro" not in (mt_cu, mt_moi):
@@ -877,7 +845,6 @@ def phat_hien_mau_thuan(ngu_canh_moi, ngu_canh_cu):
             "muc_do": "trung_binh",
         })
 
-    # So sánh cảm xúc (đột ngột đổi)
     cx_cu = (ngu_canh_cu.get("cam_xuc") or {}).get("cam_xuc_chinh", "")
     cx_moi = (ngu_canh_moi.get("cam_xuc") or {}).get("cam_xuc_chinh", "")
     if cx_cu and cx_moi and cx_cu in CAM_XUC_TICH_CUC and cx_moi in ("bực", "buồn"):
@@ -889,7 +856,6 @@ def phat_hien_mau_thuan(ngu_canh_moi, ngu_canh_cu):
             "mo_ta": "Cảm xúc đổi tiêu cực đột ngột.",
         })
 
-    # So sánh ràng buộc
     rb_cu = set((ngu_canh_cu.get("rang_buoc") or {}).get("khong_dung", []))
     rb_moi = set((ngu_canh_moi.get("rang_buoc") or {}).get("khong_dung", []))
     if rb_cu and rb_moi and rb_cu != rb_moi:
@@ -904,10 +870,9 @@ def phat_hien_mau_thuan(ngu_canh_moi, ngu_canh_cu):
 
 
 # ================================================================
-# LƯU / ĐỌC NGỮ CẢNH VÀO KHO 1
+# LƯU / ĐỌC NGỮ CẢNH
 # ================================================================
 def luu_ngu_canh(ngu_canh, chu_so_huu):
-    """Lưu ngữ cảnh vào kho 1, collection ngu_canh."""
     if not ngu_canh or not chu_so_huu:
         return False
 
@@ -932,7 +897,6 @@ def luu_ngu_canh(ngu_canh, chu_so_huu):
 
 
 def doc_ngu_canh_cu(chu_so_huu):
-    """Đọc ngữ cảnh cũ của tài khoản từ kho 1."""
     if not chu_so_huu:
         return {}
 
@@ -952,10 +916,6 @@ def doc_ngu_canh_cu(chu_so_huu):
 # HÀM CHÍNH
 # ================================================================
 def lay_ngu_canh(du_lieu):
-    """
-    Lấy 10 loại ngữ cảnh, mỗi loại 10 khía cạnh.
-    Tự động phát hiện mâu thuẫn với ngữ cảnh cũ (nếu có).
-    """
     if not du_lieu:
         du_lieu = {}
 
@@ -976,12 +936,10 @@ def lay_ngu_canh(du_lieu):
         "cam_xuc": _cam_xuc_10_khia_canh(noi_dung),
     }
 
-    # Học ngữ cảnh từ lịch sử
     hoc = hoc_ngu_canh(du_lieu)
     if hoc:
         ket_qua["hoc_tu_lich_su"] = hoc
 
-    # Phát hiện mâu thuẫn với ngữ cảnh cũ
     if chu_so_huu != "khach":
         ngu_canh_cu = doc_ngu_canh_cu(chu_so_huu)
         if ngu_canh_cu:
@@ -993,7 +951,6 @@ def lay_ngu_canh(du_lieu):
                     f"Phát hiện {len(mau_thuan)} mâu thuẫn ngữ cảnh cho {chu_so_huu}",
                 )
 
-        # Lưu ngữ cảnh mới
         luu_ngu_canh(ket_qua, chu_so_huu)
 
     _ghi_log("dai-nao", "Đã lấy 10 loại ngữ cảnh × 10 khía cạnh = 100 khía cạnh.")
@@ -1004,7 +961,6 @@ def lay_ngu_canh(du_lieu):
 # HÀM PHỤ
 # ================================================================
 def tom_tat_ngu_canh(ngu_canh):
-    """Tạo chuỗi tóm tắt 10 loại ngữ cảnh."""
     if not ngu_canh:
         return ""
 
@@ -1054,7 +1010,6 @@ def tom_tat_ngu_canh(ngu_canh):
         phan.append(f"😊 Cảm xúc: {cx['cam_xuc_chinh']} "
                     f"({cx.get('xu_huong', '')})")
 
-    # Mâu thuẫn
     mau_thuan = ngu_canh.get("mau_thuan", [])
     if mau_thuan:
         phan.append(f"\n⚠️ Phát hiện {len(mau_thuan)} mâu thuẫn:")
@@ -1065,14 +1020,12 @@ def tom_tat_ngu_canh(ngu_canh):
 
 
 def lay_mot_loai(ngu_canh, ten_loai):
-    """Lấy 1 loại ngữ cảnh cụ thể."""
     if not ngu_canh or not ten_loai:
         return {}
     return ngu_canh.get(ten_loai, {})
 
 
 def danh_sach_loai_ngu_canh():
-    """Trả danh sách 10 loại ngữ cảnh."""
     return [
         "hoi_thoai", "du_an", "file", "task_truoc", "linh_vuc",
         "ngon_ngu", "moi_truong", "rang_buoc", "thoi_gian", "cam_xuc",
@@ -1080,7 +1033,6 @@ def danh_sach_loai_ngu_canh():
 
 
 def mo_ta_loai_ngu_canh():
-    """Trả mô tả 10 loại ngữ cảnh."""
     return {
         "hoi_thoai": "Những gì đã nói trước đó (10 khía cạnh)",
         "du_an": "Dự án hiện tại người dùng đang làm (10 khía cạnh)",
@@ -1096,7 +1048,6 @@ def mo_ta_loai_ngu_canh():
 
 
 def dem_khia_canh(ngu_canh):
-    """Đếm số khía cạnh có dữ liệu."""
     if not ngu_canh:
         return 0
 

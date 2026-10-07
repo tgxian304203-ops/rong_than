@@ -2,15 +2,20 @@
 goi_tra_web.py - Cầu nối Đại não → Tra web Rồng Thần.
 
 Nhiệm vụ:
-    - goi_tra_web(cau_hoi): gọi công cụ Tra web, trả kết quả chuẩn hóa.
-    - goi_tim_kiem(cau_hoi): gọi module tìm kiếm.
+    - goi_tra_web(cau_hoi, chu_so_huu): gọi công cụ Tra web, trả kết quả chuẩn hóa.
+    - goi_tim_kiem(cau_hoi, chu_so_huu): gọi module tìm kiếm.
     - goi_lay_noi_dung(url): gọi module lấy nội dung trang.
-    - goi_tong_hop(danh_sach): gọi module tổng hợp.
+    - goi_tong_hop(danh_sach, cau_hoi): gọi module tổng hợp.
+
+ĐÃ SỬA:
+    - L25: truyền chu_so_huu xuống tim_kiem.
+    - L26: _xoay_api truyền đúng chữ ký (chu_so_huu, api_hien_tai),
+      trả về TÊN provider (str) thay vì dict.
+    - Thêm tham số chu_so_huu cho goi_tra_web và goi_tim_kiem.
 
 Quy tắc:
     - Đây là CẦU NỐI — không tự tìm kiếm.
-    - Chuẩn hóa kết quả về format thống nhất:
-        { thanh_cong, ket_qua: [{tieu_de, mo_ta, url}], nguon: [...], loi }
+    - Chuẩn hóa kết quả về format thống nhất.
     - Tự xoay API khi hết quota (SERPJET → Tavily → Bright Data).
     - Không sập khi module Tra web chưa có.
 
@@ -34,17 +39,11 @@ def _ghi_log(loai, noi_dung):
 # ================================================================
 # HÀM GỌI MODULE TÌM KIẾM
 # ================================================================
-def goi_tim_kiem(cau_hoi):
+def goi_tim_kiem(cau_hoi, chu_so_huu=""):
     """
     Gọi module tìm kiếm trong tra_web/.
 
-    Trả về:
-    {
-        thanh_cong: bool,
-        ket_qua: list,
-        nguon: list,
-        loi: str,
-    }
+    SỬA L25: Truyền chu_so_huu xuống tim_kiem.
     """
     ket_qua = {
         "thanh_cong": False,
@@ -57,34 +56,34 @@ def goi_tim_kiem(cau_hoi):
         ket_qua["loi"] = "Câu hỏi rỗng."
         return ket_qua
 
-    # Thử nhiều module theo thứ tự ưu tiên
-    cac_module = [
-        ("tra_web.tim_kiem", "tim_kiem"),
-        ("tra_web.xoay_api", "tim_kiem_xoay_api"),
-    ]
+    # Thử module tra_web.tim_kiem trước
+    try:
+        from tra_web.tim_kiem import tim_kiem
+        ket_qua_tho = tim_kiem(cau_hoi, chu_so_huu)
+        if ket_qua_tho:
+            ket_qua = _chuan_hoa_ket_qua(ket_qua_tho, "tra_web.tim_kiem")
+            _ghi_log(
+                "tra-web",
+                f"Tìm kiếm qua tra_web.tim_kiem: "
+                f"{len(ket_qua.get('ket_qua', []))} kết quả",
+            )
+            return ket_qua
+    except ImportError:
+        pass
+    except Exception as e:
+        _ghi_log("loi", f"tra_web.tim_kiem lỗi: {e}")
 
-    for duong_dan, ten_ham in cac_module:
-        try:
-            module = __import__(duong_dan, fromlist=[ten_ham])
-            ham = getattr(module, ten_ham, None)
-            if not ham:
-                continue
-
-            ket_qua_tho = ham(cau_hoi)
-            if ket_qua_tho:
-                ket_qua = _chuan_hoa_ket_qua(ket_qua_tho, duong_dan)
-                _ghi_log(
-                    "tra-web",
-                    f"Tìm kiếm qua {duong_dan}: "
-                    f"{len(ket_qua.get('ket_qua', []))} kết quả",
-                )
-                return ket_qua
-
-        except ImportError:
-            continue
-        except Exception as e:
-            _ghi_log("loi", f"Tìm kiếm lỗi ({duong_dan}): {e}")
-            continue
+    # Thử module tra_web.xoay_api.tim_kiem_xoay_api
+    try:
+        from tra_web.xoay_api import tim_kiem_xoay_api
+        ket_qua_tho = tim_kiem_xoay_api(cau_hoi, chu_so_huu)
+        if ket_qua_tho:
+            ket_qua = _chuan_hoa_ket_qua(ket_qua_tho, "tra_web.xoay_api")
+            return ket_qua
+    except ImportError:
+        pass
+    except Exception as e:
+        _ghi_log("loi", f"tra_web.xoay_api lỗi: {e}")
 
     ket_qua["loi"] = "tra_web/tim_kiem.py chưa có hoặc không trả kết quả."
     return ket_qua
@@ -94,16 +93,7 @@ def goi_tim_kiem(cau_hoi):
 # HÀM GỌI LẤY NỘI DUNG TRANG
 # ================================================================
 def goi_lay_noi_dung(url):
-    """
-    Gọi module lấy nội dung trang web.
-
-    Trả về:
-    {
-        thanh_cong: bool,
-        noi_dung: str,
-        loi: str,
-    }
-    """
+    """Gọi module lấy nội dung trang web."""
     ket_qua = {"thanh_cong": False, "noi_dung": "", "loi": ""}
 
     if not url:
@@ -129,32 +119,55 @@ def goi_lay_noi_dung(url):
 # ================================================================
 # HÀM GỌI TỔNG HỢP
 # ================================================================
-def goi_tong_hop(danh_sach):
+def goi_tong_hop(danh_sach, cau_hoi=""):
     """
     Gọi module tổng hợp kết quả.
 
-    Trả về: chuỗi tổng hợp hoặc "".
+    danh_sach: list [{tieu_de, mo_ta, url}].
+    cau_hoi: câu hỏi gốc (để sắp xếp theo độ liên quan).
     """
     if not danh_sach:
         return ""
 
     try:
         from tra_web.tong_hop import tong_hop
-        return tong_hop(danh_sach) or ""
+        return tong_hop(danh_sach, cau_hoi) or ""
     except ImportError:
-        return ""
+        # Fallback: tổng hợp đơn giản
+        return _tong_hop_don_gian(danh_sach)
     except Exception as e:
         _ghi_log("loi", f"Tổng hợp lỗi: {e}")
+        return _tong_hop_don_gian(danh_sach)
+
+
+def _tong_hop_don_gian(danh_sach):
+    """Fallback tổng hợp đơn giản nếu module tong_hop không có."""
+    if not danh_sach:
         return ""
+
+    phan = []
+    for i, item in enumerate(danh_sach[:5], 1):
+        if not isinstance(item, dict):
+            continue
+        tieu_de = (item.get("tieu_de") or "").strip()
+        mo_ta = (item.get("mo_ta") or "").strip()
+        url = (item.get("url") or "").strip()
+
+        dong = f"{i}. {tieu_de}" if tieu_de else f"{i}."
+        if mo_ta:
+            dong += f"\n   {mo_ta[:300]}"
+        if url:
+            dong += f"\n   🔗 {url}"
+        phan.append(dong)
+
+    return "\n\n".join(phan)
 
 
 # ================================================================
 # CHUẨN HÓA KẾT QUẢ
 # ================================================================
 def _chuan_hoa_ket_qua(ket_qua_tho, nguon=""):
-    """
-    Chuẩn hóa kết quả từ module tìm kiếm về format thống nhất.
-    """
+    """Chuẩn hóa kết quả từ module tìm kiếm về format thống nhất."""
     ket_qua = {
         "thanh_cong": False,
         "ket_qua": [],
@@ -166,29 +179,21 @@ def _chuan_hoa_ket_qua(ket_qua_tho, nguon=""):
         ket_qua["loi"] = "Kết quả rỗng."
         return ket_qua
 
-    # Dạng 1: str → 1 kết quả
     if isinstance(ket_qua_tho, str):
         ket_qua["thanh_cong"] = True
-        ket_qua["ket_qua"] = [{
-            "tieu_de": "",
-            "mo_ta": ket_qua_tho,
-            "url": "",
-        }]
+        ket_qua["ket_qua"] = [{"tieu_de": "", "mo_ta": ket_qua_tho, "url": ""}]
         ket_qua["nguon"] = [nguon or "tra_web"]
         return ket_qua
 
-    # Dạng 2: list → danh sách kết quả
     if isinstance(ket_qua_tho, list):
         ket_qua["thanh_cong"] = True
         ket_qua["ket_qua"] = [_chuan_hoa_mot_ket_qua(item) for item in ket_qua_tho]
         ket_qua["nguon"] = [nguon or "tra_web"]
         return ket_qua
 
-    # Dạng 3: dict
     if isinstance(ket_qua_tho, dict):
         ket_qua["thanh_cong"] = bool(ket_qua_tho.get("thanh_cong", True))
 
-        # Lấy danh sách kết quả từ nhiều tên trường
         danh_sach = (
             ket_qua_tho.get("ket_qua")
             or ket_qua_tho.get("results")
@@ -198,7 +203,6 @@ def _chuan_hoa_ket_qua(ket_qua_tho, nguon=""):
         if isinstance(danh_sach, list):
             ket_qua["ket_qua"] = [_chuan_hoa_mot_ket_qua(item) for item in danh_sach]
 
-        # Nguồn
         nguon_tho = ket_qua_tho.get("nguon") or ket_qua_tho.get("source") or nguon
         if isinstance(nguon_tho, str):
             ket_qua["nguon"] = [nguon_tho]
@@ -230,14 +234,24 @@ def _chuan_hoa_mot_ket_qua(item):
 # ================================================================
 # XOAY API KHI HẾT QUOTA
 # ================================================================
-def _xoay_api():
+def _xoay_api(chu_so_huu, api_hien_tai=""):
     """
     Gọi module xoay API trong tra_web/.
-    Trả về tên API mới hoặc "".
+
+    SỬA L26: Truyền đúng chữ ký (chu_so_huu, api_hien_tai).
+    Trả về TÊN provider (str) hoặc "".
     """
     try:
         from tra_web.xoay_api import xoay_api
-        return xoay_api() or ""
+        ket_qua = xoay_api(chu_so_huu, api_hien_tai)
+        if not ket_qua:
+            return ""
+        # xoay_api trả dict api_info → lấy tên provider
+        if isinstance(ket_qua, dict):
+            return ket_qua.get("provider", "")
+        if isinstance(ket_qua, str):
+            return ket_qua
+        return ""
     except ImportError:
         return ""
     except Exception as e:
@@ -261,17 +275,23 @@ def _kiem_tra_het_quota(ket_qua):
 # ================================================================
 # HÀM CHÍNH
 # ================================================================
-def goi_tra_web(cau_hoi):
+def goi_tra_web(cau_hoi, chu_so_huu=""):
     """
     Gọi công cụ Tra web, trả kết quả chuẩn hóa.
 
     cau_hoi: chuỗi câu hỏi.
+    chu_so_huu: tên tài khoản (để lấy key tra web).
+
+    SỬA L25: Truyền chu_so_huu xuống goi_tim_kiem.
+    SỬA L26: Xoay API dùng chu_so_huu + api_hien_tai.
 
     Trả về:
     {
         thanh_cong: bool,
         ket_qua: [{tieu_de, mo_ta, url}],
         nguon: [str],
+        so_ket_qua: int,
+        tom_tat: str,     # Chuỗi tổng hợp sẵn để gán vào tra_loi
         loi: str,
     }
     """
@@ -279,6 +299,8 @@ def goi_tra_web(cau_hoi):
         "thanh_cong": False,
         "ket_qua": [],
         "nguon": [],
+        "so_ket_qua": 0,
+        "tom_tat": "",
         "loi": "",
     }
 
@@ -288,19 +310,21 @@ def goi_tra_web(cau_hoi):
 
     thoi_gian_bat_dau = time.time()
 
-    _ghi_log("tra-web", f"Gọi Tra web cho: {cau_hoi[:80]}")
+    _ghi_log(
+        "tra-web",
+        f"Gọi Tra web cho {chu_so_huu or 'khach'}: {cau_hoi[:80]}",
+    )
 
-    # 1. Gọi tìm kiếm
-    ket_qua_tim = goi_tim_kiem(cau_hoi)
+    # 1. Gọi tìm kiếm (truyền chu_so_huu)
+    ket_qua_tim = goi_tim_kiem(cau_hoi, chu_so_huu)
 
     # 2. Nếu hết quota → xoay API và thử lại
     if not ket_qua_tim.get("thanh_cong") and _kiem_tra_het_quota(ket_qua_tim):
         _ghi_log("tra-web", "Hết quota — xoay API.")
-        api_moi = _xoay_api()
+        api_moi = _xoay_api(chu_so_huu, "")
         if api_moi:
             _ghi_log("tra-web", f"Đã xoay sang API: {api_moi}")
-            # Thử lại 1 lần
-            ket_qua_tim = goi_tim_kiem(cau_hoi)
+            ket_qua_tim = goi_tim_kiem(cau_hoi, chu_so_huu)
 
     # 3. Không tìm được → trả lỗi
     if not ket_qua_tim.get("thanh_cong"):
@@ -308,18 +332,23 @@ def goi_tra_web(cau_hoi):
         ket_qua["thoi_gian"] = round(time.time() - thoi_gian_bat_dau, 3)
         return ket_qua
 
-    # 4. Chuẩn hóa lần cuối
+    # 4. Chuẩn hóa
+    danh_sach = ket_qua_tim.get("ket_qua", [])
     ket_qua.update({
         "thanh_cong": True,
-        "ket_qua": ket_qua_tim.get("ket_qua", []),
+        "ket_qua": danh_sach,
         "nguon": ket_qua_tim.get("nguon", []),
+        "so_ket_qua": len(danh_sach),
     })
+
+    # 5. Tổng hợp thành chuỗi (để gán vào tra_loi)
+    ket_qua["tom_tat"] = goi_tong_hop(danh_sach, cau_hoi)
 
     ket_qua["thoi_gian"] = round(time.time() - thoi_gian_bat_dau, 3)
 
     _ghi_log(
         "tra-web",
-        f"Tra web xong: {len(ket_qua['ket_qua'])} kết quả, "
+        f"Tra web xong: {ket_qua['so_ket_qua']} kết quả, "
         f"{ket_qua['thoi_gian']}s",
     )
 
@@ -330,11 +359,7 @@ def goi_tra_web(cau_hoi):
 # HÀM PHỤ: LẤY NỘI DUNG NHIỀU URL
 # ================================================================
 def goi_lay_noi_dung_nhieu(urls, so_toi_da=3):
-    """
-    Gọi lấy nội dung cho nhiều URL.
-
-    Trả về: dict { url: noi_dung }.
-    """
+    """Gọi lấy nội dung cho nhiều URL."""
     ket_qua = {}
     if not urls:
         return ket_qua
@@ -360,7 +385,7 @@ def tom_tat_ket_qua(ket_qua):
     if not ket_qua.get("thanh_cong"):
         return f"❌ Tra web lỗi: {ket_qua.get('loi', 'không rõ')}"
 
-    so = len(ket_qua.get("ket_qua", []))
+    so = ket_qua.get("so_ket_qua", 0)
     nguon = ", ".join(ket_qua.get("nguon", [])) or "không rõ"
     tg = ket_qua.get("thoi_gian", 0)
 

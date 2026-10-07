@@ -2,9 +2,11 @@
    chat.js - Gửi/nhận tin nhắn (chat chính + chat trong dự án)
    ------------------------------------------------------------
    ĐÃ SỬA:
-     - Không upload trong chat (đã upload sẵn từ xu_ly_anh/file).
-     - Khi gửi: lấy URL server từ window.DANH_SACH_ANH/FILE.
-     - Ảnh/file hiện trong tin nhắn ngay khi gửi.
+     - L22: Thêm chaySandboxVaGuiKetQua() — chạy code qua
+       LiveCodes/Pyodide, gửi kết quả về /api/sandbox/ket-qua.
+     - Thêm xuLyCodeMoiTuBackend() — nhận code mới từ backend
+       và chạy lại.
+     - Giữ nguyên các hàm cũ.
    ============================================================ */
 
 (function () {
@@ -188,7 +190,7 @@
     }
 
     /* ============================================================
-       LẤY URL ĐÃ UPLOAD SẴN (không upload nữa)
+       LẤY URL ĐÃ UPLOAD SẴN
        ============================================================ */
     function layDinhKemDaUpload() {
         let urls_anh = [];
@@ -214,6 +216,188 @@
     }
 
     /* ============================================================
+       L22 — CHẠY SANDBOX VÀ GỬI KẾT QUẢ VỀ BACKEND
+       ============================================================ */
+    /**
+     * Chạy code qua sandbox (LiveCodes/Pyodide), gửi kết quả về backend.
+     *
+     * @param {string} code - Code cần chạy.
+     * @param {string} ngonNgu - "python" | "html" | "javascript".
+     * @param {string} idChat - ID chat hiện tại (nếu có).
+     * @returns {Promise<Object|null>} Kết quả từ backend hoặc null.
+     */
+    async function chaySandboxVaGuiKetQua(code, ngonNgu, idChat) {
+        if (!code) return null;
+
+        // 1. Tạo container sandbox
+        const containerId = 'sandbox_auto_' + Date.now();
+        const container = document.createElement('div');
+        container.id = containerId;
+        container.className = 'sandbox-container';
+        container.style.minHeight = '300px';
+
+        if (danhSach) {
+            danhSach.appendChild(container);
+            cuonXuongCuoi(khungChat);
+        }
+
+        try {
+            // 2. Chạy code qua LiveCodes
+            const ketQuaChay = await chayCodeTrongContainer(container, code, ngonNgu);
+
+            // 3. Gửi kết quả về backend
+            const phanHoi = await fetch('/api/sandbox/ket-qua', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    code: code,
+                    stdout: ketQuaChay.stdout || '',
+                    stderr: ketQuaChay.stderr || '',
+                    ngon_ngu: ngonNgu || 'python',
+                    id_chat: idChat || '',
+                }),
+            });
+
+            const duLieu = await phanHoi.json();
+
+            // 4. Xử lý kết quả từ backend
+            if (duLieu && duLieu.thanh_cong) {
+                if (duLieu.co_loi) {
+                    // Có lỗi → backend đã cố sửa
+                    if (duLieu.da_sua && duLieu.code_moi) {
+                        // Backend đã sửa → chạy lại code mới
+                        await xuLyCodeMoiTuBackend(duLieu, containerId, ngonNgu, idChat);
+                    } else {
+                        // Không sửa được → hiển thị lỗi
+                        themTinNhanHeThong(
+                            '⚠️ Code chạy lỗi:\n' +
+                            (duLieu.thong_diep_loi || duLieu.loi || 'không rõ')
+                        );
+                    }
+                }
+                // Nếu không lỗi → không cần làm gì (kết quả đã hiển thị trong sandbox)
+            }
+
+            return duLieu;
+        } catch (e) {
+            console.error('Lỗi chạy sandbox:', e);
+            return null;
+        }
+    }
+
+    /**
+     * Chạy code trong container qua LiveCodes hoặc Pyodide.
+     * Trả về { stdout, stderr, result }.
+     */
+    async function chayCodeTrongContainer(container, code, ngonNgu) {
+        const ketQua = { stdout: '', stderr: '', result: '' };
+
+        try {
+            if (ngonNgu === 'html') {
+                // HTML → LiveCodes
+                const { createPlayground } = await import(
+                    'https://cdn.jsdelivr.net/npm/livecodes@0.14.1/esm/index.js'
+                );
+
+                const playground = await createPlayground(container, {
+                    config: {
+                        markup: { language: 'html', content: code },
+                    },
+                    headless: false,
+                    view: 'result',
+                });
+
+                playground.watch('console', ({ method, args }) => {
+                    const dong = (args || []).map(a => String(a)).join(' ') + '\n';
+                    if (method === 'error' || method === 'warn') {
+                        ketQua.stderr += dong;
+                    } else {
+                        ketQua.stdout += dong;
+                    }
+                });
+
+                await playground.run();
+                await new Promise(r => setTimeout(r, 1000));
+
+                return ketQua;
+            } else {
+                // Python → Pyodide
+                if (typeof loadPyodide !== 'function') {
+                    ketQua.stderr = 'Pyodide chưa tải.';
+                    return ketQua;
+                }
+
+                const pyodide = await loadPyodide({
+                    indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/',
+                });
+
+                pyodide.setStdout({ batched: (s) => { ketQua.stdout += s + '\n'; } });
+                pyodide.setStderr({ batched: (s) => { ketQua.stderr += s + '\n'; } });
+
+                try {
+                    const kq = await pyodide.runPythonAsync(code);
+                    if (kq !== undefined && kq !== null) {
+                        ketQua.stdout += String(kq) + '\n';
+                    }
+                } catch (err) {
+                    ketQua.stderr += err.message + '\n';
+                }
+
+                return ketQua;
+            }
+        } catch (e) {
+            ketQua.stderr += 'Lỗi sandbox: ' + e.message + '\n';
+            return ketQua;
+        }
+    }
+
+    /**
+     * Xử lý code mới từ backend — chạy lại code đã sửa.
+     */
+    async function xuLyCodeMoiTuBackend(duLieu, containerId, ngonNgu, idChat) {
+        const codeMoi = duLieu.code_moi;
+        if (!codeMoi) return;
+
+        themTinNhanHeThong(
+            '🔧 Đã tự sửa lỗi:\n' +
+            (duLieu.cach_sua || 'đã điều chỉnh code') +
+            (duLieu.nguon ? ` (nguồn: ${duLieu.nguon})` : '')
+        );
+
+        // Tạo container mới cho code đã sửa
+        const containerMoi = document.createElement('div');
+        containerMoi.id = containerId + '_sua';
+        containerMoi.className = 'sandbox-container';
+        containerMoi.style.minHeight = '300px';
+
+        if (danhSach) {
+            danhSach.appendChild(containerMoi);
+            cuonXuongCuoi(khungChat);
+        }
+
+        // Chạy lại
+        const ketQuaMoi = await chayCodeTrongContainer(containerMoi, codeMoi, ngonNgu);
+
+        // Gửi lại kết quả (1 lần — tránh vòng lặp vô hạn)
+        try {
+            await fetch('/api/sandbox/ket-qua', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    code: codeMoi,
+                    stdout: ketQuaMoi.stdout || '',
+                    stderr: ketQuaMoi.stderr || '',
+                    ngon_ngu: ngonNgu || 'python',
+                    id_chat: idChat || '',
+                    la_lan_hai: true,   // đánh dấu — backend không sửa nữa
+                }),
+            });
+        } catch (e) {
+            console.error('Lỗi gửi kết quả lần 2:', e);
+        }
+    }
+
+    /* ============================================================
        GỬI TIN NHẮN — CHAT CHÍNH
        ============================================================ */
     async function guiTinNhanChinh() {
@@ -225,7 +409,6 @@
 
         if (!noiDung && !coAnh && !coFile) return;
 
-        // Nếu còn file/ảnh đang upload → không cho gửi
         if (typeof window.dangUploadAnh === 'function' && window.dangUploadAnh()) return;
         if (typeof window.dangUploadFile === 'function' && window.dangUploadFile()) return;
         if (typeof window.coLoiUpload === 'function' && window.coLoiUpload()) return;
@@ -236,10 +419,8 @@
         const soTinNguoiTruoc = demTinNhanNguoiTrongChatChinh();
         const laTinDauTien = (soTinNguoiTruoc === 0);
 
-        // Lấy URL đã upload sẵn
         const dinhKem = layDinhKemDaUpload();
 
-        // Hiện tin nhắn người (có ảnh/file ngay)
         let tinNhanEl;
         if (coAnh || coFile) {
             tinNhanEl = taoTinNhanCoDinhKem(
@@ -251,7 +432,6 @@
         danhSach.appendChild(tinNhanEl);
         cuonXuongCuoi(khungChat);
 
-        // Xóa preview + DANH_SACH sau khi đã hiện tin nhắn
         xoaHetPreview();
 
         oNhap.value = '';
@@ -284,6 +464,15 @@
 
             if (duLieu && duLieu.thanh_cong && duLieu.tra_loi) {
                 themTinNhanRong(duLieu.tra_loi);
+
+                // Nếu có code → tự động chạy sandbox + gửi kết quả về backend
+                if (duLieu.code && duLieu.ngon_ngu) {
+                    // Chạy không đồng bộ (không chặn UI)
+                    chaySandboxVaGuiKetQua(duLieu.code, duLieu.ngon_ngu, idChat)
+                        .catch(function (e) {
+                            console.error('Lỗi chạy sandbox tự động:', e);
+                        });
+                }
             } else if (duLieu && duLieu.loi) {
                 themTinNhanHeThong('⚠️ ' + duLieu.loi);
             } else {
@@ -403,7 +592,7 @@
     }
 
     /* ============================================================
-       RENDER TIN NHẮN CŨ CHAT NHANH
+       RENDER TIN NHẮN CŨ — CHAT NHANH
        ============================================================ */
     function renderTinNhanChatNhanh(danh_sach) {
         if (!danhSach) return;
@@ -428,7 +617,7 @@
     }
 
     /* ============================================================
-       RENDER TIN NHẮN CŨ DỰ ÁN
+       RENDER TIN NHẮN CŨ — DỰ ÁN
        ============================================================ */
     function renderTinNhanCu(danh_sach) {
         if (!danhSachDuAn) return;
@@ -497,6 +686,8 @@
     window.guiTinNhanDuAn = guiTinNhanDuAn;
     window.renderTinNhanCu = renderTinNhanCu;
     window.renderTinNhanChatNhanh = renderTinNhanChatNhanh;
+    window.chaySandboxVaGuiKetQua = chaySandboxVaGuiKetQua;
+    window.xuLyCodeMoiTuBackend = xuLyCodeMoiTuBackend;
 
     /* ============================================================
        LỜI CHÀO

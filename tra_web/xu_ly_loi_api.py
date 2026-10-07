@@ -1,27 +1,27 @@
 """
-xu_ly_loi_api.py - Xử lý lỗi API Tra web Rồng Thần.
+xu_ly_loi_api.py - Phân tích + xử lý lỗi API Tra web Rồng Thần.
 
 Nhiệm vụ:
-    - phan_tich_loi(status_code, text, provider): phân tích lỗi từ response.
-    - xu_ly_loi(key_info, ket_qua_loi): xử lý lỗi (đánh dấu quota, xoay API).
-    - lay_hanh_dong(loai_loi): trả hành động tiếp theo.
-    - ghi_loi_api(provider, key_id, loi, loai_loi): ghi lỗi vào kho 2.
+    - phan_tich_loi(status_code, response_text, provider): phân tích lỗi HTTP.
+    - xu_ly_exception(exception, provider): phân tích exception.
+    - goi_y_khac_phuc(loai_loi, provider): gợi ý khắc phục.
 
 Quy tắc (theo Phần 4):
-    - Phân loại lỗi: het_quota, key_sai, timeout, mạng, rate_limit, khac.
-    - het_quota → xoay API.
-    - key_sai → xoay key.
-    - timeout/mạng → thử lại.
-    - rate_limit → chờ.
+    - 401, 403 → key sai.
+    - 402 → hết quota (payment required).
+    - 429 → hết quota (rate limit).
+    - 404 → không tìm thấy endpoint.
+    - 5xx → lỗi server.
+    - Timeout, ConnectionError → lỗi mạng.
+    - Trả về (mo_ta, loai_loi) để tầng trên xử lý.
 
 Trả về:
-    - phan_tich_loi() → (mô_tả, loại_lỗi).
-    - xu_ly_loi() → hành_động (str).
+    - phan_tich_loi() → (mo_ta: str, loai_loi: str).
+    - xu_ly_exception() → dict { loi, loai_loi }.
+    - goi_y_khac_phuc() → list[str].
 
-Tầng dữ liệu: dai_nao/ghi_nho.py (kho 2)
+Tầng dữ liệu: Không.
 """
-
-import time
 
 
 # ================================================================
@@ -36,295 +36,94 @@ def _ghi_log(loai, noi_dung):
 
 
 # ================================================================
-# HẰNG SỐ
+# BẢNG MÃ LỖI HTTP
 # ================================================================
-SO_LAN_LOI_TOI_DA = 3
+BANG_LOI_HTTP = {
+    400: ("Yêu cầu sai (Bad Request).", "khac"),
+    401: ("Key sai hoặc hết hạn (Unauthorized).", "key_sai"),
+    402: ("Cần nạp tiền (Payment Required).", "het_quota"),
+    403: ("Không có quyền truy cập (Forbidden).", "key_sai"),
+    404: ("Endpoint hoặc model không tồn tại (Not Found).", "khong_tim_thay"),
+    405: ("Phương thức không được phép (Method Not Allowed).", "khac"),
+    408: ("Hết thời gian chờ (Request Timeout).", "loi_mang"),
+    409: ("Xung đột dữ liệu (Conflict).", "khac"),
+    413: ("Dữ liệu quá lớn (Payload Too Large).", "khac"),
+    415: ("Định dạng không hỗ trợ (Unsupported Media Type).", "khac"),
+    422: ("Dữ liệu không hợp lệ (Unprocessable Entity).", "khac"),
+    429: ("Hết quota hoặc vượt rate limit (Too Many Requests).", "het_quota"),
+    500: ("Lỗi server (Internal Server Error).", "loi_server"),
+    501: ("Chức năng chưa triển khai (Not Implemented).", "loi_server"),
+    502: ("Bad Gateway — server trung gian lỗi.", "loi_server"),
+    503: ("Service Unavailable — server quá tải.", "loi_server"),
+    504: ("Gateway Timeout — server trung gian chậm.", "loi_server"),
+    505: ("HTTP Version Not Supported.", "khac"),
+    507: ("Hết dung lượng (Insufficient Storage).", "het_quota"),
+    509: ("Vượt băng thông (Bandwidth Limit Exceeded).", "het_quota"),
+}
 
 
 # ================================================================
-# PHÂN TÍCH LỖI
+# PHÂN TÍCH LỖI HTTP
 # ================================================================
-def phan_tich_loi(status_code, text, provider=""):
+def phan_tich_loi(status_code, response_text="", provider=""):
     """
-    Phân tích lỗi từ response API.
+    Phân tích lỗi HTTP trả về từ API.
 
-    status_code: mã HTTP.
-    text: nội dung response.
-    provider: tên API (SERPJET / Tavily / Bright Data).
+    status_code: mã HTTP (int).
+    response_text: nội dung trả về (str, có thể rỗng).
+    provider: tên provider (SERPJET, Tavily, Bright Data).
 
-    Trả về: (mô_tả, loại_lỗi).
-    Loại lỗi: "het_quota" | "key_sai" | "timeout" | "mang" | "rate_limit" | "khac".
+    Trả về: (mo_ta, loai_loi).
+
+    loai_loi:
+        - "key_sai": 401, 403.
+        - "het_quota": 402, 429, 507, 509.
+        - "khong_tim_thay": 404.
+        - "loi_mang": 408.
+        - "loi_server": 5xx (500-504).
+        - "khac": các mã còn lại.
     """
-    text_lower = (text or "").lower()
+    if not status_code:
+        return "Không có mã lỗi.", "khac"
 
-    # Xử lý theo mã HTTP
-    if status_code == 200:
-        return "", ""
-
-    if status_code == 400:
-        # Có thể do query sai hoặc API sai format
-        if "invalid" in text_lower or "bad request" in text_lower:
-            return f"Request sai (400): {text[:200]}", "khac"
-        return f"Bad Request (400): {text[:200]}", "khac"
-
-    if status_code == 401:
-        return "Key sai hoặc hết hạn (401).", "key_sai"
-
-    if status_code == 402:
-        return "Hết credit / cần nạp tiền (402).", "het_quota"
-
-    if status_code == 403:
-        return "Không có quyền (403).", "key_sai"
-
-    if status_code == 404:
-        return "Endpoint không tồn tại (404).", "khac"
-
-    if status_code == 408:
-        return "Request timeout (408).", "timeout"
-
-    if status_code == 429:
-        # Phân biệt rate limit ngắn và hết quota tháng
-        if "month" in text_lower or "monthly" in text_lower or "quota" in text_lower:
-            return "Hết quota tháng (429).", "het_quota"
-        if "day" in text_lower or "daily" in text_lower:
-            return "Hết quota ngày (429).", "het_quota"
-        return "Vượt rate limit (429).", "rate_limit"
-
-    if 500 <= status_code < 600:
-        return f"Server {provider or 'API'} lỗi ({status_code}).", "khac"
-
-    # Phân tích theo text
-    if "quota" in text_lower or "exceeded" in text_lower:
-        return f"Hết quota: {text[:200]}", "het_quota"
-    if "unauthorized" in text_lower or "invalid key" in text_lower or "authentication" in text_lower:
-        return f"Key sai: {text[:200]}", "key_sai"
-    if "rate limit" in text_lower or "too many" in text_lower:
-        return f"Vượt rate limit: {text[:200]}", "rate_limit"
-    if "timeout" in text_lower or "timed out" in text_lower:
-        return f"Timeout: {text[:200]}", "timeout"
-
-    return f"Lỗi không xác định ({status_code}): {text[:200]}", "khac"
-
-
-# ================================================================
-# LẤY HÀNH ĐỘNG TIẾP THEO
-# ================================================================
-def lay_hanh_dong(loai_loi):
-    """
-    Trả hành động tiếp theo dựa trên loại lỗi.
-
-    Trả về:
-        - "xoay_api": hết quota → xoay API.
-        - "xoay_key": key sai → xoay key.
-        - "thu_lai": timeout/mạng → thử lại.
-        - "cho": rate_limit → chờ.
-        - "bo_qua": lỗi khác → bỏ qua.
-    """
-    bang = {
-        "het_quota": "xoay_api",
-        "key_sai": "xoay_key",
-        "timeout": "thu_lai",
-        "mang": "thu_lai",
-        "rate_limit": "cho",
-        "khac": "bo_qua",
-    }
-    return bang.get(loai_loi, "bo_qua")
-
-
-# ================================================================
-# XỬ LÝ LỖI
-# ================================================================
-def xu_ly_loi(key_info, ket_qua_loi):
-    """
-    Xử lý lỗi từ kết quả gọi API.
-
-    key_info: dict { id, key, provider }.
-    ket_qua_loi: dict { loi, loai_loi }.
-
-    Trả về: hành động (str): "xoay_api" | "xoay_key" | "thu_lai" | "cho" | "bo_qua".
-    """
-    if not ket_qua_loi:
-        return "bo_qua"
-
-    provider = (key_info or {}).get("provider", "")
-    key_id = (key_info or {}).get("id", "")
-    loai_loi = ket_qua_loi.get("loai_loi", "khac")
-    loi = ket_qua_loi.get("loi", "")
-
-    # Ghi lỗi vào kho 2
-    if provider and loai_loi:
-        ghi_loi_api(provider, key_id, loi, loai_loi)
-
-    # Hết quota → đánh dấu + xoay API
-    if loai_loi == "het_quota":
-        try:
-            from tra_web.xoay_api import danh_dau_het_quota
-            danh_dau_het_quota(provider, key_id)
-        except ImportError:
-            pass
-        _ghi_log("tra-web", f"{provider} hết quota → xoay API.")
-        return "xoay_api"
-
-    # Key sai → đánh dấu + xoay key
-    if loai_loi == "key_sai":
-        _ghi_log("tra-web", f"{provider} key sai → xoay key.")
-        return "xoay_key"
-
-    # Rate limit → chờ
-    if loai_loi == "rate_limit":
-        _ghi_log("tra-web", f"{provider} rate limit → chờ.")
-        return "cho"
-
-    # Timeout / mạng → thử lại
-    if loai_loi in ("timeout", "mang"):
-        _ghi_log("tra-web", f"{provider} {loai_loi} → thử lại.")
-        return "thu_lai"
-
-    return "bo_qua"
-
-
-# ================================================================
-# GHI LỖI VÀO KHO 2
-# ================================================================
-def ghi_loi_api(provider, key_id, loi="", loai_loi="khac"):
-    """
-    Ghi lỗi API tra web vào kho 2.
-
-    Trả về: True nếu ghi thành công.
-    """
-    if not provider:
-        return False
-
+    # Chuẩn hóa status code
     try:
-        from dai_nao.ghi_nho import _ket_noi_kho_2
-        db = _ket_noi_kho_2()
-        col = db["loi_api_tra_web"]
+        status_code = int(status_code)
+    except (ValueError, TypeError):
+        return f"Mã lỗi không hợp lệ: {status_code}", "khac"
 
-        col.update_one(
-            {"provider": provider, "key_id": key_id},
-            {
-                "$inc": {"so_lan_loi": 1},
-                "$set": {
-                    "provider": provider,
-                    "key_id": key_id,
-                    "loi_cuoi": loi[:500],
-                    "loai_loi_cuoi": loai_loi,
-                    "thoi_gian_cuoi": int(time.time()),
-                },
-            },
-            upsert=True,
-        )
-        return True
-    except Exception as e:
-        _ghi_log("loi", f"Ghi lỗi API lỗi: {e}")
-        return False
+    # Tra bảng
+    if status_code in BANG_LOI_HTTP:
+        mo_ta, loai_loi = BANG_LOI_HTTP[status_code]
+    elif 500 <= status_code < 600:
+        mo_ta = f"Lỗi server ({status_code})."
+        loai_loi = "loi_server"
+    elif 400 <= status_code < 500:
+        mo_ta = f"Lỗi client ({status_code})."
+        loai_loi = "khac"
+    else:
+        mo_ta = f"Lỗi không xác định ({status_code})."
+        loai_loi = "khac"
 
+    # Thêm provider
+    if provider:
+        mo_ta = f"[{provider}] {mo_ta}"
 
-# ================================================================
-# LẤY LỊCH SỬ LỖI
-# ================================================================
-def lay_lich_su_loi(provider="", key_id=""):
-    """
-    Lấy lịch sử lỗi của API.
+    # Phân tích response text để tìm từ khóa
+    if response_text:
+        t = str(response_text)[:500].lower()
 
-    Trả về: list lỗi.
-    """
-    try:
-        from dai_nao.ghi_nho import _ket_noi_kho_2
-        db = _ket_noi_kho_2()
-        col = db["loi_api_tra_web"]
+        if "quota" in t or "rate limit" in t or "too many" in t:
+            loai_loi = "het_quota"
+            mo_ta += " (phát hiện từ khóa quota/rate limit)."
+        elif "invalid" in t and "key" in t:
+            loai_loi = "key_sai"
+            mo_ta += " (phát hiện key không hợp lệ)."
+        elif "not found" in t:
+            loai_loi = "khong_tim_thay"
+            mo_ta += " (phát hiện not found)."
 
-        dieu_kien = {}
-        if provider:
-            dieu_kien["provider"] = provider
-        if key_id:
-            dieu_kien["key_id"] = key_id
-
-        return list(col.find(dieu_kien))
-    except Exception:
-        return []
-
-
-# ================================================================
-# XÓA LỊCH SỬ LỖI
-# ================================================================
-def xoa_lich_su_loi(provider="", key_id=""):
-    """Xóa lịch sử lỗi của API."""
-    try:
-        from dai_nao.ghi_nho import _ket_noi_kho_2
-        db = _ket_noi_kho_2()
-        col = db["loi_api_tra_web"]
-
-        dieu_kien = {}
-        if provider:
-            dieu_kien["provider"] = provider
-        if key_id:
-            dieu_kien["key_id"] = key_id
-
-        ket_qua = col.delete_many(dieu_kien)
-        return ket_qua.deleted_count
-    except Exception:
-        return 0
-
-
-# ================================================================
-# ĐẾM LỖI
-# ================================================================
-def dem_loi(provider=""):
-    """Đếm số lỗi của API."""
-    return len(lay_lich_su_loi(provider))
-
-
-# ================================================================
-# KIỂM TRA CÓ NÊN BLACKLIST KEY KHÔNG
-# ================================================================
-def nen_blacklist_key(provider, key_id):
-    """
-    Kiểm tra có nên blacklist key không (lỗi >= 3 lần).
-
-    Trả về: True nếu nên blacklist.
-    """
-    lich_su = lay_lich_su_loi(provider, key_id)
-    for item in lich_su:
-        if item.get("so_lan_loi", 0) >= SO_LAN_LOI_TOI_DA:
-            return True
-    return False
-
-
-# ================================================================
-# XỬ LÝ LỖI HTTP TỪ REQUEST
-# ================================================================
-def xu_ly_http_error(response, provider=""):
-    """
-    Xử lý lỗi từ đối tượng response của requests.
-
-    response: requests.Response.
-    provider: tên API.
-
-    Trả về dict { thanh_cong, loi, loai_loi }.
-    """
-    if not response:
-        return {
-            "thanh_cong": False,
-            "loi": "Response rỗng.",
-            "loai_loi": "khac",
-        }
-
-    if response.status_code == 200:
-        return {"thanh_cong": True, "loi": "", "loai_loi": ""}
-
-    try:
-        text = response.text[:500]
-    except Exception:
-        text = ""
-
-    mo_ta, loai_loi = phan_tich_loi(response.status_code, text, provider)
-
-    return {
-        "thanh_cong": False,
-        "loi": mo_ta,
-        "loai_loi": loai_loi,
-    }
+    return mo_ta, loai_loi
 
 
 # ================================================================
@@ -332,95 +131,160 @@ def xu_ly_http_error(response, provider=""):
 # ================================================================
 def xu_ly_exception(exception, provider=""):
     """
-    Xử lý exception khi gọi API.
+    Phân tích exception từ lời gọi API.
 
-    Trả về dict { thanh_cong, loi, loai_loi }.
+    exception: đối tượng Exception.
+    provider: tên provider.
+
+    Trả về dict: { loi, loai_loi }.
     """
     if not exception:
-        return {
-            "thanh_cong": False,
-            "loi": "Exception rỗng.",
-            "loai_loi": "khac",
-        }
+        return {"loi": "Exception rỗng.", "loai_loi": "khac"}
 
-    ten_loai = type(exception).__name__
-    mo_ta = str(exception)[:300]
+    ten_loi = type(exception).__name__
+    thong_diep = str(exception)[:500]
 
-    # Phân loại exception
-    if "Timeout" in ten_loai or "timeout" in mo_ta.lower():
-        loai_loi = "timeout"
-    elif "Connection" in ten_loai or "connection" in mo_ta.lower():
-        loai_loi = "mang"
-    elif "SSLError" in ten_loai:
-        loai_loi = "mang"
-    elif "HTTPError" in ten_loai:
-        loai_loi = "khac"
+    # Phân loại
+    loai_loi = "khac"
+    if ten_loi in ("Timeout", "TimeoutError", "ReadTimeout", "ConnectTimeout"):
+        loai_loi = "loi_mang"
+    elif ten_loi in ("ConnectionError", "ConnectTimeoutError"):
+        loai_loi = "loi_mang"
+    elif ten_loi in ("SSLError", "CertificateError"):
+        loai_loi = "loi_ssl"
+    elif ten_loi in ("JSONDecodeError", "ValueError"):
+        loai_loi = "loi_parse"
+    elif "quota" in thong_diep.lower() or "rate" in thong_diep.lower():
+        loai_loi = "het_quota"
+    elif "unauthorized" in thong_diep.lower() or "forbidden" in thong_diep.lower():
+        loai_loi = "key_sai"
+
+    # Tạo mô tả
+    if provider:
+        mo_ta = f"[{provider}] {ten_loi}: {thong_diep}"
     else:
-        loai_loi = "khac"
+        mo_ta = f"{ten_loi}: {thong_diep}"
+
+    _ghi_log("tra-web", f"Exception: {mo_ta[:200]}")
 
     return {
-        "thanh_cong": False,
-        "loi": f"{ten_loai}: {mo_ta}",
+        "loi": mo_ta,
         "loai_loi": loai_loi,
     }
 
 
 # ================================================================
-# TÓM TẮT LỖI
+# GỢI Ý KHẮC PHỤC
+# ================================================================
+def goi_y_khac_phuc(loai_loi, provider=""):
+    """
+    Gợi ý khắc phục theo loại lỗi.
+
+    Trả về: list[str].
+    """
+    goi_y = []
+
+    if loai_loi == "key_sai":
+        goi_y.append("Kiểm tra lại API key đã dán.")
+        goi_y.append("Đăng nhập dashboard provider để tạo key mới.")
+        if provider:
+            goi_y.append(f"Đảm bảo key thuộc tài khoản {provider}.")
+
+    elif loai_loi == "het_quota":
+        goi_y.append("Chờ quota reset (đầu tháng hoặc đầu ngày).")
+        goi_y.append("Xoay sang API khác (SERPJET → Tavily → Bright Data).")
+        goi_y.append("Thêm key mới từ tài khoản khác.")
+
+    elif loai_loi == "khong_tim_thay":
+        goi_y.append("Kiểm tra lại endpoint / tên model.")
+        goi_y.append("Provider có thể đã đổi endpoint — cần cập nhật code.")
+
+    elif loai_loi == "loi_mang":
+        goi_y.append("Kiểm tra kết nối mạng.")
+        goi_y.append("Tăng timeout cho request.")
+        goi_y.append("Thử lại sau vài giây.")
+
+    elif loai_loi == "loi_ssl":
+        goi_y.append("Cập nhật chứng chỉ SSL.")
+        goi_y.append("Kiểm tra proxy/firewall.")
+
+    elif loai_loi == "loi_parse":
+        goi_y.append("Provider trả về JSON sai format.")
+        goi_y.append("Kiểm tra version API — có thể provider đã đổi schema.")
+
+    elif loai_loi == "loi_server":
+        goi_y.append("Server provider gặp lỗi — chờ và thử lại.")
+        goi_y.append("Xoay sang API khác nếu lỗi kéo dài.")
+
+    else:
+        goi_y.append("Xem log chi tiết để biết nguyên nhân.")
+
+    return goi_y
+
+
+# ================================================================
+# HÀM PHỤ: KIỂM TRA CÓ NÊN XOAY API KHÔNG
+# ================================================================
+def nen_xoay_api(loai_loi):
+    """
+    Kiểm tra xem có nên xoay sang API khác không.
+
+    Trả về: True nếu nên xoay.
+    """
+    if not loai_loi:
+        return False
+    return loai_loi in ("het_quota", "key_sai", "loi_server")
+
+
+# ================================================================
+# HÀM PHỤ: TÓM TẮT LỖI
 # ================================================================
 def tom_tat_loi(ket_qua_loi):
-    """Tạo chuỗi tóm tắt lỗi API."""
+    """
+    Tạo chuỗi tóm tắt lỗi.
+
+    ket_qua_loi: dict { loi, loai_loi }.
+    """
     if not ket_qua_loi:
         return ""
-
-    if ket_qua_loi.get("thanh_cong"):
-        return "✅ OK"
-
-    return (
-        f"❌ [{ket_qua_loi.get('loai_loi', '')}] "
-        f"{ket_qua_loi.get('loi', '')[:100]}"
-    )
+    return f"[{ket_qua_loi.get('loai_loi', 'khac')}] {ket_qua_loi.get('loi', '')[:150]}"
 
 
 # ================================================================
-# HÀM PHỤ: XỬ LÝ CHUỖI LỖI THỦ CÔNG
+# HÀM PHỤ: LẤY MÃ LỖI TỪ LOẠI
 # ================================================================
-def phan_tich_loi_tu_chuoi(chuoi_loi):
-    """
-    Phân tích lỗi từ chuỗi (không có status code).
-    Dùng khi nhận lỗi từ nơi khác.
-
-    Trả về: (mô_tả, loại_lỗi).
-    """
-    if not chuoi_loi:
-        return "", ""
-
-    t = chuoi_loi.lower()
-
-    if "quota" in t or "exceeded" in t:
-        return chuoi_loi[:200], "het_quota"
-    if "unauthorized" in t or "invalid" in t or "authentication" in t:
-        return chuoi_loi[:200], "key_sai"
-    if "rate limit" in t or "too many" in t:
-        return chuoi_loi[:200], "rate_limit"
-    if "timeout" in t or "timed out" in t:
-        return chuoi_loi[:200], "timeout"
-    if "connection" in t or "network" in t:
-        return chuoi_loi[:200], "mang"
-
-    return chuoi_loi[:200], "khac"
-
-
-# ================================================================
-# HÀM PHỤ: ĐẾM LỖI THEO LOẠI
-# ================================================================
-def dem_loi_theo_loai(provider=""):
-    """Đếm lỗi theo loại (het_quota, key_sai, timeout...)."""
-    lich_su = lay_lich_su_loi(provider)
-    ket_qua = {}
-
-    for item in lich_su:
-        loai = item.get("loai_loi_cuoi", "khac")
-        ket_qua[loai] = ket_qua.get(loai, 0) + item.get("so_lan_loi", 0)
-
+def lay_ma_loi(loai_loi):
+    """Trả danh sách mã HTTP tương ứng với loại lỗi."""
+    ket_qua = []
+    for ma, (_, loai) in BANG_LOI_HTTP.items():
+        if loai == loai_loi:
+            ket_qua.append(ma)
     return ket_qua
+
+
+def lay_loai_tu_ma(ma):
+    """Trả loại lỗi từ mã HTTP."""
+    if ma in BANG_LOI_HTTP:
+        return BANG_LOI_HTTP[ma][1]
+    if 500 <= ma < 600:
+        return "loi_server"
+    if 400 <= ma < 500:
+        return "khac"
+    return "khac"
+
+
+# ================================================================
+# DANH SÁCH LOẠI LỖI
+# ================================================================
+def danh_sach_loai_loi():
+    """Trả danh sách loại lỗi có thể gặp."""
+    return [
+        "key_sai",       # 401, 403
+        "het_quota",     # 402, 429, 507, 509
+        "khong_tim_thay",  # 404
+        "loi_mang",      # 408, timeout, connection error
+        "loi_ssl",       # SSL error
+        "loi_parse",     # JSON parse error
+        "loi_server",    # 5xx
+        "khac",          # còn lại
+    ]

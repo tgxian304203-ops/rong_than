@@ -7,6 +7,10 @@ Nhiệm vụ:
       scope, dependency, import, diff, đa lỗi, semantic, performance,
       fix đa cấp, patch, flow chart, chất lượng code.
 
+ĐÃ SỬA:
+    - L16: Regex trích biến/hàm hỗ trợ tiếng Việt có dấu
+      (không chỉ [a-zA-Z_]).
+
 Quy tắc:
     - Đọc lỗi qua doc_loi.py.
     - Tìm dòng code gây lỗi.
@@ -36,6 +40,36 @@ def _ghi_log(loai, noi_dung):
         ghi_log(loai, noi_dung)
     except Exception:
         pass
+
+
+# ================================================================
+# REGEX HỖ TRỢ TIẾNG VIỆT (L16)
+# ================================================================
+# Ký tự chữ cái: bao gồm a-z, A-Z, dấu gạch dưới, VÀ tiếng Việt có dấu.
+CHU_CAI = (
+    r"a-zA-Z"
+    r"àáảãạăằắẳẵặâầấẩẫậ"
+    r"ÀÁẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬ"
+    r"đĐ"
+    r"èéẻẽẹêềếểễệ"
+    r"ÈÉẺẼẸÊỀẾỂỄỆ"
+    r"ìíỉĩị"
+    r"ÌÍỈĨỊ"
+    r"òóỏõọôồốổỗộơờớởỡợ"
+    r"ÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢ"
+    r"ùúủũụưừứửữự"
+    r"ÙÚỦŨỤƯỪỨỬỮỰ"
+    r"ỳýỷỹỵ"
+    r"ỲÝỶỸỴ"
+)
+
+# Tên biến/hàm: bắt đầu bằng chữ cái hoặc _, theo sau là chữ cái/số/_
+MAU_TEN_BIEN = rf"\b([{CHU_CAI}_][{CHU_CAI}0-9_]*)\b"
+
+
+def _tao_mau_bien():
+    """Trả về regex tên biến hỗ trợ tiếng Việt (L16)."""
+    return MAU_TEN_BIEN
 
 
 # ================================================================
@@ -276,16 +310,23 @@ RUI_RO_THEO_LOAI = {
 
 
 # ================================================================
-# TIỆN ÍCH CHUNG
+# TIỆN ÍCH CHUNG (SỬA L16)
 # ================================================================
 def _trich_bien_lien_quan(code, dong_bi_loi):
-    """Trích tên biến/hàm từ dòng lỗi."""
+    """
+    Trích tên biến/hàm từ dòng lỗi.
+
+    SỬA L16: Dùng regex hỗ trợ tiếng Việt có dấu.
+    """
     if not code or not dong_bi_loi:
         return []
     noi_dung = dong_bi_loi.get("noi_dung", "")
     if not noi_dung:
         return []
-    cac_bien = re.findall(r"\b([a-zA-Z_][a-zA-Z0-9_]*)\b", noi_dung)
+
+    # Regex hỗ trợ tiếng Việt
+    cac_bien = re.findall(MAU_TEN_BIEN, noi_dung)
+
     tu_khoa = {
         "if", "else", "elif", "for", "while", "def", "class", "return",
         "import", "from", "as", "try", "except", "finally", "with",
@@ -301,7 +342,6 @@ def _trich_bien_lien_quan(code, dong_bi_loi):
 
 
 def _lay_ngu_canh_dong(code, so_dong, so_truoc=5, so_sau=5):
-    """Lấy 5 dòng trước + 5 dòng sau."""
     if not code or not so_dong:
         return []
     cac_dong = code.split("\n")
@@ -319,34 +359,47 @@ def _lay_ngu_canh_dong(code, so_dong, so_truoc=5, so_sau=5):
 
 
 def _tim_ham_chua(code, so_dong):
-    """Tìm hàm chứa dòng lỗi."""
+    """
+    Tìm hàm chứa dòng lỗi.
+
+    SỬA L16: Tên hàm hỗ trợ tiếng Việt.
+    """
     if not code or not so_dong:
         return None
     cac_dong = code.split("\n")
     if so_dong > len(cac_dong):
         return None
+
+    mau_ham = rf"^(\s*)def\s+([{CHU_CAI}_][{CHU_CAI}0-9_]*)\s*\("
+    mau_class = rf"^class\s+([{CHU_CAI}_][{CHU_CAI}0-9_]*)"
+
     for i in range(so_dong - 1, -1, -1):
         dong = cac_dong[i]
-        khop = re.match(r"^(\s*)def\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(", dong)
+        khop = re.match(mau_ham, dong)
         if khop:
             return {
                 "ten_ham": khop.group(2),
                 "so_dong_bat_dau": i + 1,
                 "thut_le": len(khop.group(1)),
             }
-        if re.match(r"^class\s+", dong):
+        if re.match(mau_class, dong):
             break
     return None
 
 
 def _tim_class_chua(code, so_dong):
-    """Tìm class chứa dòng lỗi."""
+    """
+    Tìm class chứa dòng lỗi.
+
+    SỬA L16: Tên class hỗ trợ tiếng Việt.
+    """
     if not code or not so_dong:
         return None
     cac_dong = code.split("\n")
+    mau_class = rf"^class\s+([{CHU_CAI}_][{CHU_CAI}0-9_]*)"
     for i in range(so_dong - 1, -1, -1):
         dong = cac_dong[i]
-        khop = re.match(r"^class\s+([a-zA-Z_][a-zA-Z0-9_]*)", dong)
+        khop = re.match(mau_class, dong)
         if khop:
             return {"ten_class": khop.group(1), "so_dong_bat_dau": i + 1}
     return None
@@ -463,20 +516,17 @@ def _phan_tich_ast(code, so_dong_loi=None):
         if h not in ket_qua["ham_chua_dinh_nghia"]:
             ket_qua["ham_chua_dinh_nghia"].append(h)
 
-    # Import không dùng
     for imp in ket_qua["import_"]:
         mod = imp.get("module", "").split(".")[0]
         if mod and mod not in bien_da_dung:
             ket_qua["import_khong_dung"].append(mod)
 
-    # Code chết sau return
     for node in ast.walk(cay):
         if isinstance(node, (ast.FunctionDef, ast.Module)):
             for i, stmt in enumerate(node.body):
                 if isinstance(stmt, ast.Return) and i < len(node.body) - 1:
                     ket_qua["code_chet"].append(node.body[i + 1].lineno)
 
-    # Loại trùng
     ket_qua["bien_chua_khai_bao"] = list(dict.fromkeys(ket_qua["bien_chua_khai_bao"]))
     ket_qua["ham_chua_dinh_nghia"] = list(dict.fromkeys(ket_qua["ham_chua_dinh_nghia"]))
     ket_qua["bien_gan"] = list(dict.fromkeys(ket_qua["bien_gan"]))
@@ -490,10 +540,14 @@ def _phan_tich_ast(code, so_dong_loi=None):
 
 
 # ================================================================
-# PHÂN TÍCH LUỒNG DỮ LIỆU
+# PHÂN TÍCH LUỒNG DỮ LIỆU (SỬA L16)
 # ================================================================
 def _phan_tich_luong_du_lieu(code, bien_lien_quan):
-    """Truy vết biến: gán ở đâu, sửa ở đâu, dùng ở đâu."""
+    """
+    Truy vết biến: gán ở đâu, sửa ở đâu, dùng ở đâu.
+
+    SỬA L16: Regex hỗ trợ tiếng Việt.
+    """
     if not code or not bien_lien_quan:
         return []
 
@@ -505,14 +559,17 @@ def _phan_tich_luong_du_lieu(code, bien_lien_quan):
         vi_tri_dung = []
         vi_tri_sua = []
 
+        # Regex tìm biến (an toàn với ký tự đặc biệt)
+        mau_bien = re.escape(bien)
+
         for i, dong in enumerate(cac_dong, 1):
-            if re.search(r"\b" + re.escape(bien) + r"\s*=", dong) and \
+            if re.search(r"\b" + mau_bien + r"\s*=", dong) and \
                not re.search(r"==", dong):
                 vi_tri_gan.append(i)
-            if re.search(r"\b" + re.escape(bien) + r"\s*\+=", dong) or \
-               re.search(r"\b" + re.escape(bien) + r"\s*-=", dong):
+            if re.search(r"\b" + mau_bien + r"\s*\+=", dong) or \
+               re.search(r"\b" + mau_bien + r"\s*-=", dong):
                 vi_tri_sua.append(i)
-            if re.search(r"\b" + re.escape(bien) + r"\b", dong) and \
+            if re.search(r"\b" + mau_bien + r"\b", dong) and \
                i not in vi_tri_gan:
                 vi_tri_dung.append(i)
 
@@ -531,7 +588,6 @@ def _phan_tich_luong_du_lieu(code, bien_lien_quan):
 # PHÂN TÍCH LUỒNG ĐIỀU KHIỂN
 # ================================================================
 def _phan_tich_luong_dieu_khien(code, so_dong_loi):
-    """Vẽ đường đi từ đầu hàm tới dòng lỗi."""
     if not code or not so_dong_loi:
         return []
 
@@ -565,13 +621,16 @@ def _phan_tich_luong_dieu_khien(code, so_dong_loi):
 # PHÂN TÍCH SCOPE
 # ================================================================
 def _phan_tich_scope(code, bien_lien_quan):
-    """Phân tích scope biến — local/global/nonlocal."""
+    """
+    SỬA L16: Regex hỗ trợ tiếng Việt.
+    """
     if not code or not bien_lien_quan:
         return {}
 
     ket_qua = {"bien_local": [], "bien_global": [], "bien_ngoai": []}
-    co_global = set(re.findall(r"\bglobal\s+([a-zA-Z_]\w*)", code))
-    co_nonlocal = set(re.findall(r"\bnonlocal\s+([a-zA-Z_]\w*)", code))
+    mau_ten = rf"[{CHU_CAI}_][{CHU_CAI}0-9_]*"
+    co_global = set(re.findall(rf"\bglobal\s+({mau_ten})", code))
+    co_nonlocal = set(re.findall(rf"\bnonlocal\s+({mau_ten})", code))
 
     for bien in bien_lien_quan:
         if bien in co_global:
@@ -585,10 +644,12 @@ def _phan_tich_scope(code, bien_lien_quan):
 
 
 # ================================================================
-# PHÂN TÍCH DEPENDENCY
+# PHÂN TÍCH DEPENDENCY (SỬA L16)
 # ================================================================
 def _phan_tich_dependency(code, ham_chua):
-    """Tìm hàm lỗi gọi hàm nào, hàm nào gọi nó."""
+    """
+    SỬA L16: Regex hỗ trợ tiếng Việt.
+    """
     if not code or not ham_chua:
         return {}
 
@@ -600,21 +661,22 @@ def _phan_tich_dependency(code, ham_chua):
     goi_ham_khac = set()
     bi_goi_boi = []
 
-    # Hàm lỗi gọi hàm nào
+    mau_goi = rf"\b([{CHU_CAI}_][{CHU_CAI}0-9_]*)\s*\("
+
     so_dong_bat_dau = ham_chua.get("so_dong_bat_dau", 0) - 1
     thut_le_goc = ham_chua.get("thut_le", 0)
     for i in range(so_dong_bat_dau + 1, len(cac_dong)):
         dong = cac_dong[i]
         if dong.strip() and (len(dong) - len(dong.lstrip())) <= thut_le_goc:
             break
-        for m in re.finditer(r"\b([a-zA-Z_]\w*)\s*\(", dong):
+        for m in re.finditer(mau_goi, dong):
             ten = m.group(1)
             if ten not in {"if", "for", "while", "return", "print"}:
                 goi_ham_khac.add(ten)
 
-    # Hàm nào gọi hàm lỗi
+    mau_ham_goi = re.escape(ten_ham) + r"\s*\("
     for i, dong in enumerate(cac_dong, 1):
-        if re.search(r"\b" + re.escape(ten_ham) + r"\s*\(", dong):
+        if re.search(mau_ham_goi, dong):
             if i != ham_chua.get("so_dong_bat_dau"):
                 bi_goi_boi.append(i)
 
@@ -630,7 +692,6 @@ def _phan_tich_dependency(code, ham_chua):
 # PHÂN TÍCH IMPORT
 # ================================================================
 def _phan_tich_import(code):
-    """Phân tích import — thiếu, vòng, không dùng."""
     if not code:
         return {}
 
@@ -644,15 +705,14 @@ def _phan_tich_import(code):
     return {
         "so_import": len(danh_sach),
         "danh_sach": sorted(danh_sach),
-        "co_import_vong": False,  # Cần phân tích file khác mới biết
+        "co_import_vong": False,
     }
 
 
 # ================================================================
-# SO SÁNH CODE CŨ/MỚI (DIFF)
+# SO SÁNH CODE CŨ/MỚI
 # ================================================================
 def _so_sanh_code(code_cu, code_moi):
-    """So sánh code cũ và mới để tìm thay đổi."""
     if not code_cu or not code_moi:
         return {}
 
@@ -665,7 +725,6 @@ def _so_sanh_code(code_cu, code_moi):
         fromfile="code_cu", tofile="code_moi", n=2,
     ))
 
-    # Đếm thay đổi
     so_them = sum(1 for d in diff if d.startswith("+") and not d.startswith("+++"))
     so_xoa = sum(1 for d in diff if d.startswith("-") and not d.startswith("---"))
 
@@ -680,7 +739,6 @@ def _so_sanh_code(code_cu, code_moi):
 # PHÂN TÍCH ĐA LỖI
 # ================================================================
 def _phan_tich_da_loi(stderr):
-    """Đọc tất cả lỗi trong stderr, tìm lỗi gốc."""
     try:
         from dai_nao.doc_loi import doc_loi_nhieu
         danh_sach = doc_loi_nhieu(stderr)
@@ -690,7 +748,6 @@ def _phan_tich_da_loi(stderr):
     if len(danh_sach) <= 1:
         return danh_sach
 
-    # Lỗi gốc = lỗi đầu tiên trong traceback
     ket_qua = []
     for i, muc in enumerate(danh_sach):
         ket_qua.append({
@@ -705,10 +762,9 @@ def _phan_tich_da_loi(stderr):
 
 
 # ================================================================
-# PHÂN TÍCH NGỮ NGHĨA
+# PHÂN TÍCH NGỮ NGHĨA (SỬA L16)
 # ================================================================
 def _phan_tich_ngu_nghia(code, ast_loi):
-    """Kiểm tra tên biến có gợi ý sai không, hàm trả về đúng kiểu không."""
     if not code:
         return {}
 
@@ -718,7 +774,6 @@ def _phan_tich_ngu_nghia(code, ast_loi):
         "ham_return_nhieu_kieu": [],
     }
 
-    # Tên biến đáng ngờ
     goi_y_kieu = {
         "so_": "int", "count": "int", "total": "int", "amount": "int",
         "ten_": "str", "name": "str", "text": "str", "message": "str",
@@ -728,7 +783,6 @@ def _phan_tich_ngu_nghia(code, ast_loi):
     for bien in (ast_loi or {}).get("bien_gan", []):
         for tien_to, kieu_goi_y in goi_y_kieu.items():
             if bien.lower().startswith(tien_to):
-                # Kiểm tra xem có gán giá trị khác kiểu không
                 mau = r"\b" + re.escape(bien) + r"\s*=\s*(['\"])"
                 if kieu_goi_y != "str" and re.search(mau, code):
                     ket_qua["ten_bien_dang_ngo"].append({
@@ -741,10 +795,9 @@ def _phan_tich_ngu_nghia(code, ast_loi):
 
 
 # ================================================================
-# PHÂN TÍCH HIỆU NĂNG
+# PHÂN TÍCH HIỆU NĂNG (SỬA L16)
 # ================================================================
 def _phan_tich_hieu_nang(code, ast_loi):
-    """Phát hiện code chậm — O(n²), gọi hàm lặp."""
     if not code:
         return {}
 
@@ -753,24 +806,25 @@ def _phan_tich_hieu_nang(code, ast_loi):
         "goi_ham_trong_vong_lap": [],
     }
 
-    # Vòng lặp lồng (đã có trong AST)
     for dong in (ast_loi or {}).get("o_n2", []):
         ket_qua["vong_lap_long"].append({"so_dong": dong})
 
-    # Gọi hàm trong vòng lặp
     cac_dong = code.split("\n")
     trong_vong_lap = False
     thut_le_vong = 0
+    mau_vong = r"^\s*(for|while)\s"
+    mau_goi = r"\b(len|range|print|append)\s*\("
+
     for i, dong in enumerate(cac_dong, 1):
         thut_le = len(dong) - len(dong.lstrip())
-        if re.match(r"^\s*(for|while)\s", dong):
+        if re.match(mau_vong, dong):
             trong_vong_lap = True
             thut_le_vong = thut_le
         elif trong_vong_lap and dong.strip() and thut_le <= thut_le_vong:
             trong_vong_lap = False
 
         if trong_vong_lap:
-            for m in re.finditer(r"\b(len|range|print|append)\s*\(", dong):
+            for m in re.finditer(mau_goi, dong):
                 ket_qua["goi_ham_trong_vong_lap"].append({
                     "so_dong": i, "ham": m.group(1),
                 })
@@ -782,7 +836,6 @@ def _phan_tich_hieu_nang(code, ast_loi):
 # SINH FIX ĐA CẤP
 # ================================================================
 def _sinh_fix_da_cap(loai_loi, code, dong_bi_loi, thong_tin):
-    """Sinh 3 cấp fix: nhanh, chuẩn, phòng ngừa."""
     fix = {"fix_nhanh": "", "fix_chuan": "", "fix_phong_ngua": ""}
 
     dong = dong_bi_loi.get("noi_dung", "").strip() if dong_bi_loi else ""
@@ -817,10 +870,9 @@ def _sinh_fix_da_cap(loai_loi, code, dong_bi_loi, thong_tin):
 
 
 # ================================================================
-# SINH PATCH (UNIFIED DIFF)
+# SINH PATCH
 # ================================================================
 def _sinh_patch(code_cu, code_moi):
-    """Sinh unified diff."""
     if not code_cu or not code_moi:
         return ""
 
@@ -838,7 +890,6 @@ def _sinh_patch(code_cu, code_moi):
 # VẼ FLOW CHART ASCII
 # ================================================================
 def _ve_flow_chart(code, so_dong_loi):
-    """Vẽ sơ đồ luồng điều khiển bằng ASCII."""
     if not code or not so_dong_loi:
         return ""
 
@@ -867,10 +918,9 @@ def _ve_flow_chart(code, so_dong_loi):
 
 
 # ================================================================
-# CHẤM ĐIỂM CHẤT LƯỢNG CODE (0-10)
+# CHẤM ĐIỂM CHẤT LƯỢNG CODE
 # ================================================================
 def _cham_diem_chat_luong(code, ast_loi):
-    """Chấm điểm code 0-10."""
     if not code or not ast_loi:
         return {"diem": 0, "chi_tiet": {}, "goi_y": []}
 
@@ -878,34 +928,29 @@ def _cham_diem_chat_luong(code, ast_loi):
     chi_tiet = {}
     goi_y = []
 
-    # Trừ điểm cho biến chưa khai báo
     so_bien_loi = len(ast_loi.get("bien_chua_khai_bao", []))
     if so_bien_loi > 0:
         diem -= min(3, so_bien_loi)
         chi_tiet["bien_chua_khai_bao"] = -min(3, so_bien_loi)
         goi_y.append(f"Có {so_bien_loi} biến chưa khai báo.")
 
-    # Trừ điểm cho hàm chưa định nghĩa
     so_ham_loi = len(ast_loi.get("ham_chua_dinh_nghia", []))
     if so_ham_loi > 0:
         diem -= min(2, so_ham_loi)
         chi_tiet["ham_chua_dinh_nghia"] = -min(2, so_ham_loi)
 
-    # Trừ điểm cho import không dùng
     so_import_thua = len(ast_loi.get("import_khong_dung", []))
     if so_import_thua > 0:
         diem -= min(2, so_import_thua)
         chi_tiet["import_khong_dung"] = -min(2, so_import_thua)
         goi_y.append(f"Có {so_import_thua} import không dùng — nên xóa.")
 
-    # Trừ điểm cho O(n²)
     so_o_n2 = len(ast_loi.get("o_n2", []))
     if so_o_n2 > 0:
         diem -= min(2, so_o_n2)
         chi_tiet["o_n2"] = -min(2, so_o_n2)
         goi_y.append(f"Có {so_o_n2} vòng lặp lồng — có thể chậm.")
 
-    # Trừ điểm cho code chết
     so_code_chet = len(ast_loi.get("code_chet", []))
     if so_code_chet > 0:
         diem -= 1
@@ -923,7 +968,6 @@ def _cham_diem_chat_luong(code, ast_loi):
 # SINH TEST CASE
 # ================================================================
 def _sinh_test_case(loai_loi, code=None, dong_bi_loi=None):
-    """Sinh test case."""
     if loai_loi in TEST_CASE:
         return list(TEST_CASE[loai_loi])
 
@@ -952,7 +996,6 @@ def _sinh_test_case(loai_loi, code=None, dong_bi_loi=None):
 # ĐÁNH GIÁ RỦI RO
 # ================================================================
 def _danh_gia_rui_ro(loai_loi, code, ham_chua, ast_loi):
-    """Đánh giá rủi ro khi sửa."""
     ket_qua = {"muc_do": "trung_binh", "ly_do": "Chưa đánh giá.", "anh_huong": [], "canh_bao": ""}
 
     if loai_loi in RUI_RO_THEO_LOAI:
@@ -983,7 +1026,6 @@ def _danh_gia_rui_ro(loai_loi, code, ham_chua, ast_loi):
 # SINH GIẢ THUYẾT
 # ================================================================
 def _sinh_gia_thuyet(loai_loi, code, dong_bi_loi, ast_loi):
-    """Sinh 3-5 giả thuyết."""
     gia_thuyet = []
 
     for nn in NGUYEN_NHAN_GOC.get(loai_loi, [])[:3]:
@@ -1026,7 +1068,6 @@ def _sinh_gia_thuyet(loai_loi, code, dong_bi_loi, ast_loi):
 # ĐỀ XUẤT CÁCH SỬA
 # ================================================================
 def _de_xuat_cach_sua(ket_qua, thong_tin, code):
-    """Đề xuất cách sửa."""
     cach_sua = []
     code_mau = thong_tin.get("code_sua_mau", "")
     if code_mau:
@@ -1075,6 +1116,8 @@ def _de_xuat_cach_sua(ket_qua, thong_tin, code):
 def phan_tich(stderr, code=None, code_cu=None):
     """
     Phân tích lỗi đầy đủ (bản mạnh x5).
+
+    ĐÃ SỬA L16: Regex trích biến/hàm hỗ trợ tiếng Việt có dấu.
 
     stderr: chuỗi lỗi.
     code: code hiện tại.
@@ -1155,7 +1198,6 @@ def phan_tich(stderr, code=None, code_cu=None):
         except Exception as e:
             _ghi_log("loi", f"AST lỗi: {e}")
 
-    # Các nhóm phân tích
     ket_qua["luong_du_lieu"] = _phan_tich_luong_du_lieu(code, ket_qua["bien_lien_quan"])
     ket_qua["luong_dieu_khien"] = _phan_tich_luong_dieu_khien(
         code, dong_bi_loi.get("so_dong") if dong_bi_loi else None)
@@ -1169,7 +1211,6 @@ def phan_tich(stderr, code=None, code_cu=None):
     if code_cu and code:
         ket_qua["diff"] = _so_sanh_code(code_cu, code)
 
-    # Nguyên nhân gốc
     nn_list = NGUYEN_NHAN_GOC.get(ket_qua["loai_loi"], [])
     ket_qua["nguyen_nhan_goc"] = nn_list[0] if nn_list else thong_tin.get("mo_ta", "")
 
@@ -1179,14 +1220,11 @@ def phan_tich(stderr, code=None, code_cu=None):
     ket_qua["test_case"] = _sinh_test_case(ket_qua["loai_loi"], code, dong_bi_loi)
     ket_qua["rui_ro"] = _danh_gia_rui_ro(ket_qua["loai_loi"], code, ket_qua["ham_chua"], ast_loi)
 
-    # Fix đa cấp
     ket_qua["fix_da_cap"] = _sinh_fix_da_cap(
         ket_qua["loai_loi"], code, dong_bi_loi, thong_tin)
 
-    # Chấm điểm chất lượng
     ket_qua["chat_luong"] = _cham_diem_chat_luong(code, ast_loi)
 
-    # Flow chart
     ket_qua["flow_chart"] = _ve_flow_chart(
         code, dong_bi_loi.get("so_dong") if dong_bi_loi else None)
 
@@ -1194,10 +1232,9 @@ def phan_tich(stderr, code=None, code_cu=None):
 
 
 # ================================================================
-# SINH PATCH (gọi riêng)
+# SINH PATCH
 # ================================================================
 def sinh_patch(code_cu, code_moi):
-    """Sinh unified diff giữa code cũ và mới."""
     return _sinh_patch(code_cu, code_moi)
 
 
@@ -1205,7 +1242,6 @@ def sinh_patch(code_cu, code_moi):
 # CÁC HÀM PHỤ
 # ================================================================
 def tim_nguyen_nhan_goc(stderr):
-    """Chỉ trả nguyên nhân gốc."""
     try:
         from dai_nao.doc_loi import doc_loi
         tt = doc_loi(stderr)
@@ -1219,7 +1255,6 @@ def tim_nguyen_nhan_goc(stderr):
 
 
 def lien_ket_loi(stderr):
-    """Tìm lỗi nhân quả."""
     try:
         from dai_nao.doc_loi import doc_loi
         tt = doc_loi(stderr)
@@ -1229,12 +1264,10 @@ def lien_ket_loi(stderr):
 
 
 def de_xuat_cach_sua(stderr, code=None):
-    """Chỉ đề xuất cách sửa."""
     return phan_tich(stderr, code).get("cach_sua", [])
 
 
 def danh_gia_do_kho(stderr):
-    """Đánh giá độ khó sửa."""
     try:
         from dai_nao.doc_loi import doc_loi
         return doc_loi(stderr).get("thoi_gian_sua", "trung_binh")
@@ -1243,7 +1276,6 @@ def danh_gia_do_kho(stderr):
 
 
 def cham_diem_code(code):
-    """Chấm điểm chất lượng code (0-10)."""
     ast_loi = _phan_tich_ast(code) if code else None
     return _cham_diem_chat_luong(code, ast_loi)
 
@@ -1252,7 +1284,6 @@ def cham_diem_code(code):
 # LƯU PHÂN TÍCH VÀO KHO 2
 # ================================================================
 def luu_phan_tich(ket_qua):
-    """Lưu kết quả phân tích vào kho 2."""
     if not ket_qua or not ket_qua.get("co_loi"):
         return False
     try:
@@ -1277,7 +1308,6 @@ def luu_phan_tich(ket_qua):
 # TÓM TẮT CHO UI
 # ================================================================
 def tom_tat(ket_qua):
-    """Tạo chuỗi tóm tắt đẹp để hiển thị."""
     if not ket_qua or not ket_qua.get("co_loi"):
         return ""
 
@@ -1328,7 +1358,6 @@ def tom_tat(ket_qua):
 
 
 def tom_tat_ngan(ket_qua):
-    """Tóm tắt cực ngắn (1 dòng)."""
     if not ket_qua or not ket_qua.get("co_loi"):
         return ""
     return (f"🔴 {ket_qua.get('loai_loi')} @ dòng "
