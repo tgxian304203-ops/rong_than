@@ -4,6 +4,8 @@
    ĐÃ SỬA:
      - Bỏ nút Share.
      - Lưu trò chuyện vào localStorage khi khách tạo.
+     - Set __ID_CHAT_NHANH_HIEN_TAI cho cả khách lẫn user để
+       cập nhật tên chat sau tin nhắn đầu.
    ============================================================ */
 
 (function () {
@@ -118,7 +120,6 @@
     function quayLaiDuAn() {
         dong(lay('trang-chat-du-an'));
         mo(lay('trang-chi-tiet-du-an'));
-        // Tải lại danh sách trò chuyện — QUAN TRỌNG
         if (typeof window.taiDanhSachTroChuyen === 'function') {
             window.taiDanhSachTroChuyen(window.__ID_DU_AN_DANG_XEM);
         }
@@ -316,7 +317,6 @@
             const dl = await ph.json();
 
             if (dl && dl.thanh_cong) {
-                // LƯU VÀO LOCALSTORAGE NẾU LÀ KHÁCH
                 if (dl.tam && dl.tro_chuyen && typeof window.luuTroChuyenKhach === 'function') {
                     window.luuTroChuyenKhach(dl.tro_chuyen);
                 }
@@ -353,12 +353,16 @@
             const khung = lay('danh-sach-tin-nhan');
             if (khung) khung.innerHTML = '';
 
+            // Đặt id chat nhanh hiện tại — áp dụng cho cả khách và user
+            if (dl && dl.thanh_cong && dl.chat && dl.chat.id) {
+                window.__ID_CHAT_NHANH_HIEN_TAI = dl.chat.id;
+            }
+
+            // Nếu là khách thì lưu vào localStorage
             if (dl && dl.thanh_cong && dl.tam && dl.chat) {
-                // Lưu chat nhanh vào localStorage cho khách
                 if (typeof window.luuChatNhanhKhach === 'function') {
                     window.luuChatNhanhKhach(dl.chat);
                 }
-                window.__ID_CHAT_NHANH_HIEN_TAI = dl.chat.id;
             }
 
             if (typeof window.themTinNhanRong === 'function') {
