@@ -4,7 +4,7 @@
    ĐÃ SỬA:
      - Bỏ kiemTraPhien() để không ghi đè laKhach.
      - taiThongTinPhien() là nguồn duy nhất xác định laKhach.
-     - Chạy tuần tự tải dữ liệu sau khi biết chắc chế độ.
+     - Sắp xếp chat nhanh theo ngay_tao giảm dần trước khi render.
    ============================================================ */
 
 (function () {
@@ -115,6 +115,19 @@
             thoi_gian: Date.now(),
         });
         ghiLS(KHOA_LS_TIN_NHAN, ds);
+    }
+
+    /* ============================================================
+       HÀM SẮP XẾP CHUNG — MỚI NHẤT LÊN ĐẦU
+       ============================================================ */
+    function sapXepMoiNhatTruoc(ds, truongThoiGian) {
+        if (!Array.isArray(ds)) return [];
+        const truong = truongThoiGian || 'ngay_tao';
+        return ds.slice().sort(function (a, b) {
+            const ta = Number(a[truong] || 0);
+            const tb = Number(b[truong] || 0);
+            return tb - ta; // giảm dần
+        });
     }
 
     /* ============================================================
@@ -248,7 +261,8 @@
             khung.innerHTML = '<div class="muc-trong">Chưa có dự án nào. Bấm [+] để tạo.</div>';
             return;
         }
-        ds.forEach(function (d) {
+        const dsSapXep = sapXepMoiNhatTruoc(ds);
+        dsSapXep.forEach(function (d) {
             khung.appendChild(taoMucDuAn(d));
         });
     }
@@ -342,7 +356,9 @@
         if (!Array.isArray(ds) || ds.length === 0) {
             return;
         }
-        ds.slice(0, 10).forEach(function (c) {
+        // SẮP XẾP MỚI NHẤT LÊN ĐẦU TRƯỚC KHI RENDER
+        const dsSapXep = sapXepMoiNhatTruoc(ds);
+        dsSapXep.slice(0, 10).forEach(function (c) {
             khung.appendChild(taoMucChatNhanhMenu(c));
         });
     }
@@ -440,7 +456,8 @@
             khung.innerHTML = '<div class="muc-trong">Chưa có trò chuyện nào. Bấm [+] để tạo.</div>';
             return;
         }
-        ds.forEach(function (t) {
+        const dsSapXep = sapXepMoiNhatTruoc(ds);
+        dsSapXep.forEach(function (t) {
             khung.appendChild(taoMucTroChuyen(t));
         });
     }
@@ -483,7 +500,10 @@
             return;
         }
 
-        ds.forEach(function (t) {
+        const dsSapXep = ds.slice().sort(function (a, b) {
+            return Number(a.thoi_gian || 0) - Number(b.thoi_gian || 0);
+        });
+        dsSapXep.forEach(function (t) {
             const vaiTro = t.vai_tro === 'nguoi' ? 'nguoi'
                 : (t.vai_tro === 'rong' ? 'rong' : 'he-thong');
             khung.appendChild(taoBongBong(t.noi_dung || '', vaiTro));
@@ -522,14 +542,11 @@
     async function khoiDong() {
         console.log('%c🌕🐉 Rồng Thần', 'color:#4ade80;font-size:16px;font-weight:bold;');
 
-        // Bước 1: Xác định laKhach (nguồn duy nhất)
         await taiThongTinPhien();
 
-        // Bước 2: Tải dữ liệu (đã biết chắc laKhach)
         await taiDanhSachDuAn();
         await taiDanhSachChatNhanh();
 
-        // Bước 3: Hiển thị lời chào (chỉ khi khung chat rỗng)
         const khung = layKhungTinNhan();
         if (khung && khung.children.length === 0) {
             themTinNhanRong('Nói điều ước đi 🔥🌕🐉');
