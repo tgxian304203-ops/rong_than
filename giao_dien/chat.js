@@ -2,10 +2,9 @@
    chat.js - Gửi/nhận tin nhắn (chat chính + chat trong dự án)
    ------------------------------------------------------------
    ĐÃ SỬA:
-     - Gửi kèm id_chat khi gửi tin nhắn chat chính.
-     - Upload ảnh + file → render lại tin nhắn bằng URL server.
-     - Xóa preview sau khi gửi thành công.
-     - Cập nhật tên chat nhanh sau tin nhắn đầu.
+     - Khi có ảnh/file: không hiện tin nhắn người ngay.
+     - Hiện vòng tròn quay ở preview trong lúc upload.
+     - Upload xong → hiện tin nhắn người có ảnh/file.
    ============================================================ */
 
 (function () {
@@ -221,7 +220,38 @@
     }
 
     /* ============================================================
-       GỬI TIN NHẮN — CHAT CHÍNH (có kèm id_chat)
+       HIỆN VÒNG TRÒN QUAY Ở PREVIEW
+       ============================================================ */
+    function hienVongQuayPreview() {
+        const khungPreview = document.getElementById('khung-preview');
+        if (!khungPreview) return;
+        // Ẩn tất cả preview-item
+        khungPreview.querySelectorAll('.preview-item').forEach(function (el) {
+            el.style.display = 'none';
+        });
+        // Thêm vòng tròn quay nếu chưa có
+        if (!khungPreview.querySelector('.preview-loading')) {
+            const vong = document.createElement('div');
+            vong.className = 'preview-loading';
+            vong.innerHTML = '<div class="vong-quay"></div>';
+            khungPreview.appendChild(vong);
+        }
+        khungPreview.classList.remove('an');
+    }
+
+    function anVongQuayPreview() {
+        const khungPreview = document.getElementById('khung-preview');
+        if (!khungPreview) return;
+        const vong = khungPreview.querySelector('.preview-loading');
+        if (vong) vong.remove();
+        // Hiện lại preview-item
+        khungPreview.querySelectorAll('.preview-item').forEach(function (el) {
+            el.style.display = '';
+        });
+    }
+
+    /* ============================================================
+       GỬI TIN NHẮN — CHAT CHÍNH
        ============================================================ */
     async function guiTinNhanChinh() {
         if (dangGui) return;
@@ -238,26 +268,23 @@
         const soTinNguoiTruoc = demTinNhanNguoiTrongChatChinh();
         const laTinDauTien = (soTinNguoiTruoc === 0);
 
-        const urlsAnhLocal = coAnh
-            ? window.DANH_SACH_ANH.map(function (a) { return a.url; })
-            : [];
         const tenFilesTruoc = coFile
             ? window.DANH_SACH_FILE.map(function (f) { return f.file.name; })
             : [];
 
-        let tinNhanEl;
+        // Nếu có ảnh/file → hiện vòng tròn quay, chưa hiện tin nhắn
         if (coAnh || coFile) {
-            tinNhanEl = taoTinNhanCoDinhKem(noiDung, 'nguoi', urlsAnhLocal, [], tenFilesTruoc);
+            hienVongQuayPreview();
         } else {
-            tinNhanEl = taoTinNhan(noiDung, 'nguoi');
+            // Không có ảnh/file → hiện tin nhắn ngay
+            const tinNhanEl = taoTinNhan(noiDung, 'nguoi');
+            danhSach.appendChild(tinNhanEl);
+            cuonXuongCuoi(khungChat);
         }
-        danhSach.appendChild(tinNhanEl);
-        cuonXuongCuoi(khungChat);
 
         oNhap.value = '';
         tuDongGian(oNhap);
 
-        // Lấy id_chat nhanh hiện tại (do quan_ly_menu.js set khi bấm New Chat)
         const idChat = window.__ID_CHAT_NHANH_HIEN_TAI || '';
 
         if (laTinDauTien && idChat) {
@@ -270,21 +297,23 @@
         hienDangTraLoi(danhSach, 'tin-nhan-dang-tra-loi');
 
         try {
+            // Upload ảnh/file
             const dinhKem = await uploadDinhKem();
 
-            if (dinhKem.urls_anh.length > 0 || dinhKem.urls_file.length > 0) {
-                const khungCu = tinNhanEl.querySelector('.tin-nhan-dinh-kem');
-                if (khungCu) khungCu.remove();
+            // Upload xong → ẩn vòng tròn
+            if (coAnh || coFile) {
+                anVongQuayPreview();
+                xoaHetPreview();
 
-                const khungMoi = taoKhungDinhKem(
-                    dinhKem.urls_anh,
-                    dinhKem.urls_file,
-                    dinhKem.ten_files
+                // Hiện tin nhắn người có ảnh/file
+                const tinNhanEl = taoTinNhanCoDinhKem(
+                    noiDung, 'nguoi', dinhKem.urls_anh, dinhKem.urls_file, dinhKem.ten_files
                 );
-                tinNhanEl.appendChild(khungMoi);
+                danhSach.appendChild(tinNhanEl);
+                cuonXuongCuoi(khungChat);
             }
 
-            // Gửi tin nhắn kèm id_chat
+            // Gửi tin nhắn
             const phanHoi = await fetch('/api/gui-tin-nhan', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -300,7 +329,6 @@
 
             if (duLieu && duLieu.thanh_cong && duLieu.tra_loi) {
                 themTinNhanRong(duLieu.tra_loi);
-                xoaHetPreview();
             } else if (duLieu && duLieu.loi) {
                 themTinNhanHeThong('⚠️ ' + duLieu.loi);
             } else {
@@ -308,6 +336,8 @@
             }
         } catch (e) {
             xoaDangTraLoi('tin-nhan-dang-tra-loi');
+            anVongQuayPreview();
+            xoaHetPreview();
             themTinNhanHeThong('⚠️ Lỗi kết nối: ' + e.message);
         } finally {
             dangGui = false;
@@ -341,21 +371,18 @@
 
         const laKhachHienTai = window.__LA_KHACH === true || !document.getElementById('ten-nguoi-dung');
 
-        const urlsAnhLocal = coAnh
-            ? window.DANH_SACH_ANH.map(function (a) { return a.url; })
-            : [];
         const tenFilesTruoc = coFile
             ? window.DANH_SACH_FILE.map(function (f) { return f.file.name; })
             : [];
 
-        let tinNhanEl;
+        // Nếu có ảnh/file → hiện vòng tròn quay
         if (coAnh || coFile) {
-            tinNhanEl = taoTinNhanCoDinhKem(noiDung, 'nguoi', urlsAnhLocal, [], tenFilesTruoc);
+            hienVongQuayPreview();
         } else {
-            tinNhanEl = taoTinNhan(noiDung, 'nguoi');
+            const tinNhanEl = taoTinNhan(noiDung, 'nguoi');
+            danhSachDuAn.appendChild(tinNhanEl);
+            cuonXuongCuoi(khungChatDuAn);
         }
-        danhSachDuAn.appendChild(tinNhanEl);
-        cuonXuongCuoi(khungChatDuAn);
 
         oNhapDuAn.value = '';
         tuDongGian(oNhapDuAn);
@@ -369,15 +396,15 @@
         try {
             const dinhKem = await uploadDinhKem();
 
-            if (dinhKem.urls_anh.length > 0 || dinhKem.urls_file.length > 0) {
-                const khungCu = tinNhanEl.querySelector('.tin-nhan-dinh-kem');
-                if (khungCu) khungCu.remove();
-                const khungMoi = taoKhungDinhKem(
-                    dinhKem.urls_anh,
-                    dinhKem.urls_file,
-                    dinhKem.ten_files
+            if (coAnh || coFile) {
+                anVongQuayPreview();
+                xoaHetPreview();
+
+                const tinNhanEl = taoTinNhanCoDinhKem(
+                    noiDung, 'nguoi', dinhKem.urls_anh, dinhKem.urls_file, dinhKem.ten_files
                 );
-                tinNhanEl.appendChild(khungMoi);
+                danhSachDuAn.appendChild(tinNhanEl);
+                cuonXuongCuoi(khungChatDuAn);
             }
 
             const phanHoi = await fetch('/api/gui-tin-nhan-du-an', {
@@ -409,10 +436,10 @@
             if (laKhachHienTai && typeof window.luuTinNhanKhach === 'function') {
                 window.luuTinNhanKhach(idDuAn, idTroChuyen, 'rong', traLoi);
             }
-
-            xoaHetPreview();
         } catch (e) {
             xoaDangTraLoi('tin-nhan-dang-tra-loi-du-an');
+            anVongQuayPreview();
+            xoaHetPreview();
             const loi = '⚠️ Lỗi kết nối: ' + e.message;
             danhSachDuAn.appendChild(taoTinNhan(loi, 'he-thong'));
             cuonXuongCuoi(khungChatDuAn);
