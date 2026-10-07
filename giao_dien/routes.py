@@ -406,3 +406,27 @@ def dang_ky_routes(app):
         if ham is None:
             return _chua_trien_khai("đọc cây quyết định")
         return jsonify(ham())
+
+    # ============================================================
+    # TEST URI (TẠM - XÓA SAU KHI DEBUG XONG)
+    # ============================================================
+    @app.route("/api/test-uri", methods=["GET"])
+    def api_test_uri():
+        uri1 = os.environ.get("URI_KHO_1", "")
+        uri2 = os.environ.get("URI_KHO_2", "")
+
+        def che(uri):
+            if not uri:
+                return "TRONG"
+            if "@" in uri:
+                truoc = uri.split("@")[0].replace("mongodb+srv://", "")
+                sau = uri.split("@")[1]
+                if ":" in truoc:
+                    user = truoc.split(":")[0]
+                    return {"user": user, "cluster": sau}
+            return uri[:60]
+
+        return jsonify({
+            "uri_1": che(uri1),
+            "uri_2": che(uri2),
+        })
