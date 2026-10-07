@@ -2,8 +2,9 @@
 session.py - Quản lý dự án + chat nhanh + trò chuyện trong dự án.
 ------------------------------------------------------------
 ĐÃ SỬA:
-    - Xóa trò chuyện → xóa luôn ảnh/file GridFS thuộc trò chuyện đó.
-    - Lưu tin nhắn có kèm urls_anh + urls_file để load lại hiển thị được.
+    - ngay_tao dùng mili giây để sort chính xác.
+    - Chat nhanh mới nhất lên đầu, vượt 10 xóa cũ nhất.
+    - Xóa trò chuyện → xóa luôn ảnh/file GridFS.
 """
 
 import secrets
@@ -46,6 +47,11 @@ def _tao_id():
     return "id-" + secrets.token_hex(8)
 
 
+def _bay_giay():
+    """Trả về timestamp mili giây (để sort chính xác giữa các bản ghi tạo nhanh)."""
+    return int(time.time() * 1000)
+
+
 def _lay_ten_dang_nhap():
     return phien_flask.get("ten_dang_nhap")
 
@@ -72,7 +78,7 @@ def tao_du_an(du_lieu):
     du_an_moi = {
         "id": _tao_id(),
         "ten": ten_du_an,
-        "ngay_tao": int(time.time()),
+        "ngay_tao": _bay_giay(),
     }
 
     if not ten_tk:
@@ -110,7 +116,7 @@ def xoa_du_an(du_lieu):
 
 
 # ================================================================
-# CHAT NHANH (giới hạn 10)
+# CHAT NHANH (giới hạn 10, mới nhất lên đầu)
 # ================================================================
 def lay_danh_sach_chat_nhanh():
     ten = _lay_ten_dang_nhap()
@@ -128,7 +134,7 @@ def tao_chat_nhanh(du_lieu):
     chat_moi = {
         "id": _tao_id(),
         "ten": ten_chat,
-        "ngay_tao": int(time.time()),
+        "ngay_tao": _bay_giay(),
     }
 
     if not ten_tk:
@@ -139,7 +145,7 @@ def tao_chat_nhanh(du_lieu):
     chat_moi["chu_so_huu"] = ten_tk
     chat_moi["tam"] = False
 
-    # Giới hạn 10
+    # Giới hạn 10: nếu đã đủ, xóa cái cũ nhất
     danh_sach_hien_co = lay_danh_sach_chat_nhanh_cua(ten_tk) or []
     if len(danh_sach_hien_co) >= GIOI_HAN_CHAT_NHANH:
         danh_sach_hien_co.sort(key=lambda c: c.get("ngay_tao", 0))
@@ -166,10 +172,6 @@ def xoa_chat_nhanh(du_lieu):
 
 
 def doi_ten_chat_nhanh(du_lieu):
-    """
-    Cập nhật tên chat nhanh sau tin nhắn đầu.
-    du_lieu: { id, ten }
-    """
     ten_tk = _lay_ten_dang_nhap()
     id_chat = du_lieu.get("id")
     ten_moi = (du_lieu.get("ten") or "").strip()
@@ -212,7 +214,7 @@ def tao_tro_chuyen(du_lieu):
         "id_du_an": id_du_an,
         "ten": ten_tro,
         "chu_so_huu": chu_so_huu,
-        "ngay_tao": int(time.time()),
+        "ngay_tao": _bay_giay(),
     }
 
     if not ten_tk:
@@ -241,13 +243,6 @@ def lay_danh_sach_tro_chuyen():
 
 
 def xoa_tro_chuyen(du_lieu):
-    """
-    Xóa trò chuyện và mọi thứ liên quan:
-        - Tin nhắn trong lich_su_chat.
-        - Ảnh/file trong GridFS + metadata (anh_file, noi_dung_da_trich_xuat, lich_su_gui).
-        - Bản ghi trong tro_chuyen.
-    KHÔNG đụng đến cây quyết định (kho 2).
-    """
     ten_tk = _lay_ten_dang_nhap()
     id_tro = du_lieu.get("id_tro_chuyen")
     if not id_tro:
@@ -255,13 +250,11 @@ def xoa_tro_chuyen(du_lieu):
     if not ten_tk:
         return {"thanh_cong": True}
 
-    # Xóa ảnh/file GridFS thuộc trò chuyện này
     try:
         xoa_file_theo_tro_chuyen(id_tro, ten_tk)
     except Exception:
         pass
 
-    # Xóa tin nhắn + trò chuyện
     xoa_tro_chuyen_theo_id(id_tro, ten_tk)
     return {"thanh_cong": True}
 
@@ -270,13 +263,6 @@ def xoa_tro_chuyen(du_lieu):
 # TIN NHẮN TRONG TRÒ CHUYỆN
 # ================================================================
 def luu_tin_nhan(du_lieu):
-    """
-    Lưu tin nhắn vào lich_su_chat.
-    du_lieu: {
-        id_du_an, id_tro_chuyen, vai_tro, noi_dung,
-        urls_anh (tùy chọn), urls_file (tùy chọn)
-    }
-    """
     ten_tk = _lay_ten_dang_nhap()
     id_du_an = du_lieu.get("id_du_an")
     id_tro = du_lieu.get("id_tro_chuyen")
@@ -301,7 +287,7 @@ def luu_tin_nhan(du_lieu):
         "chu_so_huu": ten_tk,
         "vai_tro": vai_tro,
         "noi_dung": noi_dung,
-        "thoi_gian": int(time.time()),
+        "thoi_gian": _bay_giay(),
     }
     if urls_anh:
         tin["urls_anh"] = list(urls_anh)
