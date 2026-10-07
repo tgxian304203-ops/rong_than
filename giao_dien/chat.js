@@ -1,10 +1,10 @@
 /* ============================================================
    chat.js - Gửi/nhận tin nhắn (chat chính + chat trong dự án)
    ------------------------------------------------------------
-   ĐÃ SỬA (CÁCH 3):
-     - Bỏ client-side sandbox (không dùng Pyodide/LiveCodes).
-     - Backend chạy code → trả ket_qua_chay (stdout, stderr).
-     - Client chỉ hiển thị code + kết quả từ backend.
+   ĐÃ SỬA:
+     - CÁCH 3: Backend chạy code → trả code + ket_qua_chay.
+     - THÊM: hiển thị code bằng hienThiKhungCode (chat chính).
+     - THÊM: hiển thị code bằng hienThiKhungCode (chat dự án).
      - Giữ nguyên các hàm render tin nhắn.
    ============================================================ */
 
@@ -215,12 +215,30 @@
     }
 
     /* ============================================================
+       HIỂN THỊ CODE TỪ BACKEND
+       ============================================================ */
+    function hienThiCodeTuBackend(code, ngonNgu) {
+        if (!code) return;
+
+        if (typeof window.hienThiKhungCode === 'function') {
+            window.hienThiKhungCode(code, ngonNgu || 'code');
+        } else if (typeof window.taoKhungCode === 'function') {
+            const khung = document.createElement('div');
+            khung.classList.add('tin-nhan', 'tin-nhan-rong');
+            khung.appendChild(window.taoKhungCode(code, ngonNgu || 'code'));
+            if (danhSach) {
+                danhSach.appendChild(khung);
+                cuonXuongCuoi(khungChat);
+            }
+        }
+    }
+
+    /* ============================================================
        HIỂN THỊ KẾT QUẢ CODE TỪ BACKEND (CÁCH 3)
        ============================================================ */
     function hienThiKetQuaChay(ketQuaChay) {
         if (!ketQuaChay) return;
 
-        // Nếu backend đã tự sửa → thông báo
         if (ketQuaChay.da_sua) {
             let thongBao = '🔧 Đã tự sửa lỗi';
             if (ketQuaChay.so_lan_sua) {
@@ -235,7 +253,6 @@
             themTinNhanHeThong(thongBao);
         }
 
-        // Hiển thị stdout (kết quả)
         if (ketQuaChay.stdout) {
             const dong = document.createElement('div');
             dong.classList.add('tin-nhan', 'tin-nhan-rong');
@@ -247,7 +264,6 @@
             cuonXuongCuoi(khungChat);
         }
 
-        // Hiển thị stderr (lỗi)
         if (ketQuaChay.stderr && !ketQuaChay.da_sua) {
             const dong = document.createElement('div');
             dong.classList.add('tin-nhan', 'tin-nhan-he-thong');
@@ -258,7 +274,6 @@
             danhSach.appendChild(dong);
             cuonXuongCuoi(khungChat);
         } else if (ketQuaChay.stderr && ketQuaChay.da_sua) {
-            // Đã sửa nhưng vẫn còn lỗi
             if (!ketQuaChay.thanh_cong) {
                 const dong = document.createElement('div');
                 dong.classList.add('tin-nhan', 'tin-nhan-he-thong');
@@ -340,7 +355,12 @@
             if (duLieu && duLieu.thanh_cong && duLieu.tra_loi) {
                 themTinNhanRong(duLieu.tra_loi);
 
-                // CÁCH 3: Nếu backend đã chạy code → hiển thị kết quả
+                // HIỂN THỊ CODE (THÊM)
+                if (duLieu.code) {
+                    hienThiCodeTuBackend(duLieu.code, duLieu.ngon_ngu);
+                }
+
+                // HIỂN THỊ KẾT QUẢ CHẠY (CÁCH 3)
                 if (duLieu.ket_qua_chay) {
                     hienThiKetQuaChay(duLieu.ket_qua_chay);
                 }
@@ -443,6 +463,17 @@
             danhSachDuAn.appendChild(taoTinNhan(traLoi, 'rong'));
             cuonXuongCuoi(khungChatDuAn);
 
+            // HIỂN THỊ CODE (THÊM) — chat dự án
+            if (duLieu && duLieu.code) {
+                if (typeof window.taoKhungCode === 'function') {
+                    const boc = document.createElement('div');
+                    boc.classList.add('tin-nhan', 'tin-nhan-rong');
+                    boc.appendChild(window.taoKhungCode(duLieu.code, duLieu.ngon_ngu || 'code'));
+                    danhSachDuAn.appendChild(boc);
+                    cuonXuongCuoi(khungChatDuAn);
+                }
+            }
+
             if (laKhachHienTai && typeof window.luuTinNhanKhach === 'function') {
                 window.luuTinNhanKhach(idDuAn, idTroChuyen, 'rong', traLoi);
             }
@@ -482,6 +513,10 @@
             } else {
                 danhSach.appendChild(taoTinNhan(noiDung, vaiTro));
             }
+
+            if (vaiTro === 'rong' && tin.code) {
+                hienThiCodeTuBackend(tin.code, tin.ngon_ngu);
+            }
         });
 
         cuonXuongCuoi(khungChat);
@@ -506,6 +541,13 @@
                 );
             } else {
                 danhSachDuAn.appendChild(taoTinNhan(noiDung, vaiTro));
+            }
+
+            if (vaiTro === 'rong' && tin.code && typeof window.taoKhungCode === 'function') {
+                const boc = document.createElement('div');
+                boc.classList.add('tin-nhan', 'tin-nhan-rong');
+                boc.appendChild(window.taoKhungCode(tin.code, tin.ngon_ngu || 'code'));
+                danhSachDuAn.appendChild(boc);
             }
         });
 
@@ -558,6 +600,7 @@
     window.renderTinNhanCu = renderTinNhanCu;
     window.renderTinNhanChatNhanh = renderTinNhanChatNhanh;
     window.hienThiKetQuaChay = hienThiKetQuaChay;
+    window.hienThiCodeTuBackend = hienThiCodeTuBackend;
 
     /* ============================================================
        LỜI CHÀO
