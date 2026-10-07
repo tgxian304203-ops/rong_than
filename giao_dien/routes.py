@@ -3,11 +3,12 @@ routes.py - Định nghĩa toàn bộ route API cho Rồng Thần.
 """
 
 import os
+import io
 import json
 import secrets
 from functools import wraps
 
-from flask import jsonify, request, session
+from flask import jsonify, request, session, send_file
 
 
 THU_MUC_GOC = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -82,9 +83,14 @@ def dang_ky_routes(app):
         id_du_an = du_lieu.get("id_du_an")
         id_tro_chuyen = du_lieu.get("id_tro_chuyen")
         noi_dung = (du_lieu.get("noi_dung") or "").strip()
+        urls_anh = du_lieu.get("urls_anh") or []
+        urls_file = du_lieu.get("urls_file") or []
 
-        if not id_du_an or not id_tro_chuyen or not noi_dung:
+        if not id_du_an or not id_tro_chuyen:
             return jsonify({"thanh_cong": False, "loi": "Thiếu thông tin."})
+
+        if not noi_dung and not urls_anh and not urls_file:
+            return jsonify({"thanh_cong": False, "loi": "Không có nội dung để gửi."})
 
         ten_tk = session.get("ten_dang_nhap")
 
@@ -96,6 +102,8 @@ def dang_ky_routes(app):
                     "id_tro_chuyen": id_tro_chuyen,
                     "vai_tro": "nguoi",
                     "noi_dung": noi_dung,
+                    "urls_anh": urls_anh,
+                    "urls_file": urls_file,
                 })
 
         ham_xu_ly = _goi_an_toan("dai_nao.nhan_task", "nhan_task")
@@ -314,14 +322,70 @@ def dang_ky_routes(app):
         ham = _goi_an_toan("giao_dien.upload", "upload_anh")
         if ham is None:
             return _chua_trien_khai("upload ảnh")
-        return jsonify(ham(request.files))
+        id_tro_chuyen = request.form.get("id_tro_chuyen") or None
+        id_du_an = request.form.get("id_du_an") or None
+        return jsonify(ham(request.files, id_tro_chuyen, id_du_an))
 
     @app.route("/api/upload-file", methods=["POST"])
     def api_upload_file():
         ham = _goi_an_toan("giao_dien.upload", "upload_file")
         if ham is None:
             return _chua_trien_khai("upload file")
-        return jsonify(ham(request.files))
+        id_tro_chuyen = request.form.get("id_tro_chuyen") or None
+        id_du_an = request.form.get("id_du_an") or None
+        return jsonify(ham(request.files, id_tro_chuyen, id_du_an))
+
+    # ============================================================
+    # PHỤC VỤ FILE TỪ GRIDFS
+    # ============================================================
+    @app.route("/api/file/<id_file>", methods=["GET"])
+    def api_file(id_file):
+        from dai_nao.ghi_nho import lay_file_theo_id, doc_file_gridfs
+        metadata = lay_file_theo_id(id_file)
+        if not metadata:
+            return jsonify({"thanh_cong": False, "loi": "Không tìm thấy file."}), 404
+
+        id_gridfs = metadata.get("id_gridfs")
+        if not id_gridfs:
+            return jsonify({"thanh_cong": False, "loi": "File không có trong GridFS."}), 404
+
+        noi_dung = doc_file_gridfs(id_gridfs)
+        if not noi_dung:
+            return jsonify({"thanh_cong": False, "loi": "Không đọc được file."}), 404
+
+        ten_file = metadata.get("ten_file") or "file"
+        duoi_file = (metadata.get("duoi_file") or "").lower()
+
+        # Đoán MIME
+        mime_map = {
+            "png": "image/png",
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+            "gif": "image/gif",
+            "webp": "image/webp",
+            "bmp": "image/bmp",
+            "svg": "image/svg+xml",
+            "pdf": "application/pdf",
+            "txt": "text/plain; charset=utf-8",
+            "md": "text/plain; charset=utf-8",
+            "json": "application/json",
+            "csv": "text/csv",
+            "log": "text/plain",
+        }
+        mime = mime_map.get(duoi_file, "application/octet-stream")
+
+        # Hiển thị inline (ảnh/PDF/text), tải về (các loại khác)
+        hien_thi_inline = duoi_file in (
+            "png", "jpg", "jpeg", "gif", "webp", "bmp", "svg",
+            "pdf", "txt", "md", "json", "csv", "log",
+        )
+
+        return send_file(
+            io.BytesIO(noi_dung),
+            mimetype=mime,
+            as_attachment=not hien_thi_inline,
+            download_name=ten_file,
+        )
 
     # ============================================================
     # DỰ ÁN / CHAT NHANH

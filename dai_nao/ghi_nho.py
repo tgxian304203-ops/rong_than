@@ -1021,3 +1021,50 @@ def ping_ca_2_kho():
     except Exception:
         pass
     return ket_qua
+
+
+def xoa_file_theo_tro_chuyen(id_tro_chuyen, chu_so_huu):
+    """
+    Xóa toàn bộ ảnh/file thuộc 1 trò chuyện.
+    - Xóa file thật trong GridFS.
+    - Xóa metadata trong anh_file, noi_dung_da_trich_xuat, lich_su_gui.
+    Trả về: số file đã xóa khỏi GridFS.
+    """
+    if not id_tro_chuyen or not chu_so_huu:
+        return 0
+    db, fs = _ket_noi_kho_1()
+    dieu_kien = {
+        "id_tro_chuyen": id_tro_chuyen,
+        "chu_so_huu": chu_so_huu,
+    }
+    dem = 0
+    try:
+        for metadata in db[C_ANH_FILE].find(dieu_kien):
+            id_gridfs = metadata.get("id_gridfs")
+            if id_gridfs:
+                try:
+                    from bson.objectid import ObjectId
+                    fs.delete(ObjectId(id_gridfs))
+                    dem += 1
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    for ten_coll in (C_ANH_FILE, C_NOI_DUNG_TRICH_XUAT, C_LICH_SU_GUI):
+        try:
+            db[ten_coll].delete_many(dieu_kien)
+        except Exception:
+            pass
+    return dem
+
+
+def lay_file_theo_id(id_file):
+    """
+    Lấy metadata của file theo id_file.
+    Trả về dict hoặc None.
+    """
+    if not id_file:
+        return None
+    db, _ = _ket_noi_kho_1()
+    ket_qua = db[C_ANH_FILE].find_one({"id_file": id_file})
+    return _chuan_hoa_doc(ket_qua) if ket_qua else None

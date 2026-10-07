@@ -1,7 +1,9 @@
 """
 session.py - Quản lý dự án + chat nhanh + trò chuyện trong dự án.
 ------------------------------------------------------------
-ĐÃ SỬA: Thêm hàm đổi tên chat nhanh sau tin nhắn đầu.
+ĐÃ SỬA:
+    - Xóa trò chuyện → xóa luôn ảnh/file GridFS thuộc trò chuyện đó.
+    - Lưu tin nhắn có kèm urls_anh + urls_file để load lại hiển thị được.
 """
 
 import secrets
@@ -24,6 +26,7 @@ from dai_nao.ghi_nho import (
     luu_tin_nhan_tro_chuyen,
     lay_tin_nhan_tro_chuyen_cua,
     cap_nhat_ten_chat_nhanh,
+    xoa_file_theo_tro_chuyen,
 )
 
 
@@ -174,7 +177,6 @@ def doi_ten_chat_nhanh(du_lieu):
     if not id_chat or not ten_moi:
         return {"thanh_cong": False, "loi": "Thiếu thông tin."}
 
-    # Khách → client tự lưu localStorage
     if not ten_tk:
         return {"thanh_cong": True, "tam": True}
 
@@ -239,6 +241,13 @@ def lay_danh_sach_tro_chuyen():
 
 
 def xoa_tro_chuyen(du_lieu):
+    """
+    Xóa trò chuyện và mọi thứ liên quan:
+        - Tin nhắn trong lich_su_chat.
+        - Ảnh/file trong GridFS + metadata (anh_file, noi_dung_da_trich_xuat, lich_su_gui).
+        - Bản ghi trong tro_chuyen.
+    KHÔNG đụng đến cây quyết định (kho 2).
+    """
     ten_tk = _lay_ten_dang_nhap()
     id_tro = du_lieu.get("id_tro_chuyen")
     if not id_tro:
@@ -246,6 +255,13 @@ def xoa_tro_chuyen(du_lieu):
     if not ten_tk:
         return {"thanh_cong": True}
 
+    # Xóa ảnh/file GridFS thuộc trò chuyện này
+    try:
+        xoa_file_theo_tro_chuyen(id_tro, ten_tk)
+    except Exception:
+        pass
+
+    # Xóa tin nhắn + trò chuyện
     xoa_tro_chuyen_theo_id(id_tro, ten_tk)
     return {"thanh_cong": True}
 
@@ -254,14 +270,26 @@ def xoa_tro_chuyen(du_lieu):
 # TIN NHẮN TRONG TRÒ CHUYỆN
 # ================================================================
 def luu_tin_nhan(du_lieu):
+    """
+    Lưu tin nhắn vào lich_su_chat.
+    du_lieu: {
+        id_du_an, id_tro_chuyen, vai_tro, noi_dung,
+        urls_anh (tùy chọn), urls_file (tùy chọn)
+    }
+    """
     ten_tk = _lay_ten_dang_nhap()
     id_du_an = du_lieu.get("id_du_an")
     id_tro = du_lieu.get("id_tro_chuyen")
     vai_tro = du_lieu.get("vai_tro") or "nguoi"
     noi_dung = (du_lieu.get("noi_dung") or "").strip()
+    urls_anh = du_lieu.get("urls_anh") or []
+    urls_file = du_lieu.get("urls_file") or []
 
-    if not id_du_an or not id_tro or not noi_dung:
+    if not id_du_an or not id_tro:
         return {"thanh_cong": False, "loi": "Thiếu thông tin."}
+
+    if not noi_dung and not urls_anh and not urls_file:
+        return {"thanh_cong": False, "loi": "Không có nội dung."}
 
     if not ten_tk:
         return {"thanh_cong": True, "tam": True}
@@ -275,6 +303,10 @@ def luu_tin_nhan(du_lieu):
         "noi_dung": noi_dung,
         "thoi_gian": int(time.time()),
     }
+    if urls_anh:
+        tin["urls_anh"] = list(urls_anh)
+    if urls_file:
+        tin["urls_file"] = list(urls_file)
 
     if not luu_tin_nhan_tro_chuyen(tin):
         return {"thanh_cong": False, "loi": "Không lưu được."}

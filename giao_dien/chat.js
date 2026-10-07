@@ -2,9 +2,9 @@
    chat.js - Gửi/nhận tin nhắn (chat chính + chat trong dự án)
    ------------------------------------------------------------
    ĐÃ SỬA:
-     - Upload ảnh + file trước khi gửi tin nhắn.
-     - Hiển thị thumbnail ảnh + icon file trong tin nhắn.
-     - Click ảnh/file trong chat → mở modal xem toàn màn hình.
+     - Upload ảnh + file → render lại tin nhắn bằng URL server.
+     - Gửi kèm urls_anh + urls_file trong body API dự án.
+     - Hiển thị ảnh/file cũ khi load lại trò chuyện.
      - Xóa preview sau khi gửi thành công.
      - Cập nhật tên chat nhanh sau tin nhắn đầu.
      - Lưu tin nhắn khách vào localStorage.
@@ -44,32 +44,21 @@
         o.style.height = cao + 'px';
     }
 
-    /* ------------------------------------------------------------
-       LẤY ĐUÔI FILE
-       ------------------------------------------------------------ */
     function layDuoi(tenFile) {
         if (!tenFile || tenFile.indexOf('.') < 0) return '';
         return tenFile.split('.').pop().toLowerCase();
     }
 
-    /* ------------------------------------------------------------
-       SVG ICON CHO FILE TRONG CHAT
-       ------------------------------------------------------------ */
+    function layTenFileTuUrl(url) {
+        if (!url) return 'file';
+        const phan = url.split('/');
+        return phan[phan.length - 1] || 'file';
+    }
+
     function layIconFileChat(tenFile) {
         const duoi = layDuoi(tenFile);
         const svgMo = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
         const svgDong = '</svg>';
-
-        if (duoi === 'pdf' || duoi === 'doc' || duoi === 'docx' ||
-            duoi === 'xls' || duoi === 'xlsx' || duoi === 'csv' ||
-            duoi === 'txt' || duoi === 'md') {
-            return svgMo +
-                '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>' +
-                '<polyline points="14,2 14,8 20,8"/>' +
-                '<line x1="16" y1="13" x2="8" y2="13"/>' +
-                '<line x1="16" y1="17" x2="8" y2="17"/>' +
-                svgDong;
-        }
 
         if (duoi === 'zip' || duoi === 'rar' || duoi === '7z') {
             return svgMo +
@@ -82,6 +71,8 @@
         return svgMo +
             '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>' +
             '<polyline points="14,2 14,8 20,8"/>' +
+            '<line x1="16" y1="13" x2="8" y2="13"/>' +
+            '<line x1="16" y1="17" x2="8" y2="17"/>' +
             svgDong;
     }
 
@@ -105,56 +96,57 @@
     }
 
     /* ------------------------------------------------------------
-       TẠO TIN NHẮN CÓ ĐÍNH KÈM (ảnh + file)
-       urlsAnh: mảng URL ảnh đã upload
-       urlsFile: mảng URL file đã upload
-       tenFiles: mảng tên file (để hiện icon + tên)
+       TẠO KHUNG ĐÍNH KÈM (ảnh + file)
+       ------------------------------------------------------------ */
+    function taoKhungDinhKem(urlsAnh, urlsFile, tenFiles) {
+        const khung = document.createElement('div');
+        khung.classList.add('tin-nhan-dinh-kem');
+
+        if (urlsAnh && urlsAnh.length > 0) {
+            urlsAnh.forEach(function (url) {
+                const img = document.createElement('img');
+                img.classList.add('tin-nhan-anh');
+                img.src = url;
+                img.alt = 'Ảnh đính kèm';
+                img.addEventListener('click', function () {
+                    if (typeof window.moModalAnh === 'function') {
+                        window.moModalAnh(url);
+                    } else {
+                        window.open(url, '_blank');
+                    }
+                });
+                khung.appendChild(img);
+            });
+        }
+
+        if (urlsFile && urlsFile.length > 0) {
+            urlsFile.forEach(function (url, i) {
+                const tenFile = (tenFiles && tenFiles[i]) ? tenFiles[i] : layTenFileTuUrl(url);
+
+                const khoiFile = document.createElement('div');
+                khoiFile.classList.add('tin-nhan-file');
+                khoiFile.innerHTML = layIconFileChat(tenFile) +
+                    '<span class="ten-file-chat">' + tenFile + '</span>';
+
+                khoiFile.addEventListener('click', function () {
+                    window.open(url, '_blank');
+                });
+
+                khung.appendChild(khoiFile);
+            });
+        }
+
+        return khung;
+    }
+
+    /* ------------------------------------------------------------
+       TẠO TIN NHẮN CÓ ĐÍNH KÈM
        ------------------------------------------------------------ */
     function taoTinNhanCoDinhKem(noiDung, loai, urlsAnh, urlsFile, tenFiles) {
         const div = taoTinNhan(noiDung, loai);
-
         if ((urlsAnh && urlsAnh.length > 0) || (urlsFile && urlsFile.length > 0)) {
-            const khungDinhKem = document.createElement('div');
-            khungDinhKem.classList.add('tin-nhan-dinh-kem');
-
-            // Ảnh
-            if (urlsAnh && urlsAnh.length > 0) {
-                urlsAnh.forEach(function (url) {
-                    const img = document.createElement('img');
-                    img.classList.add('tin-nhan-anh');
-                    img.src = url;
-                    img.alt = 'Ảnh đính kèm';
-                    img.addEventListener('click', function () {
-                        if (typeof window.moModalAnh === 'function') {
-                            window.moModalAnh(url);
-                        }
-                    });
-                    khungDinhKem.appendChild(img);
-                });
-            }
-
-            // File
-            if (urlsFile && urlsFile.length > 0) {
-                urlsFile.forEach(function (url, i) {
-                    const tenFile = (tenFiles && tenFiles[i]) ? tenFiles[i] : url.split('/').pop();
-
-                    const khoiFile = document.createElement('div');
-                    khoiFile.classList.add('tin-nhan-file');
-                    khoiFile.innerHTML = layIconFileChat(tenFile) +
-                        '<span class="ten-file-chat">' + tenFile + '</span>';
-
-                    khoiFile.addEventListener('click', function () {
-                        // Mở link trong tab mới (ảnh/PDF xem được, khác tải về)
-                        window.open(url, '_blank');
-                    });
-
-                    khungDinhKem.appendChild(khoiFile);
-                });
-            }
-
-            div.appendChild(khungDinhKem);
+            div.appendChild(taoKhungDinhKem(urlsAnh, urlsFile, tenFiles));
         }
-
         return div;
     }
 
@@ -197,7 +189,7 @@
     }
 
     /* ============================================================
-       ĐẾM SỐ TIN NHẮN ĐÃ GỬI TRONG CHAT NHANH HIỆN TẠI
+       ĐẾM TIN NHẮN
        ============================================================ */
     function demTinNhanNguoiTrongChatChinh() {
         if (!danhSach) return 0;
@@ -211,15 +203,13 @@
     }
 
     /* ============================================================
-       UPLOAD ẢNH + FILE TRƯỚC KHI GỬI
-       Trả về { urls_anh, urls_file, ten_files }
+       UPLOAD ĐÍNH KÈM
        ============================================================ */
     async function uploadDinhKem() {
         let urls_anh = [];
         let urls_file = [];
         let ten_files = [];
 
-        // Ảnh
         try {
             if (typeof window.uploadTatCaAnh === 'function' &&
                 window.DANH_SACH_ANH && window.DANH_SACH_ANH.length > 0) {
@@ -229,11 +219,9 @@
             console.error('Lỗi upload ảnh:', e);
         }
 
-        // File
         try {
             if (typeof window.uploadTatCaFile === 'function' &&
                 window.DANH_SACH_FILE && window.DANH_SACH_FILE.length > 0) {
-                // Lưu tên file trước khi upload (vì xóaTatCaFile sẽ xóa)
                 ten_files = window.DANH_SACH_FILE.map(function (f) { return f.file.name; });
                 urls_file = await window.uploadTatCaFile();
             }
@@ -264,34 +252,30 @@
         dangGui = true;
         nutGui.disabled = true;
 
-        // Đếm số tin nhắn người dùng TRƯỚC KHI thêm tin mới
         const soTinNguoiTruoc = demTinNhanNguoiTrongChatChinh();
         const laTinDauTien = (soTinNguoiTruoc === 0);
 
-        // Lưu tên file trước khi preview bị xóa
+        // Lưu URL blob để hiển thị tạm, sau đó thay bằng URL server
+        const urlsAnhLocal = coAnh
+            ? window.DANH_SACH_ANH.map(function (a) { return a.url; })
+            : [];
         const tenFilesTruoc = coFile
             ? window.DANH_SACH_FILE.map(function (f) { return f.file.name; })
             : [];
 
-        // URL blob của ảnh local (để hiển thị ngay)
-        const urlsAnhLocal = coAnh
-            ? window.DANH_SACH_ANH.map(function (a) { return a.url; })
-            : [];
-
-        // Hiển thị tin nhắn người (có ảnh/file)
+        // Tạo phần tử tin nhắn người (có thể chèn ảnh/file tạm sau)
         let tinNhanEl;
         if (coAnh || coFile) {
             tinNhanEl = taoTinNhanCoDinhKem(noiDung, 'nguoi', urlsAnhLocal, [], tenFilesTruoc);
-            danhSach.appendChild(tinNhanEl);
-            cuonXuongCuoi(khungChat);
         } else {
-            themTinNhanNguoi(noiDung);
+            tinNhanEl = taoTinNhan(noiDung, 'nguoi');
         }
+        danhSach.appendChild(tinNhanEl);
+        cuonXuongCuoi(khungChat);
 
         oNhap.value = '';
         tuDongGian(oNhap);
 
-        // Cập nhật tên chat nhanh
         if (laTinDauTien) {
             const idChat = window.__ID_CHAT_NHANH_HIEN_TAI;
             const tenChat = noiDung || 'Chat có đính kèm';
@@ -303,8 +287,23 @@
         hienDangTraLoi(danhSach, 'tin-nhan-dang-tra-loi');
 
         try {
-            // Upload ảnh/file
+            // Upload → lấy URL server
             const dinhKem = await uploadDinhKem();
+
+            // Nếu có ảnh/file: cập nhật lại tin nhắn người bằng URL server
+            if (dinhKem.urls_anh.length > 0 || dinhKem.urls_file.length > 0) {
+                // Xóa khung đính kèm cũ (blob)
+                const khungCu = tinNhanEl.querySelector('.tin-nhan-dinh-kem');
+                if (khungCu) khungCu.remove();
+
+                // Thêm khung đính kèm mới (URL server)
+                const khungMoi = taoKhungDinhKem(
+                    dinhKem.urls_anh,
+                    dinhKem.urls_file,
+                    dinhKem.ten_files
+                );
+                tinNhanEl.appendChild(khungMoi);
+            }
 
             // Gửi tin nhắn
             const phanHoi = await fetch('/api/gui-tin-nhan', {
@@ -344,7 +343,10 @@
         if (dangGuiDuAn) return;
 
         const noiDung = oNhapDuAn.value.trim();
-        if (!noiDung) return;
+        const coAnh = window.DANH_SACH_ANH && window.DANH_SACH_ANH.length > 0;
+        const coFile = window.DANH_SACH_FILE && window.DANH_SACH_FILE.length > 0;
+
+        if (!noiDung && !coAnh && !coFile) return;
 
         const idDuAn = window.__ID_DU_AN_DANG_CHAT;
         const idTroChuyen = window.__ID_TRO_CHUYEN_DANG_CHAT;
@@ -357,14 +359,28 @@
         dangGuiDuAn = true;
         nutGuiDuAn.disabled = true;
 
-        danhSachDuAn.appendChild(taoTinNhan(noiDung, 'nguoi'));
+        const laKhachHienTai = window.__LA_KHACH === true || !document.getElementById('ten-nguoi-dung');
+
+        // Hiển thị tin nhắn tạm bằng blob URL
+        const urlsAnhLocal = coAnh
+            ? window.DANH_SACH_ANH.map(function (a) { return a.url; })
+            : [];
+        const tenFilesTruoc = coFile
+            ? window.DANH_SACH_FILE.map(function (f) { return f.file.name; })
+            : [];
+
+        let tinNhanEl;
+        if (coAnh || coFile) {
+            tinNhanEl = taoTinNhanCoDinhKem(noiDung, 'nguoi', urlsAnhLocal, [], tenFilesTruoc);
+        } else {
+            tinNhanEl = taoTinNhan(noiDung, 'nguoi');
+        }
+        danhSachDuAn.appendChild(tinNhanEl);
         cuonXuongCuoi(khungChatDuAn);
 
         oNhapDuAn.value = '';
         tuDongGian(oNhapDuAn);
 
-        // Lưu tin nhắn khách vào localStorage
-        const laKhachHienTai = window.__LA_KHACH === true || !document.getElementById('ten-nguoi-dung');
         if (laKhachHienTai && typeof window.luuTinNhanKhach === 'function') {
             window.luuTinNhanKhach(idDuAn, idTroChuyen, 'nguoi', noiDung);
         }
@@ -372,6 +388,21 @@
         hienDangTraLoi(danhSachDuAn, 'tin-nhan-dang-tra-loi-du-an');
 
         try {
+            // Upload → lấy URL server
+            const dinhKem = await uploadDinhKem();
+
+            // Cập nhật lại tin nhắn bằng URL server
+            if (dinhKem.urls_anh.length > 0 || dinhKem.urls_file.length > 0) {
+                const khungCu = tinNhanEl.querySelector('.tin-nhan-dinh-kem');
+                if (khungCu) khungCu.remove();
+                const khungMoi = taoKhungDinhKem(
+                    dinhKem.urls_anh,
+                    dinhKem.urls_file,
+                    dinhKem.ten_files
+                );
+                tinNhanEl.appendChild(khungMoi);
+            }
+
             const phanHoi = await fetch('/api/gui-tin-nhan-du-an', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -379,6 +410,8 @@
                     noi_dung: noiDung,
                     id_du_an: idDuAn,
                     id_tro_chuyen: idTroChuyen,
+                    urls_anh: dinhKem.urls_anh,
+                    urls_file: dinhKem.urls_file,
                 }),
             });
             const duLieu = await phanHoi.json();
@@ -399,6 +432,8 @@
             if (laKhachHienTai && typeof window.luuTinNhanKhach === 'function') {
                 window.luuTinNhanKhach(idDuAn, idTroChuyen, 'rong', traLoi);
             }
+
+            xoaHetPreview();
         } catch (e) {
             xoaDangTraLoi('tin-nhan-dang-tra-loi-du-an');
             const loi = '⚠️ Lỗi kết nối: ' + e.message;
@@ -409,6 +444,32 @@
             nutGuiDuAn.disabled = false;
             oNhapDuAn.focus();
         }
+    }
+
+    /* ============================================================
+       RENDER LẠI TIN NHẮN CŨ (khi load lại trò chuyện)
+       danh_sach: mảng tin nhắn từ API (có thể có urls_anh, urls_file)
+       ============================================================ */
+    function renderTinNhanCu(danh_sach) {
+        if (!danhSachDuAn) return;
+        danhSachDuAn.innerHTML = '';
+
+        (danh_sach || []).forEach(function (tin) {
+            const vaiTro = tin.vai_tro === 'rong' ? 'rong' : 'nguoi';
+            const noiDung = tin.noi_dung || '';
+            const urlsAnh = tin.urls_anh || [];
+            const urlsFile = tin.urls_file || [];
+
+            if (urlsAnh.length > 0 || urlsFile.length > 0) {
+                danhSachDuAn.appendChild(
+                    taoTinNhanCoDinhKem(noiDung, vaiTro, urlsAnh, urlsFile)
+                );
+            } else {
+                danhSachDuAn.appendChild(taoTinNhan(noiDung, vaiTro));
+            }
+        });
+
+        cuonXuongCuoi(khungChatDuAn);
     }
 
     /* ============================================================
@@ -454,6 +515,7 @@
     window.themTinNhanHeThong = themTinNhanHeThong;
     window.cuonXuongCuoi = cuonXuongCuoi;
     window.guiTinNhanDuAn = guiTinNhanDuAn;
+    window.renderTinNhanCu = renderTinNhanCu;
 
     /* ============================================================
        LỜI CHÀO

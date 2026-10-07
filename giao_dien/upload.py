@@ -2,18 +2,17 @@
 upload.py - Upload ảnh + file tài liệu Rồng Thần.
 
 Nhiệm vụ:
-    - upload_anh(files): nhận file ảnh, lưu vào GridFS kho 1,
+    - upload_anh(files, id_tro_chuyen, id_du_an): nhận file ảnh, lưu GridFS kho 1,
       trích xuất nội dung (dùng Gemini Vision nếu có key).
-    - upload_file(files): nhận file tài liệu, lưu GridFS kho 1,
+    - upload_file(files, id_tro_chuyen, id_du_an): nhận file tài liệu, lưu GridFS kho 1,
       trích xuất nội dung (PDF, DOCX, XLSX, TXT).
 
 Quy tắc:
     - File thật lưu GridFS kho 1 (collection fs.files, fs.chunks).
-    - Metadata lưu collection anh_file.
+    - Metadata lưu collection anh_file (có id_tro_chuyen, id_du_an để xóa theo chat).
     - Nội dung trích xuất lưu collection noi_dung_da_trich_xuat.
     - Lịch sử gửi lưu collection lich_su_gui.
     - Khách (chưa đăng nhập) cũng upload được, chu_so_huu = "khach".
-    - User đã đăng nhập: chu_so_huu = tên tài khoản.
 
 Tầng dữ liệu: dai_nao/ghi_nho.py
 """
@@ -202,11 +201,11 @@ def _trich_xuat_noi_dung(noi_dung_bytes, duoi_file):
 # ----------------------------------------------------------------
 # UPLOAD 1 FILE
 # ----------------------------------------------------------------
-def _xu_ly_mot_file(file_storage, loai_file):
+def _xu_ly_mot_file(file_storage, loai_file, id_tro_chuyen=None, id_du_an=None):
     """
     Xử lý 1 file: đọc nội dung, lưu GridFS, lưu metadata, trích xuất.
     loai_file: "anh" hoặc "tai_lieu"
-    Trả về: { thanh_cong, url?, id?, loi? }
+    Trả về: { thanh_cong, url?, id?, ten_file?, co_noi_dung?, loi? }
     """
     chu_so_huu = _lay_chu_so_huu()
 
@@ -230,18 +229,25 @@ def _xu_ly_mot_file(file_storage, loai_file):
     id_file = _tao_id()
     thoi_gian = int(time.time())
 
+    # Metadata đính kèm vào GridFS
+    meta_gridfs = {
+        "id_file": id_file,
+        "chu_so_huu": chu_so_huu,
+        "loai_file": loai_file,
+        "duoi_file": duoi_file,
+        "thoi_gian": thoi_gian,
+    }
+    if id_tro_chuyen:
+        meta_gridfs["id_tro_chuyen"] = id_tro_chuyen
+    if id_du_an:
+        meta_gridfs["id_du_an"] = id_du_an
+
     # Lưu file thật vào GridFS kho 1
     try:
         id_gridfs = luu_file_gridfs(
             ten_file=ten_file,
             noi_dung=noi_dung_bytes,
-            metadata={
-                "id_file": id_file,
-                "chu_so_huu": chu_so_huu,
-                "loai_file": loai_file,
-                "duoi_file": duoi_file,
-                "thoi_gian": thoi_gian,
-            },
+            metadata=meta_gridfs,
         )
     except Exception as e:
         return {"thanh_cong": False, "loi": f"Không lưu được file: {e}"}
@@ -261,26 +267,41 @@ def _xu_ly_mot_file(file_storage, loai_file):
         "url": url,
         "thoi_gian": thoi_gian,
     }
+    if id_tro_chuyen:
+        metadata["id_tro_chuyen"] = id_tro_chuyen
+    if id_du_an:
+        metadata["id_du_an"] = id_du_an
+
     luu_metadata_anh_file(metadata)
 
     # Trích xuất nội dung
     noi_dung_trich_xuat = _trich_xuat_noi_dung(noi_dung_bytes, duoi_file)
     if noi_dung_trich_xuat:
-        luu_noi_dung_trich_xuat({
+        du_lieu_trich_xuat = {
             "id_file": id_file,
             "chu_so_huu": chu_so_huu,
             "noi_dung": noi_dung_trich_xuat,
             "thoi_gian": thoi_gian,
-        })
+        }
+        if id_tro_chuyen:
+            du_lieu_trich_xuat["id_tro_chuyen"] = id_tro_chuyen
+        if id_du_an:
+            du_lieu_trich_xuat["id_du_an"] = id_du_an
+        luu_noi_dung_trich_xuat(du_lieu_trich_xuat)
 
     # Lưu lịch sử gửi
-    luu_lich_su_gui({
+    du_lieu_lich_su = {
         "id_file": id_file,
         "chu_so_huu": chu_so_huu,
         "ten_file": ten_file,
         "loai_file": loai_file,
         "thoi_gian": thoi_gian,
-    })
+    }
+    if id_tro_chuyen:
+        du_lieu_lich_su["id_tro_chuyen"] = id_tro_chuyen
+    if id_du_an:
+        du_lieu_lich_su["id_du_an"] = id_du_an
+    luu_lich_su_gui(du_lieu_lich_su)
 
     _ghi_log(
         loai_file,
@@ -299,10 +320,11 @@ def _xu_ly_mot_file(file_storage, loai_file):
 # ----------------------------------------------------------------
 # HÀM CHÍNH: UPLOAD ẢNH
 # ----------------------------------------------------------------
-def upload_anh(files):
+def upload_anh(files, id_tro_chuyen=None, id_du_an=None):
     """
     Upload nhiều ảnh.
     files: request.files.
+    id_tro_chuyen, id_du_an: nếu gửi trong chat dự án thì truyền vào.
     Trả về: { thanh_cong, urls: [..], chi_tiet: [..], loi? }
     """
     danh_sach_file = files.getlist("anh") if hasattr(files, "getlist") else []
@@ -312,7 +334,7 @@ def upload_anh(files):
     urls = []
     chi_tiet = []
     for f in danh_sach_file:
-        ket_qua = _xu_ly_mot_file(f, "anh")
+        ket_qua = _xu_ly_mot_file(f, "anh", id_tro_chuyen, id_du_an)
         if ket_qua.get("thanh_cong"):
             urls.append(ket_qua["url"])
         chi_tiet.append(ket_qua)
@@ -327,10 +349,11 @@ def upload_anh(files):
 # ----------------------------------------------------------------
 # HÀM CHÍNH: UPLOAD FILE TÀI LIỆU
 # ----------------------------------------------------------------
-def upload_file(files):
+def upload_file(files, id_tro_chuyen=None, id_du_an=None):
     """
     Upload nhiều file tài liệu.
     files: request.files.
+    id_tro_chuyen, id_du_an: nếu gửi trong chat dự án thì truyền vào.
     Trả về: { thanh_cong, urls: [..], chi_tiet: [..], loi? }
     """
     danh_sach_file = files.getlist("file") if hasattr(files, "getlist") else []
@@ -340,7 +363,7 @@ def upload_file(files):
     urls = []
     chi_tiet = []
     for f in danh_sach_file:
-        ket_qua = _xu_ly_mot_file(f, "tai_lieu")
+        ket_qua = _xu_ly_mot_file(f, "tai_lieu", id_tro_chuyen, id_du_an)
         if ket_qua.get("thanh_cong"):
             urls.append(ket_qua["url"])
         chi_tiet.append(ket_qua)

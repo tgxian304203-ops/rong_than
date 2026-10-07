@@ -1,14 +1,15 @@
 /* ============================================================
-   xu_ly_anh.js - Xử lý ảnh đính kèm + menu chọn Ảnh/File/Camera
+   xu_ly_anh.js - Xử lý ảnh đính kèm + menu Ảnh/File/Camera
    ------------------------------------------------------------
    Nhiệm vụ:
      - Bấm nút [+] (#nut-dinh-kem) → hiện menu 3 mục:
-         🖼 Máy ảnh  → mở camera chụp ảnh
-         🖼 Hình     → chọn ảnh từ thư viện
-         🖼 Tệp      → chọn file tài liệu
+         Máy ảnh  → mở camera chụp ảnh
+         Hình     → chọn ảnh từ thư viện
+         Tệp      → chọn file tài liệu
      - Ảnh chọn xong → preview trong #khung-preview.
      - Click preview ảnh → mở modal xem toàn màn hình.
      - Lưu vào window.DANH_SACH_ANH, chờ chat.js upload.
+     - Upload kèm id_tro_chuyen + id_du_an nếu đang chat dự án.
    ============================================================ */
 
 (function () {
@@ -27,7 +28,7 @@
     const dongModalAnh  = document.getElementById('dong-modal-anh');
 
     if (!nutDinhKem || !inputAnh || !khungPreview) {
-        return; // Thiếu DOM thì thoát.
+        return;
     }
 
     /* ------------------------------------------------------------
@@ -55,13 +56,12 @@
     }
 
     /* ------------------------------------------------------------
-       MỞ MODAL XEM ẢNH TOÀN MÀN HÌNH
+       MODAL XEM ẢNH TOÀN MÀN HÌNH
        ------------------------------------------------------------ */
     function moModalAnh(urlAnh) {
         if (!modalAnh || !modalAnhImg) return;
         modalAnhImg.src = urlAnh;
         modalAnh.classList.remove('an');
-        // trigger animation
         requestAnimationFrame(function () {
             modalAnh.classList.add('dang-mo');
         });
@@ -89,14 +89,11 @@
         img.alt = anh.file.name;
         o.appendChild(img);
 
-        // Click vào ảnh → mở modal
         o.addEventListener('click', function (e) {
-            // Nếu click vào nút X → không mở modal
             if (e.target.classList.contains('preview-xoa')) return;
             moModalAnh(anh.url);
         });
 
-        // Nút [X] xóa
         const nutXoa = document.createElement('button');
         nutXoa.classList.add('preview-xoa');
         nutXoa.type = 'button';
@@ -112,7 +109,7 @@
     }
 
     /* ------------------------------------------------------------
-       VẼ LẠI TOÀN BỘ PREVIEW ẢNH
+       VẼ LẠI PREVIEW ẢNH
        ------------------------------------------------------------ */
     function veLaiPreviewAnh() {
         khungPreview.querySelectorAll('.preview-item[data-loai="anh"]').forEach(function (el) {
@@ -142,7 +139,7 @@
     }
 
     /* ------------------------------------------------------------
-       XÓA 1 ẢNH
+       XÓA ẢNH
        ------------------------------------------------------------ */
     function xoaAnh(id) {
         const viTri = window.DANH_SACH_ANH.findIndex(function (a) { return a.id === id; });
@@ -165,7 +162,7 @@
     }
 
     /* ------------------------------------------------------------
-       UPLOAD ẢNH LÊN SERVER
+       UPLOAD ẢNH — kèm id_tro_chuyen + id_du_an nếu đang chat dự án
        ------------------------------------------------------------ */
     async function uploadTatCaAnh() {
         if (window.DANH_SACH_ANH.length === 0) return [];
@@ -174,6 +171,12 @@
         window.DANH_SACH_ANH.forEach(function (anh) {
             formData.append('anh', anh.file);
         });
+
+        // Nếu đang chat trong dự án → gửi kèm id
+        const idTro = window.__ID_TRO_CHUYEN_DANG_CHAT;
+        const idDuAn = window.__ID_DU_AN_DANG_CHAT;
+        if (idTro) formData.append('id_tro_chuyen', idTro);
+        if (idDuAn) formData.append('id_du_an', idDuAn);
 
         try {
             const phanHoi = await fetch('/api/upload-anh', {
@@ -219,7 +222,6 @@
         const menu = document.createElement('div');
         menu.className = 'menu-chon-dinh-kem';
 
-        // Nút Máy ảnh
         const nutCamera = document.createElement('button');
         nutCamera.type = 'button';
         nutCamera.className = 'menu-chon-item';
@@ -231,7 +233,6 @@
         });
         menu.appendChild(nutCamera);
 
-        // Nút Hình
         const nutHinh = document.createElement('button');
         nutHinh.type = 'button';
         nutHinh.className = 'menu-chon-item';
@@ -243,7 +244,6 @@
         });
         menu.appendChild(nutHinh);
 
-        // Nút Tệp
         const nutTep = document.createElement('button');
         nutTep.type = 'button';
         nutTep.className = 'menu-chon-item';
@@ -255,7 +255,6 @@
         });
         menu.appendChild(nutTep);
 
-        // Đặt vị trí trên nút [+]
         const rect = nutDinhKem.getBoundingClientRect();
         menu.style.position = 'fixed';
         menu.style.left = rect.left + 'px';
@@ -265,7 +264,6 @@
         document.body.appendChild(menu);
         menuDangMo = menu;
 
-        // Bấm ra ngoài → đóng
         setTimeout(function () {
             document.addEventListener('click', dongMenu, { once: true });
         }, 0);
@@ -302,7 +300,6 @@
 
     if (modalAnh) {
         modalAnh.addEventListener('click', function (e) {
-            // Bấm ra ngoài ảnh → đóng
             if (e.target === modalAnh || e.target.id === 'modal-anh-noi-dung') {
                 dongModalAnhFn();
             }

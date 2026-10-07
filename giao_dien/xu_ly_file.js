@@ -5,8 +5,8 @@
      - Nhận file từ input #input-file-tai-lieu (do xu_ly_anh.js mở).
      - Hiển thị preview trong #khung-preview.
      - Click preview file → mở modal xem toàn màn hình.
-     - KHÔNG gửi ngay. Lưu vào window.DANH_SACH_FILE.
-     - Khi chat.js gọi uploadTatCaFile() → upload lên server.
+     - Lưu vào window.DANH_SACH_FILE, chờ chat.js upload.
+     - Upload kèm id_tro_chuyen + id_du_an nếu đang chat dự án.
    ============================================================ */
 
 (function () {
@@ -24,7 +24,7 @@
     const dongModalFile   = document.getElementById('dong-modal-file');
 
     if (!inputFile || !khungPreview) {
-        return; // Thiếu DOM thì thoát.
+        return;
     }
 
     /* ------------------------------------------------------------
@@ -48,7 +48,7 @@
     }
 
     /* ------------------------------------------------------------
-       LẤY ICON THEO LOẠI FILE
+       ICON FILE
        ------------------------------------------------------------ */
     function layIconFile(tenFile) {
         const duoi = layDuoi(tenFile);
@@ -96,7 +96,6 @@
                 svgDong;
         }
 
-        // Mặc định: file text
         return svgMo +
             '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>' +
             '<polyline points="14,2 14,8 20,8"/>' +
@@ -129,13 +128,10 @@
         const duoi = layDuoi(file.name);
         const urlBlob = URL.createObjectURL(file);
 
-        // Đặt tên file
         if (modalFileTen) modalFileTen.textContent = file.name;
 
-        // Xóa nội dung cũ
         modalFileBody.innerHTML = '';
 
-        // Hiển thị theo loại
         if (duoi === 'pdf') {
             const iframe = document.createElement('iframe');
             iframe.src = urlBlob;
@@ -149,8 +145,7 @@
             img.style.display = 'block';
             img.style.margin = '0 auto';
             modalFileBody.appendChild(img);
-        } else if (duoi === 'txt' || duoi === 'md' || duoi === 'json' || duoi === 'csv' || duoi === 'log') {
-            // Đọc text
+        } else if (['txt','md','json','csv','log'].indexOf(duoi) >= 0) {
             const reader = new FileReader();
             reader.onload = function (e) {
                 const pre = document.createElement('pre');
@@ -160,7 +155,6 @@
             };
             reader.readAsText(file);
         } else {
-            // Loại khác → hiện icon + thông báo
             const div = document.createElement('div');
             div.style.textAlign = 'center';
             div.style.padding = '40px 20px';
@@ -171,19 +165,16 @@
             modalFileBody.appendChild(div);
         }
 
-        // Nút tải về
         if (modalFileTai) {
             modalFileTai.href = urlBlob;
             modalFileTai.download = file.name;
         }
 
-        // Mở modal
         modalFile.classList.remove('an');
         requestAnimationFrame(function () {
             modalFile.classList.add('dang-mo');
         });
 
-        // Lưu URL để revoke khi đóng
         modalFile.__urlBlob = urlBlob;
     }
 
@@ -200,33 +191,29 @@
     }
 
     /* ------------------------------------------------------------
-       TẠO 1 Ô PREVIEW FILE
+       TẠO PREVIEW FILE
        ------------------------------------------------------------ */
     function taoPreview(fileItem) {
         const o = document.createElement('div');
         o.classList.add('preview-item');
         o.dataset.id = fileItem.id;
 
-        // Icon
         const icon = document.createElement('div');
         icon.classList.add('preview-icon');
         icon.innerHTML = layIconFile(fileItem.file.name);
         o.appendChild(icon);
 
-        // Tên file (rút gọn)
         const ten = document.createElement('div');
         ten.classList.add('ten-file');
         ten.textContent = fileItem.file.name;
         ten.title = fileItem.file.name;
         o.appendChild(ten);
 
-        // Click vào preview → mở modal
         o.addEventListener('click', function (e) {
             if (e.target.classList.contains('preview-xoa')) return;
             moModalFile(fileItem);
         });
 
-        // Nút [X]
         const nutXoa = document.createElement('button');
         nutXoa.classList.add('preview-xoa');
         nutXoa.type = 'button';
@@ -259,7 +246,7 @@
     }
 
     /* ------------------------------------------------------------
-       THÊM FILE
+       THÊM / XÓA FILE
        ------------------------------------------------------------ */
     function themFile(files) {
         Array.from(files).forEach(function (file) {
@@ -269,9 +256,6 @@
         veLaiPreviewFile();
     }
 
-    /* ------------------------------------------------------------
-       XÓA 1 FILE
-       ------------------------------------------------------------ */
     function xoaFile(id) {
         const viTri = window.DANH_SACH_FILE.findIndex(function (f) { return f.id === id; });
         if (viTri < 0) return;
@@ -279,16 +263,13 @@
         veLaiPreviewFile();
     }
 
-    /* ------------------------------------------------------------
-       XÓA TOÀN BỘ FILE
-       ------------------------------------------------------------ */
     function xoaTatCaFile() {
         window.DANH_SACH_FILE = [];
         veLaiPreviewFile();
     }
 
     /* ------------------------------------------------------------
-       UPLOAD FILE LÊN SERVER
+       UPLOAD FILE — kèm id_tro_chuyen + id_du_an nếu đang chat dự án
        ------------------------------------------------------------ */
     async function uploadTatCaFile() {
         if (window.DANH_SACH_FILE.length === 0) return [];
@@ -297,6 +278,11 @@
         window.DANH_SACH_FILE.forEach(function (fileItem) {
             formData.append('file', fileItem.file);
         });
+
+        const idTro = window.__ID_TRO_CHUYEN_DANG_CHAT;
+        const idDuAn = window.__ID_DU_AN_DANG_CHAT;
+        if (idTro) formData.append('id_tro_chuyen', idTro);
+        if (idDuAn) formData.append('id_du_an', idDuAn);
 
         try {
             const phanHoi = await fetch('/api/upload-file', {
@@ -331,7 +317,6 @@
 
     if (modalFile) {
         modalFile.addEventListener('click', function (e) {
-            // Bấm ra ngoài modal → đóng
             if (e.target === modalFile) {
                 dongModalFileFn();
             }
