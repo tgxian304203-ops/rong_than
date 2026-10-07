@@ -357,6 +357,7 @@ body.sang .sandbox-code textarea { color: #166534; }
     align-items: center;
     justify-content: center;
     padding: 4px;
+    cursor: pointer;
 }
 
 .preview-item img {
@@ -612,11 +613,10 @@ body.sang .overlay {
 .muc-du-an-nut,
 .muc-chat-nut {
     flex: 1;
-    padding-right: 44px; /* chừa chỗ cho nút X góc phải */
+    padding-right: 44px;
     min-width: 0;
 }
 
-/* Nút X — góc phải trên của card */
 .muc-du-an .nut-xoa-muc,
 .muc-chat-nhanh .nut-xoa-muc {
     position: absolute;
@@ -1097,4 +1097,242 @@ body.sang ::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.2); }
     .khung-chat { padding: 12px 20px; }
     .khung-input { padding: 10px 20px; }
     .tin-nhan { max-width: 70%; }
+}
+
+/* ============================================================ */
+/* MENU CHỌN ĐÍNH KÈM (Ảnh / Tài liệu / Máy ảnh)                */
+/* ============================================================ */
+.menu-chon-dinh-kem {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background: rgba(30, 30, 30, 0.96);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 16px;
+    padding: 8px;
+    min-width: 180px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    animation: hienMenu 0.15s ease-out;
+}
+
+@keyframes hienMenu {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.menu-chon-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: transparent;
+    border: none;
+    color: #ffffff;
+    font-size: 15px;
+    font-family: inherit;
+    padding: 10px 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s;
+}
+
+.menu-chon-item:active {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.menu-chon-item svg {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    color: #ffffff;
+}
+
+/* ============================================================ */
+/* ẢNH + FILE HIỂN THỊ TRONG TIN NHẮN (sau khi gửi)             */
+/* ============================================================ */
+.tin-nhan-dinh-kem {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+}
+
+.tin-nhan-anh {
+    width: 90px;
+    height: 90px;
+    object-fit: cover;
+    border-radius: 10px;
+    cursor: pointer;
+    display: block;
+    transition: opacity 0.15s;
+}
+
+.tin-nhan-anh:active {
+    opacity: 0.7;
+}
+
+.tin-nhan-file {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 10px;
+    padding: 8px 12px;
+    cursor: pointer;
+    max-width: 220px;
+    transition: background 0.15s;
+}
+
+.tin-nhan-file:active {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.tin-nhan-file svg {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    color: #b0b0b0;
+}
+
+.tin-nhan-file .ten-file-chat {
+    font-size: 13px;
+    color: #e0e0e0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ============================================================ */
+/* MODAL XEM ẢNH / FILE TOÀN MÀN HÌNH                           */
+/* ============================================================ */
+.modal-toan-man-hinh {
+    position: fixed;
+    inset: 0;
+    background: #000000;
+    z-index: 99999;
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+
+.modal-toan-man-hinh.dang-mo {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.modal-toan-man-hinh.an {
+    display: none;
+}
+
+.nut-dong-modal {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 10;
+    transition: background 0.15s;
+}
+
+.nut-dong-modal:active {
+    background: rgba(255, 255, 255, 0.25);
+}
+
+.modal-noi-dung {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: auto;
+    padding: 60px 12px 12px;
+}
+
+.modal-noi-dung img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    display: block;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.modal-noi-dung-file {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 60px 12px 12px;
+    overflow: hidden;
+}
+
+.modal-file-header {
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.modal-file-ten {
+    color: #ffffff;
+    font-size: 15px;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.modal-file-body {
+    flex: 1;
+    overflow: auto;
+    padding: 12px 0;
+    color: #dddddd;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.modal-file-body iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: #ffffff;
+    border-radius: 8px;
+}
+
+.modal-file-body pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    margin: 0;
+    font-family: ui-monospace, monospace;
+}
+
+.modal-file-footer {
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    justify-content: center;
+}
+
+.nut-tai-ve {
+    display: inline-block;
+    padding: 10px 20px;
+    background: rgba(46, 204, 113, 0.9);
+    color: #ffffff;
+    border-radius: 10px;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.nut-tai-ve:active {
+    background: rgba(46, 204, 113, 1);
 }
