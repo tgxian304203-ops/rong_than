@@ -1,17 +1,10 @@
 /* ============================================================
    hien_thi_code.js - Hiển thị khung code riêng trong tin nhắn
    ------------------------------------------------------------
-   Nhiệm vụ:
-     - Nhận diện loại code: HTML, Python, JavaScript, CSS, JSON, SQL, ...
-       dựa trên ngôn ngữ (nếu server gửi) hoặc tự đoán từ nội dung.
-     - Tạo khung code có:
-         + Nhãn ngôn ngữ ở header.
-         + Nút Copy ở header.
-         + Body chứa code nguyên dạng, giữ xuống dòng, cuộn ngang.
-     - Hỗ trợ chèn khung code vào 1 div tin nhắn có sẵn
-       hoặc tạo tin nhắn mới chỉ chứa khung code.
-     - Tô màu cú pháp đơn giản cho HTML, Python, JS, CSS
-       (không cần thư viện ngoài).
+   ĐÃ SỬA:
+     - Bỏ tô từ khóa (keyword) → tránh chồng thẻ HTML.
+     - Chỉ tô comment + string bằng placeholder tạm.
+     - Code còn lại hiển thị text trắng bình thường.
    ============================================================ */
 
 (function () {
@@ -42,51 +35,39 @@
     }
 
     /* ------------------------------------------------------------
-       TỰ ĐOÁN NGÔN NGỮ TỪ NỘI DUNG (nếu server không gửi)
+       TỰ ĐOÁN NGÔN NGỮ TỪ NỘI DUNG
        ------------------------------------------------------------ */
     function doanNgonNgu(code) {
         if (!code || typeof code !== 'string') return 'code';
         const c = code.trim();
 
-        // HTML
         if (/^<!DOCTYPE\s+html/i.test(c)) return 'html';
         if (/<html[\s>]/i.test(c)) return 'html';
         if (/^<[a-z][\s\S]*<\/[a-z]+>$/i.test(c)) return 'html';
 
-        // JSON
         if (/^[\[{][\s\S]*[\]}]$/.test(c)) {
             try {
                 JSON.parse(c);
                 return 'json';
-            } catch (e) {
-                // Không phải JSON hợp lệ
-            }
+            } catch (e) {}
         }
 
-        // Python
         if (/^\s*(def|class|import|from|if __name__)\s/m.test(c)) return 'python';
         if (/^\s*print\s*\(/m.test(c)) return 'python';
 
-        // JavaScript
         if (/^\s*(function|const|let|var|=>|export|import\s+.*from)/m.test(c)) return 'js';
 
-        // CSS
         if (/^[\s\S]*\{[\s\S]*:[\s\S]*;[\s\S]*\}/.test(c) &&
             /[.#@][\w-]+\s*\{/.test(c)) return 'css';
 
-        // SQL
         if (/^\s*(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER)\s/im.test(c)) return 'sql';
 
         return 'code';
     }
 
     /* ------------------------------------------------------------
-       TÔ MÀU CÚ PHÁP ĐƠN GIẢN (trả về HTML string)
-       - Chỉ tô cho các ngôn ngữ phổ biến.
-       - Không tô cho ngôn ngữ lạ.
-       - Escape HTML trước, rồi bọc thẻ <span class="...">.
+       ESCAPE HTML
        ------------------------------------------------------------ */
-
     function escapeHTML(s) {
         return String(s)
             .replace(/&/g, '&amp;')
@@ -96,66 +77,81 @@
             .replace(/'/g, '&#39;');
     }
 
-    function toMauHTML(code) {
-        let s = escapeHTML(code);
-        // Comment <!-- ... -->
-        s = s.replace(/(&lt;!--[\s\S]*?--&gt;)/g, '<span class="mau-comment">$1</span>');
-        // Thẻ mở/đóng
-        s = s.replace(/(&lt;\/?[a-zA-Z][\w-]*)/g, '<span class="mau-the">$1</span>');
-        // Thuộc tính
-        s = s.replace(/([a-zA-Z-]+)=(&quot;|&#39;)/g, '<span class="mau-thuoc-tinh">$1</span>=$2');
-        return s;
-    }
+    /* ------------------------------------------------------------
+       TÔ MÀU CÚ PHÁP — CHỈ COMMENT + STRING
+       ------------------------------------------------------------
+       Dùng placeholder tạm để không chồng thẻ HTML.
+       ------------------------------------------------------------ */
+    function toMau(nn, code) {
+        if (!code) return '';
 
-    function toMauPython(code) {
+        // Escape trước
         let s = escapeHTML(code);
-        // Comment #
-        s = s.replace(/(#[^\n]*)/g, '<span class="mau-comment">$1</span>');
-        // String
-        s = s.replace(/(&quot;[^&]*?&quot;|&#39;[^&]*?&#39;)/g,
-            '<span class="mau-string">$1</span>');
-        // Từ khóa
-        s = s.replace(/\b(def|class|return|if|elif|else|for|while|in|not|and|or|import|from|as|try|except|finally|with|lambda|yield|None|True|False|self|pass|break|continue|raise|global|nonlocal|assert|del|is)\b/g,
-            '<span class="mau-tu-khoa">$1</span>');
-        return s;
-    }
 
-    function toMauJS(code) {
-        let s = escapeHTML(code);
-        // Comment // và /* */
-        s = s.replace(/(\/\/[^\n]*)/g, '<span class="mau-comment">$1</span>');
-        s = s.replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="mau-comment">$1</span>');
-        // String
-        s = s.replace(/(&quot;[^&]*?&quot;|&#39;[^&]*?&#39;|`[^`]*?`)/g,
-            '<span class="mau-string">$1</span>');
-        // Từ khóa
-        s = s.replace(/\b(function|const|let|var|return|if|else|for|while|do|switch|case|break|continue|new|this|class|extends|super|import|export|from|as|default|try|catch|finally|throw|typeof|instanceof|null|undefined|true|false|async|await|yield|of|in)\b/g,
-            '<span class="mau-tu-khoa">$1</span>');
-        return s;
-    }
+        // Mảng tạm giữ các đoạn đã tô
+        const mangTam = [];
+        const PH = '\x00__PH__';   // placeholder prefix
 
-    function toMauCSS(code) {
-        let s = escapeHTML(code);
-        // Comment /* */
-        s = s.replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="mau-comment">$1</span>');
-        // Selector
-        s = s.replace(/^([.#@]?[\w-]+(?:\s*[,>+~]\s*[.#@]?[\w-]+)*)\s*\{/gm,
-            '<span class="mau-selector">$1</span> {');
-        // Thuộc tính
-        s = s.replace(/([\w-]+)\s*:/g, '<span class="mau-thuoc-tinh">$1</span>:');
-        return s;
-    }
+        function luuTam(html) {
+            const idx = mangTam.length;
+            mangTam.push(html);
+            return PH + idx + '__';
+        }
 
-    function toMau(ngonNgu, code) {
-        switch (ngonNgu) {
-            case 'html':   return toMauHTML(code);
-            case 'python': return toMauPython(code);
+        switch (nn) {
+            case 'html':
+                // Comment <!-- ... -->
+                s = s.replace(/(&lt;!--[\s\S]*?--&gt;)/g, function (m) {
+                    return luuTam('<span class="mau-comment">' + m + '</span>');
+                });
+                break;
+
+            case 'python':
+                // Comment # ... (đến cuối dòng)
+                s = s.replace(/(#[^\n]*)/g, function (m) {
+                    return luuTam('<span class="mau-comment">' + m + '</span>');
+                });
+                // String "..." hoặc '...'
+                s = s.replace(/(&quot;[^&]*?&quot;|&#39;[^&]*?&#39;)/g, function (m) {
+                    return luuTam('<span class="mau-string">' + m + '</span>');
+                });
+                break;
+
             case 'js':
             case 'javascript':
-            case 'ts':     return toMauJS(code);
-            case 'css':    return toMauCSS(code);
-            default:       return escapeHTML(code);
+            case 'ts':
+                // Comment // ...
+                s = s.replace(/(\/\/[^\n]*)/g, function (m) {
+                    return luuTam('<span class="mau-comment">' + m + '</span>');
+                });
+                // Comment /* ... */
+                s = s.replace(/(\/\*[\s\S]*?\*\/)/g, function (m) {
+                    return luuTam('<span class="mau-comment">' + m + '</span>');
+                });
+                // String "..." hoặc '...' hoặc `...`
+                s = s.replace(/(&quot;[^&]*?&quot;|&#39;[^&]*?&#39;|`[^`]*?`)/g, function (m) {
+                    return luuTam('<span class="mau-string">' + m + '</span>');
+                });
+                break;
+
+            case 'css':
+                // Comment /* ... */
+                s = s.replace(/(\/\*[\s\S]*?\*\/)/g, function (m) {
+                    return luuTam('<span class="mau-comment">' + m + '</span>');
+                });
+                break;
+
+            default:
+                // Không tô gì
+                break;
         }
+
+        // Thay placeholder bằng thẻ HTML thật
+        s = s.replace(/\x00__PH__(\d+)__/g, function (_, idx) {
+            return mangTam[parseInt(idx, 10)] || '';
+        });
+
+        return s;
     }
 
     /* ------------------------------------------------------------
@@ -199,7 +195,6 @@
         body.classList.add('khung-code-body');
 
         const codeEl = document.createElement('code');
-        // Tô màu bằng innerHTML đã escape
         codeEl.innerHTML = toMau(nn, code);
         body.appendChild(codeEl);
         khung.appendChild(body);
@@ -208,7 +203,7 @@
     }
 
     /* ------------------------------------------------------------
-       HÀM CHÍNH 1: HIỂN THỊ KHUNG CODE VÀO 1 DIV CÓ SẴN
+       HÀM: CHÈN KHUNG CODE VÀO 1 DIV TIN NHẮN
        ------------------------------------------------------------ */
     function chenKhungCodeVao(divTinNhan, code, ngonNgu) {
         if (!divTinNhan) return;
@@ -217,8 +212,7 @@
     }
 
     /* ------------------------------------------------------------
-       HÀM CHÍNH 2: TẠO TIN NHẮN MỚI CHỈ CHỨA KHUNG CODE
-       (dùng khi server trả code riêng, không lẫn với chữ)
+       HÀM: HIỂN THỊ KHUNG CODE RIÊNG (tin nhắn mới)
        ------------------------------------------------------------ */
     function hienThiKhungCode(code, ngonNgu) {
         const danhSach = document.getElementById('danh-sach-tin-nhan');

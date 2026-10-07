@@ -2,11 +2,16 @@
 ep_viet_truong.py - Bước 3 Tiểu não: Ép model viết trường chuẩn Rồng Thần.
 
 Nhiệm vụ:
-    - ep_viet_truong(task, ngu_canh): tạo prompt + gọi model + validate JSON.
+    - ep_viet_truong(task, ngu_canh, chu_so_huu): tạo prompt + gọi model + validate.
     - _tao_prompt(task, ngu_canh): tạo prompt yêu cầu model sinh node.
-    - _goi_va_lay_json(prompt): gọi do_model + parse JSON.
+    - _goi_va_lay_json(chu_so_huu, prompt): gọi do_model + parse JSON.
     - _trich_json(chuoi): trích JSON từ response model.
     - _validate_node(node): validate node theo schema.
+
+ĐÃ SỬA:
+    - Prompt chi tiết hơn, yêu cầu model SUY LUẬN trước khi viết code.
+    - Thêm ví dụ cụ thể cho từng loại task.
+    - Yêu cầu code CỤ THỂ, KHÔNG dùng code mẫu chung.
 
 Quy tắc (theo Phần 4, bước 3):
     - Tạo prompt yêu cầu model sinh node theo JSON schema.
@@ -59,16 +64,13 @@ TRUONG_BAT_BUOC = [
 
 
 # ================================================================
-# TẠO PROMPT
+# TẠO PROMPT (SỬA — CHI TIẾT HƠN)
 # ================================================================
 def _tao_prompt(task, ngu_canh=None):
     """
     Tạo prompt yêu cầu model sinh node theo JSON schema.
 
-    task: dict { noi_dung, yeu_to, loai_task }.
-    ngu_canh: dict 10 loại ngữ cảnh (tùy chọn).
-
-    Trả về: chuỗi prompt.
+    SỬA: Prompt chi tiết, có ví dụ, yêu cầu code cụ thể.
     """
     ngu_canh = ngu_canh or {}
 
@@ -76,12 +78,11 @@ def _tao_prompt(task, ngu_canh=None):
     yeu_to = task.get("yeu_to", {}) or {}
     loai_task = task.get("loai_task", {}) or {}
 
-    # Trích thông tin
     linh_vuc = loai_task.get("linh_vuc", "") or yeu_to.get("linh_vuc", "")
     nhom = loai_task.get("nhom", "")
     loai = loai_task.get("loai", "")
 
-    # Ngữ cảnh tóm tắt
+    # Ngữ cảnh
     ngu_canh_str = ""
     if ngu_canh:
         cac_manh = []
@@ -92,9 +93,9 @@ def _tao_prompt(task, ngu_canh=None):
         if cac_manh:
             ngu_canh_str = "Ngữ cảnh:\n" + "\n".join(cac_manh)
 
-    prompt = f"""Bạn là Tiểu não của Rồng Thần. Nhiệm vụ: sinh 1 node mới cho cây quyết định.
+    prompt = f"""Bạn là Tiểu não của Rồng Thần — chuyên gia viết code và giải quyết vấn đề.
 
-Nhiệm vụ cần xử lý:
+NHIỆM VỤ CẦN XỬ LÝ:
 \"{noi_dung}\"
 
 5 yếu tố đã trích:
@@ -111,6 +112,31 @@ Phân loại sẵn có:
 
 {ngu_canh_str}
 
+═══════════════════════════════════════════
+BƯỚC 1: SUY LUẬN TRƯỚC KHI VIẾT
+═══════════════════════════════════════════
+Hãy tự hỏi (KHÔNG cần ghi vào JSON):
+1. Task này thực sự cần gì? (làm web? viết hàm? tạo AI? xử lý file?)
+2. Code cần làm gì CỤ THỂ?
+3. Cần thư viện nào?
+4. Có ràng buộc gì đặc biệt không?
+
+VÍ DỤ SUY LUẬN:
+- Task "tạo AI dùng nhiều API key" → cần code xử lý NHIỀU API KEY (array keys, xoay key, retry khi hết quota). KHÔNG viết Flask boilerplate chung.
+- Task "làm web bán hàng" → cần HTML có sản phẩm, giỏ hàng, thanh toán. KHÔNG viết `<h1>Web bán hàng</h1>`.
+- Task "tính 1+1" → cần code Python `def cong(a,b): return a+b`. KHÔNG viết Flask.
+
+═══════════════════════════════════════════
+BƯỚC 2: VIẾT CODE CỤ THỂ
+═══════════════════════════════════════════
+- Code PHẢI phù hợp với task.
+- KHÔNG viết code mẫu chung chung.
+- Nếu task đơn giản → code đơn giản.
+- Nếu task phức tạp → code phức tạp.
+
+═══════════════════════════════════════════
+BƯỚC 3: TRẢ VỀ JSON
+═══════════════════════════════════════════
 Hãy sinh 1 node mới dưới dạng JSON. Không giải thích gì thêm ngoài JSON.
 
 Schema bắt buộc (đúng 8 trường):
@@ -131,15 +157,19 @@ Schema bắt buộc (đúng 8 trường):
   }},
   "hanh_dong": {{
     "loai": "tra_loi | chay_code | tra_web",
-    "code": "code mẫu (nếu có)",
+    "code": "CODE CỤ THỂ — viết code đầy đủ, có comment giải thích",
     "ngon_ngu": "python | html | javascript | ..."
   }}
 }}
 
-LƯU Ý:
-- id phải bắt đầu bằng "nut-" + 16 ký tự hex ngẫu nhiên.
-- ten phải ngắn gọn, mô tả đúng vấn đề.
-- Không lưu kết quả cụ thể (2+3=5). Chỉ lưu quy tắc / thuật toán / cách giải.
+LƯU Ý QUAN TRỌNG:
+- id: bắt đầu bằng "nut-" + 16 ký tự hex ngẫu nhiên.
+- ten: ngắn gọn, mô tả ĐÚNG vấn đề (VD: "Tạo AI dùng nhiều API key", KHÔNG viết "Hàm mới").
+- code: PHẢI là code CỤ THỂ cho task này. KHÔNG viết:
+  * Flask boilerplate `app = Flask(__name__)` nếu task không yêu cầu web.
+  * `<h1>Hello World</h1>` nếu task yêu cầu web bán hàng.
+  * Code rỗng nếu task yêu cầu viết hàm.
+- Không lưu kết quả cụ thể. Chỉ lưu quy tắc / thuật toán / cách giải.
 - Node phải áp dụng được cho mọi task cùng loại.
 
 Trả về CHỈ JSON, không có văn bản nào khác."""
@@ -151,22 +181,19 @@ Trả về CHỈ JSON, không có văn bản nào khác."""
 # TRÍCH JSON TỪ RESPONSE
 # ================================================================
 def _trich_json(chuoi):
-    """
-    Trích JSON từ response của model.
-    Model có thể trả về ```json ... ``` hoặc text có lẫn JSON.
-    """
+    """Trích JSON từ response của model."""
     if not chuoi:
         return None
 
     chuoi = chuoi.strip()
 
-    # 1. Thử parse trực tiếp
+    # 1. Parse trực tiếp
     try:
         return json.loads(chuoi)
     except (json.JSONDecodeError, ValueError):
         pass
 
-    # 2. Bỏ ```json ... ```
+    # 2. Bỏ markdown ```json ... ```
     mau_markdown = r"```(?:json)?\s*([\s\S]*?)```"
     khop = re.search(mau_markdown, chuoi)
     if khop:
@@ -185,7 +212,7 @@ def _trich_json(chuoi):
         except (json.JSONDecodeError, ValueError):
             pass
 
-    # 4. Sửa lỗi phổ biến (dấu phẩy cuối, comment)
+    # 4. Sửa lỗi phổ biến
     chuoi_clean = re.sub(r"//[^\n]*", "", chuoi)
     chuoi_clean = re.sub(r",(\s*[}\]])", r"\1", chuoi_clean)
     vi_tri_dau = chuoi_clean.find("{")
@@ -203,11 +230,7 @@ def _trich_json(chuoi):
 # VALIDATE NODE
 # ================================================================
 def _validate_node(node):
-    """
-    Kiểm tra node có đủ 8 trường bắt buộc không.
-
-    Trả về: (True, "") hoặc (False, "lỗi").
-    """
+    """Kiểm tra node có đủ 8 trường bắt buộc không."""
     if not node or not isinstance(node, dict):
         return False, "Node không phải dict."
 
@@ -219,18 +242,15 @@ def _validate_node(node):
     if thieu:
         return False, f"Thiếu trường: {', '.join(thieu)}"
 
-    # Validate dieu_kien
     if not isinstance(node["dieu_kien"], dict):
         return False, "dieu_kien không phải dict."
 
-    # Validate cach_giai
     if not isinstance(node["cach_giai"], dict):
         return False, "cach_giai không phải dict."
 
     if not node["cach_giai"].get("mo_ta"):
         return False, "cach_giai.mo_ta rỗng."
 
-    # Validate hanh_dong
     if not isinstance(node["hanh_dong"], dict):
         return False, "hanh_dong không phải dict."
 
@@ -241,11 +261,7 @@ def _validate_node(node):
 # GỌI MODEL VÀ LẤY JSON
 # ================================================================
 def _goi_va_lay_json(chu_so_huu, prompt):
-    """
-    Gọi model qua do_model.py và parse JSON từ response.
-
-    Trả về: (node_dict, loi) — node_dict=None nếu thất bại.
-    """
+    """Gọi model qua do_model.py và parse JSON từ response."""
     try:
         from tieu_nao.do_model import do_model
     except ImportError:
@@ -287,10 +303,8 @@ def ep_viet_truong(task, ngu_canh=None, chu_so_huu=""):
         _ghi_log("loi", "ep_viet_truong: thiếu chu_so_huu.")
         return None
 
-    # Tạo prompt
     prompt = _tao_prompt(task, ngu_canh)
 
-    # Retry tối đa 3 lần
     for lan_thu in range(1, SO_LAN_RETRY + 1):
         _ghi_log("tieu-nao", f"Ép viết trường lần {lan_thu}/{SO_LAN_RETRY}")
 
@@ -298,29 +312,24 @@ def ep_viet_truong(task, ngu_canh=None, chu_so_huu=""):
 
         if not node:
             _ghi_log("loi", f"Lần {lan_thu} thất bại: {loi}")
-            # Nếu lỗi do gọi model → thử lại; lỗi khác → dừng
             if "Không gọi được model" in loi or "rỗng" in loi:
                 time.sleep(1)
                 continue
             continue
 
-        # Validate
         hop_le, ly_do = _validate_node(node)
         if not hop_le:
             _ghi_log("loi", f"Node không hợp lệ: {ly_do}")
 
-            # Thử sửa nhẹ (thêm id nếu thiếu, chuẩn hóa)
             node = _chuan_hoa_node(node)
             hop_le2, ly_do2 = _validate_node(node)
             if hop_le2:
                 _ghi_log("tieu-nao", f"Đã chuẩn hóa node thành công.")
                 return node
 
-            # Thử lại
             time.sleep(1)
             continue
 
-        # Thành công
         _ghi_log(
             "tieu-nao",
             f"Ép viết trường thành công lần {lan_thu}: "
@@ -336,31 +345,25 @@ def ep_viet_truong(task, ngu_canh=None, chu_so_huu=""):
 # CHUẨN HÓA NODE
 # ================================================================
 def _chuan_hoa_node(node):
-    """
-    Chuẩn hóa node: bổ sung trường thiếu, sửa format.
-    """
+    """Chuẩn hóa node: bổ sung trường thiếu, sửa format."""
     if not isinstance(node, dict):
         return node
 
-    # Bổ sung id nếu thiếu
     if not node.get("id") or not isinstance(node["id"], str):
         import secrets
         node["id"] = "nut-" + secrets.token_hex(8)
     elif not node["id"].startswith("nut-"):
         node["id"] = "nut-" + node["id"][:16]
 
-    # Bổ sung ten nếu thiếu
     if not node.get("ten"):
         node["ten"] = (node.get("cach_giai_phap") or "node mới")[:80]
 
-    # Chuẩn hóa dieu_kien
     if not isinstance(node.get("dieu_kien"), dict):
         node["dieu_kien"] = {
             "chua": [],
             "yeu_to_can": ["hanh_dong", "doi_tuong"],
         }
 
-    # Chuẩn hóa cach_giai
     if not isinstance(node.get("cach_giai"), dict):
         node["cach_giai"] = {
             "mo_ta": str(node.get("cach_giai", "")),
@@ -370,7 +373,6 @@ def _chuan_hoa_node(node):
     elif not node["cach_giai"].get("mo_ta"):
         node["cach_giai"]["mo_ta"] = node.get("ten", "Chưa có mô tả.")
 
-    # Chuẩn hóa hanh_dong
     if not isinstance(node.get("hanh_dong"), dict):
         node["hanh_dong"] = {
             "loai": "tra_loi",
@@ -382,7 +384,7 @@ def _chuan_hoa_node(node):
 
 
 # ================================================================
-# HÀM PHỤ: GỌI 1 LẦN (không retry)
+# HÀM PHỤ: GỌI 1 LẦN
 # ================================================================
 def ep_viet_truong_mot_lan(task, ngu_canh=None, chu_so_huu=""):
     """Ép viết trường 1 lần (không retry)."""
@@ -402,13 +404,12 @@ def ep_viet_truong_mot_lan(task, ngu_canh=None, chu_so_huu=""):
 
 
 # ================================================================
-# HÀM PHỤ: TẠO PROMPT CHO NHIỀU NODE
+# HÀM PHỤ: TẠO PROMPT NHIỀU NODE
 # ================================================================
 def tao_prompt_nhieu_node(task, so_luong=3, ngu_canh=None):
     """Tạo prompt yêu cầu model sinh nhiều node cùng lúc."""
     prompt_goc = _tao_prompt(task, ngu_canh)
 
-    # Điều chỉnh prompt để yêu cầu mảng
     prompt = prompt_goc.replace(
         "sinh 1 node mới dưới dạng JSON",
         f"sinh {so_luong} node mới dưới dạng JSON array",
@@ -438,13 +439,10 @@ def ep_viet_nhieu_node(task, so_luong=3, ngu_canh=None, chu_so_huu=""):
         return []
 
     chuoi = ket_qua.get("ket_qua", "")
-
-    # Parse JSON array
     ket_qua_list = _trich_json_array(chuoi)
     if not ket_qua_list:
         return []
 
-    # Validate từng node
     ket_qua_hop_le = []
     for node in ket_qua_list:
         if isinstance(node, dict):
@@ -463,7 +461,6 @@ def _trich_json_array(chuoi):
 
     chuoi = chuoi.strip()
 
-    # Thử parse trực tiếp
     try:
         ket_qua = json.loads(chuoi)
         if isinstance(ket_qua, list):
@@ -471,7 +468,6 @@ def _trich_json_array(chuoi):
     except (json.JSONDecodeError, ValueError):
         pass
 
-    # Bỏ markdown
     mau_markdown = r"```(?:json)?\s*([\s\S]*?)```"
     khop = re.search(mau_markdown, chuoi)
     if khop:
@@ -482,7 +478,6 @@ def _trich_json_array(chuoi):
         except (json.JSONDecodeError, ValueError):
             pass
 
-    # Tìm [ ... ]
     vi_tri_dau = chuoi.find("[")
     vi_tri_cuoi = chuoi.rfind("]")
     if vi_tri_dau >= 0 and vi_tri_cuoi > vi_tri_dau:
@@ -497,22 +492,16 @@ def _trich_json_array(chuoi):
 
 
 # ================================================================
-# HÀM PHỤ: TÓM TẮT NODE
+# HÀM PHỤ
 # ================================================================
 def tom_tat_node(node):
-    """Tạo chuỗi tóm tắt node."""
     if not node:
         return ""
-
     return (
         f"[{node.get('linh_vuc', '?')}/{node.get('loai_van_de', '?')}/"
         f"{node.get('cach_giai_phap', '?')}] {node.get('ten', '')[:60]}"
     )
 
 
-# ================================================================
-# HÀM PHỤ: ĐẾM SỐ LẦN RETRY
-# ================================================================
 def so_lan_retry_toi_da():
-    """Trả số lần retry tối đa."""
     return SO_LAN_RETRY
