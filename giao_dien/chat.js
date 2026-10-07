@@ -2,6 +2,9 @@
    chat.js - Gửi/nhận tin nhắn (chat chính + chat trong dự án)
    ------------------------------------------------------------
    ĐÃ SỬA:
+     - Upload ảnh + file trước khi gửi tin nhắn.
+     - Gửi kèm urls_anh và urls_file trong body API.
+     - Xóa preview sau khi gửi thành công.
      - Cập nhật tên chat nhanh sau tin nhắn đầu.
      - Lưu tin nhắn khách vào localStorage.
    ============================================================ */
@@ -110,7 +113,6 @@
 
     /* ============================================================
        ĐẾM SỐ TIN NHẮN ĐÃ GỬI TRONG CHAT NHANH HIỆN TẠI
-       (để biết có phải tin đầu tiên không)
        ============================================================ */
     function demTinNhanNguoiTrongChatChinh() {
         if (!danhSach) return 0;
@@ -124,12 +126,50 @@
     }
 
     /* ============================================================
+       UPLOAD ẢNH + FILE TRƯỚC KHI GỬI
+       Trả về { urls_anh: [...], urls_file: [...] }
+       ============================================================ */
+    async function uploadDinhKem() {
+        let urls_anh = [];
+        let urls_file = [];
+
+        try {
+            if (typeof window.uploadTatCaAnh === 'function' &&
+                window.DANH_SACH_ANH && window.DANH_SACH_ANH.length > 0) {
+                urls_anh = await window.uploadTatCaAnh();
+            }
+        } catch (e) {
+            console.error('Lỗi upload ảnh:', e);
+        }
+
+        try {
+            if (typeof window.uploadTatCaFile === 'function' &&
+                window.DANH_SACH_FILE && window.DANH_SACH_FILE.length > 0) {
+                urls_file = await window.uploadTatCaFile();
+            }
+        } catch (e) {
+            console.error('Lỗi upload file:', e);
+        }
+
+        return { urls_anh: urls_anh, urls_file: urls_file };
+    }
+
+    function xoaHetPreview() {
+        if (typeof window.xoaTatCaAnh === 'function') window.xoaTatCaAnh();
+        if (typeof window.xoaTatCaFile === 'function') window.xoaTatCaFile();
+    }
+
+    /* ============================================================
        GỬI TIN NHẮN — CHAT CHÍNH
        ============================================================ */
     async function guiTinNhanChinh() {
         if (dangGui) return;
+
         const noiDung = oNhap.value.trim();
-        if (!noiDung) return;
+        const coAnh = window.DANH_SACH_ANH && window.DANH_SACH_ANH.length > 0;
+        const coFile = window.DANH_SACH_FILE && window.DANH_SACH_FILE.length > 0;
+
+        if (!noiDung && !coAnh && !coFile) return;
 
         dangGui = true;
         nutGui.disabled = true;
@@ -138,31 +178,49 @@
         const soTinNguoiTruoc = demTinNhanNguoiTrongChatChinh();
         const laTinDauTien = (soTinNguoiTruoc === 0);
 
-        themTinNhanNguoi(noiDung);
+        // Hiển thị tin nhắn người (kèm ghi chú nếu có ảnh/file)
+        let hienThi = noiDung;
+        if (coAnh || coFile) {
+            const phan = [];
+            if (coAnh) phan.push(`${window.DANH_SACH_ANH.length} ảnh`);
+            if (coFile) phan.push(`${window.DANH_SACH_FILE.length} file`);
+            hienThi = (noiDung ? noiDung + '\n' : '') + '📎 ' + phan.join(', ');
+        }
+        themTinNhanNguoi(hienThi || '📎 (đính kèm)');
         oNhap.value = '';
         tuDongGian(oNhap);
 
-        // NẾU LÀ TIN ĐẦU TIÊN → CẬP NHẬT TÊN CHAT NHANH
+        // Cập nhật tên chat nhanh nếu là tin đầu tiên
         if (laTinDauTien) {
             const idChat = window.__ID_CHAT_NHANH_HIEN_TAI;
+            const tenChat = noiDung || 'Chat có đính kèm';
             if (idChat && typeof window.capNhatTenChatNhanh === 'function') {
-                window.capNhatTenChatNhanh(idChat, noiDung);
+                window.capNhatTenChatNhanh(idChat, tenChat);
             }
         }
 
         hienDangTraLoi(danhSach, 'tin-nhan-dang-tra-loi');
 
         try {
+            // Upload ảnh/file trước
+            const dinhKem = await uploadDinhKem();
+
+            // Gửi tin nhắn kèm URL đính kèm
             const phanHoi = await fetch('/api/gui-tin-nhan', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ noi_dung: noiDung }),
+                body: JSON.stringify({
+                    noi_dung: noiDung,
+                    urls_anh: dinhKem.urls_anh,
+                    urls_file: dinhKem.urls_file,
+                }),
             });
             const duLieu = await phanHoi.json();
             xoaDangTraLoi('tin-nhan-dang-tra-loi');
 
             if (duLieu && duLieu.thanh_cong && duLieu.tra_loi) {
                 themTinNhanRong(duLieu.tra_loi);
+                xoaHetPreview();
             } else if (duLieu && duLieu.loi) {
                 themTinNhanHeThong('⚠️ ' + duLieu.loi);
             } else {

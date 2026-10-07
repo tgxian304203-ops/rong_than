@@ -1,12 +1,14 @@
 /* ============================================================
-   xu_ly_anh.js - Xử lý ảnh người dùng đính kèm
+   xu_ly_anh.js - Xử lý ảnh người dùng đính kèm + menu chọn
    ------------------------------------------------------------
    Nhiệm vụ:
-     - Lắng nghe nút [+] (#nut-dinh-kem) → mở hộp chọn ảnh.
-     - Khi người dùng chọn ảnh → hiển thị preview trong #khung-preview.
-     - Mỗi preview có nút [X] để xóa ảnh khỏi danh sách chờ gửi.
-     - KHÔNG gửi ảnh ngay. Chỉ lưu vào biến toàn cục window.DANH_SACH_ANH.
-     - Khi bấm [➤] (xử lý ở chat.js) → ảnh sẽ được upload + gửi kèm.
+     - Lắng nghe nút [+] (#nut-dinh-kem).
+     - Bấm [+] → hiện menu nhỏ: "Ảnh" / "Tài liệu".
+     - Chọn "Ảnh" → mở #input-file-anh.
+     - Chọn "Tài liệu" → mở #input-file-tai-lieu.
+     - Ảnh chọn xong → hiện preview trong #khung-preview.
+     - KHÔNG gửi ngay. Chỉ lưu vào window.DANH_SACH_ANH.
+     - Khi bấm [➤] (chat.js) → upload + gửi kèm.
    ============================================================ */
 
 (function () {
@@ -15,8 +17,9 @@
     /* ------------------------------------------------------------
        THAM CHIẾU DOM
        ------------------------------------------------------------ */
-    const nutDinhKem = document.getElementById('nut-dinh-kem');
-    const inputAnh   = document.getElementById('input-file-anh');
+    const nutDinhKem   = document.getElementById('nut-dinh-kem');
+    const inputAnh     = document.getElementById('input-file-anh');
+    const inputFile    = document.getElementById('input-file-tai-lieu');
     const khungPreview = document.getElementById('khung-preview');
 
     if (!nutDinhKem || !inputAnh || !khungPreview) {
@@ -38,10 +41,10 @@
 
     /* ------------------------------------------------------------
        CẬP NHẬT TRẠNG THÁI KHUNG PREVIEW
-       Ẩn khi rỗng, hiện khi có ảnh.
+       Ẩn khi rỗng, hiện khi có ảnh hoặc file.
        ------------------------------------------------------------ */
     function capNhatKhungPreview() {
-        if (window.DANH_SACH_ANH.length === 0 && 
+        if (window.DANH_SACH_ANH.length === 0 &&
             (!window.DANH_SACH_FILE || window.DANH_SACH_FILE.length === 0)) {
             khungPreview.classList.add('an');
         } else {
@@ -168,33 +171,71 @@
     }
 
     /* ------------------------------------------------------------
+       MENU CHỌN ẢNH / TÀI LIỆU
+       Tạo động, hiện dưới nút [+].
+       ------------------------------------------------------------ */
+    let menuDangMo = null;
+
+    function dongMenu() {
+        if (menuDangMo) {
+            menuDangMo.remove();
+            menuDangMo = null;
+        }
+    }
+
+    function moMenuChon() {
+        dongMenu();
+
+        const menu = document.createElement('div');
+        menu.className = 'menu-chon-dinh-kem';
+
+        // Nút Ảnh
+        const nutAnh = document.createElement('button');
+        nutAnh.type = 'button';
+        nutAnh.className = 'menu-chon-item';
+        nutAnh.innerHTML = '🖼️ Ảnh';
+        nutAnh.addEventListener('click', function (e) {
+            e.stopPropagation();
+            dongMenu();
+            inputAnh.click();
+        });
+        menu.appendChild(nutAnh);
+
+        // Nút Tài liệu
+        const nutFile = document.createElement('button');
+        nutFile.type = 'button';
+        nutFile.className = 'menu-chon-item';
+        nutFile.innerHTML = '📄 Tài liệu';
+        nutFile.addEventListener('click', function (e) {
+            e.stopPropagation();
+            dongMenu();
+            if (inputFile) inputFile.click();
+        });
+        menu.appendChild(nutFile);
+
+        // Đặt vị trí trên nút [+]
+        const rect = nutDinhKem.getBoundingClientRect();
+        menu.style.position = 'fixed';
+        menu.style.left = rect.left + 'px';
+        menu.style.bottom = (window.innerHeight - rect.top + 8) + 'px';
+        menu.style.zIndex = '9999';
+
+        document.body.appendChild(menu);
+        menuDangMo = menu;
+
+        // Bấm ra ngoài thì đóng
+        setTimeout(function () {
+            document.addEventListener('click', dongMenu, { once: true });
+        }, 0);
+    }
+
+    /* ------------------------------------------------------------
        SỰ KIỆN
        ------------------------------------------------------------ */
     nutDinhKem.addEventListener('click', function (e) {
         e.preventDefault();
-        // Nếu có ảnh + file thì mở menu chọn? Hiện tại chỉ mở ảnh.
-        // File tài liệu được xử lý riêng — có thể nhấn giữ.
-        inputAnh.click();
-    });
-
-    // Nhấn giữ nút [+] để chọn file tài liệu
-    let idGiu = null;
-    nutDinhKem.addEventListener('pointerdown', function () {
-        idGiu = setTimeout(function () {
-            // Nhấn giữ 500ms → mở chọn file tài liệu
-            const inputFile = document.getElementById('input-file-tai-lieu');
-            if (inputFile) inputFile.click();
-            idGiu = null;
-        }, 500);
-    });
-
-    ['pointerup', 'pointerleave', 'pointercancel'].forEach(function (ev) {
-        nutDinhKem.addEventListener(ev, function () {
-            if (idGiu) {
-                clearTimeout(idGiu);
-                idGiu = null;
-            }
-        });
+        e.stopPropagation();
+        moMenuChon();
     });
 
     inputAnh.addEventListener('change', function () {

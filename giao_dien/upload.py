@@ -12,7 +12,8 @@ Quy tắc:
     - Metadata lưu collection anh_file.
     - Nội dung trích xuất lưu collection noi_dung_da_trich_xuat.
     - Lịch sử gửi lưu collection lich_su_gui.
-    - Mọi file thuộc tài khoản đang đăng nhập.
+    - Khách (chưa đăng nhập) cũng upload được, chu_so_huu = "khach".
+    - User đã đăng nhập: chu_so_huu = tên tài khoản.
 
 Tầng dữ liệu: dai_nao/ghi_nho.py
 """
@@ -50,8 +51,12 @@ def _ghi_log(loai, noi_dung):
 # ----------------------------------------------------------------
 # TIỆN ÍCH
 # ----------------------------------------------------------------
-def _lay_ten_dang_nhap():
-    return phien_flask.get("ten_dang_nhap")
+def _lay_chu_so_huu():
+    """Trả về tên tài khoản đang đăng nhập, hoặc 'khach' nếu chưa đăng nhập."""
+    ten_tk = phien_flask.get("ten_dang_nhap")
+    if ten_tk:
+        return ten_tk
+    return "khach"
 
 
 def _tao_id():
@@ -130,12 +135,10 @@ def _trich_xuat_anh_gemini(noi_dung_bytes, duoi_file):
         import requests
         from dai_nao.ghi_nho import lay_danh_sach_key_cua
 
-        ten_tk = _lay_ten_dang_nhap()
-        if not ten_tk:
-            return ""
+        chu_so_huu = _lay_chu_so_huu()
 
-        # Tìm key Gemini đầu tiên của tài khoản
-        danh_sach = lay_danh_sach_key_cua(ten_tk) or []
+        # Tìm key Gemini đầu tiên
+        danh_sach = lay_danh_sach_key_cua(chu_so_huu) or []
         gemini_key = None
         for k in danh_sach:
             if k.get("provider") == "Gemini":
@@ -205,14 +208,12 @@ def _xu_ly_mot_file(file_storage, loai_file):
     loai_file: "anh" hoặc "tai_lieu"
     Trả về: { thanh_cong, url?, id?, loi? }
     """
-    ten_tk = _lay_ten_dang_nhap()
-    if not ten_tk:
-        return {"thanh_cong": False, "loi": "Chưa đăng nhập."}
+    chu_so_huu = _lay_chu_so_huu()
 
     ten_file = file_storage.filename or "khong_ten"
     duoi_file = _lay_duoi_file(ten_file)
 
-    # Đọc nội dung file vào bộ nhớ (Render free không giữ file lâu)
+    # Đọc nội dung file vào bộ nhớ
     try:
         file_storage.seek(0)
         noi_dung_bytes = file_storage.read()
@@ -236,7 +237,7 @@ def _xu_ly_mot_file(file_storage, loai_file):
             noi_dung=noi_dung_bytes,
             metadata={
                 "id_file": id_file,
-                "chu_so_huu": ten_tk,
+                "chu_so_huu": chu_so_huu,
                 "loai_file": loai_file,
                 "duoi_file": duoi_file,
                 "thoi_gian": thoi_gian,
@@ -256,7 +257,7 @@ def _xu_ly_mot_file(file_storage, loai_file):
         "duoi_file": duoi_file,
         "kich_thuoc": len(noi_dung_bytes),
         "loai_file": loai_file,
-        "chu_so_huu": ten_tk,
+        "chu_so_huu": chu_so_huu,
         "url": url,
         "thoi_gian": thoi_gian,
     }
@@ -267,7 +268,7 @@ def _xu_ly_mot_file(file_storage, loai_file):
     if noi_dung_trich_xuat:
         luu_noi_dung_trich_xuat({
             "id_file": id_file,
-            "chu_so_huu": ten_tk,
+            "chu_so_huu": chu_so_huu,
             "noi_dung": noi_dung_trich_xuat,
             "thoi_gian": thoi_gian,
         })
@@ -275,7 +276,7 @@ def _xu_ly_mot_file(file_storage, loai_file):
     # Lưu lịch sử gửi
     luu_lich_su_gui({
         "id_file": id_file,
-        "chu_so_huu": ten_tk,
+        "chu_so_huu": chu_so_huu,
         "ten_file": ten_file,
         "loai_file": loai_file,
         "thoi_gian": thoi_gian,
@@ -301,14 +302,9 @@ def _xu_ly_mot_file(file_storage, loai_file):
 def upload_anh(files):
     """
     Upload nhiều ảnh.
-    files: request.files (dict-like, mỗi key có thể chứa nhiều file).
+    files: request.files.
     Trả về: { thanh_cong, urls: [..], chi_tiet: [..], loi? }
     """
-    ten_tk = _lay_ten_dang_nhap()
-    if not ten_tk:
-        return {"thanh_cong": False, "loi": "Chưa đăng nhập."}
-
-    # Lấy danh sách file từ request.files
     danh_sach_file = files.getlist("anh") if hasattr(files, "getlist") else []
     if not danh_sach_file:
         return {"thanh_cong": False, "loi": "Không có ảnh nào được gửi."}
@@ -337,10 +333,6 @@ def upload_file(files):
     files: request.files.
     Trả về: { thanh_cong, urls: [..], chi_tiet: [..], loi? }
     """
-    ten_tk = _lay_ten_dang_nhap()
-    if not ten_tk:
-        return {"thanh_cong": False, "loi": "Chưa đăng nhập."}
-
     danh_sach_file = files.getlist("file") if hasattr(files, "getlist") else []
     if not danh_sach_file:
         return {"thanh_cong": False, "loi": "Không có file nào được gửi."}
