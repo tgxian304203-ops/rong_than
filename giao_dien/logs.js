@@ -2,8 +2,7 @@
    logs.js - Hiển thị + lọc + quản lý logs Rồng Thần
    ------------------------------------------------------------
    ĐÃ SỬA:
-     - Đảo ngược thứ tự log — hiển thị MỚI NHẤT ở DƯỚI CÙNG.
-       (Trước: mới nhất trên cùng, cũ nhất dưới cùng)
+     - Đảo ngược thứ tự log — MỚI NHẤT ở DƯỚI CÙNG.
    ============================================================ */
 
 (function () {
@@ -43,7 +42,7 @@
     };
 
     /* ------------------------------------------------------------
-       HÀM CHUẨN HÓA LOẠI LOG
+       CHUẨN HÓA LOẠI LOG
        ------------------------------------------------------------ */
     function chuanHoaLoai(loai) {
         if (!loai) return 'khac';
@@ -88,7 +87,7 @@
     }
 
     /* ------------------------------------------------------------
-       VẼ DANH SÁCH LOG — ĐÃ SỬA: ĐẢO NGƯỢC THỨ TỰ
+       VẼ DANH SÁCH LOG — ĐẢO NGƯỢC THỨ TỰ
        ------------------------------------------------------------ */
     function veDanhSach(danhSachLog) {
         danhSach.innerHTML = '';
@@ -97,17 +96,13 @@
             return;
         }
 
-        // Giới hạn số log để tránh lag
         const cat = danhSachLog.slice(-SO_LOG_TOI_DA);
-
-        // ĐẢO NGƯỢC: log mới nhất xuống dưới cùng
         const daoNguoc = cat.slice().reverse();
 
         daoNguoc.forEach(function (log) {
             danhSach.appendChild(taoDongLog(log));
         });
 
-        // Cuộn xuống cuối để thấy log mới nhất
         danhSach.scrollTop = danhSach.scrollHeight;
     }
 
@@ -257,8 +252,20 @@
        ------------------------------------------------------------ */
     function khoiDong() {
         ganSuKienLoc();
-        batDauCuptNhat();
+        batDauCapNhat();
         if (trangLogs.classList.contains('dang-mo')) {
             taiLog();
         }
     }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', khoiDong);
+    } else {
+        khoiDong();
+    }
+
+    window.taiLog = taiLog;
+    window.veDanhSachLog = veDanhSach;
+    window.dungCapNhatLog = dungCapNhat;
+
+})();
