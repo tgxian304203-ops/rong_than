@@ -485,6 +485,7 @@ body.sang .overlay {
     flex-direction: column;
     gap: 8px;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
 }
 
 .tieude-overlay {
@@ -572,11 +573,12 @@ body.sang .overlay {
 .danh-sach-cuon {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    max-height: 32vh;
+    gap: 8px;
+    max-height: 90vh;
     overflow-y: auto;
     padding-right: 2px;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
 }
 
 .danh-sach-cuon-rong {
@@ -706,24 +708,24 @@ body.sang .overlay {
 
 .o-nhap-key {
     flex: 1;
-    padding: 10px 12px;
+    padding: 12px 14px;
     border-radius: var(--bo-goc-nho);
     border: 1px solid var(--kinh-vien);
     background: var(--kinh-nen);
     color: var(--chu-chinh);
-    font-size: 13px;
+    font-size: 14px;
     min-width: 0;
 }
 
 .o-nhap-key::placeholder { color: var(--chu-mo); }
 
 .nut-run {
-    padding: 0 14px;
+    padding: 0 18px;
     border-radius: var(--bo-goc-nho);
     background: var(--kinh-nen-dam);
     border: 1px solid var(--kinh-vien);
     color: var(--chu-rong);
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     transition: background 0.15s ease;
     flex-shrink: 0;
@@ -734,8 +736,8 @@ body.sang .overlay {
 .the-key {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    padding: 10px 12px;
+    gap: 8px;
+    padding: 14px 16px;
     border-radius: var(--bo-goc-nho);
     border: 1px solid var(--kinh-vien);
     background: var(--kinh-nen);
@@ -744,33 +746,52 @@ body.sang .overlay {
 .the-key-hang {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
 }
 
-.the-key-icon { font-size: 15px; }
+.the-key-icon { font-size: 18px; }
 
 .the-key-ten {
     flex: 1;
-    font-size: 13px;
+    font-size: 15px;
     font-weight: 600;
 }
 
 .the-key-so {
-    font-size: 12px;
+    font-size: 13px;
     color: var(--chu-mo);
+}
+
+.nut-xoa-muc {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    color: var(--chu-mo);
+    background: var(--kinh-nen-dam);
+    flex-shrink: 0;
+    font-size: 14px;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.nut-xoa-muc:active {
+    background: var(--do);
+    color: #fff;
 }
 
 .thanh-quota {
     width: 100%;
-    height: 6px;
-    border-radius: 3px;
+    height: 8px;
+    border-radius: 4px;
     background: var(--kinh-nen-dam);
     overflow: hidden;
 }
 
 .thanh-quota-fill {
     height: 100%;
-    border-radius: 3px;
+    border-radius: 4px;
     transition: width 0.3s ease, background 0.3s ease;
 }
 
@@ -780,7 +801,7 @@ body.sang .overlay {
 .quota-den    { background: #333; }
 
 .the-key-phan-tram {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--chu-mo);
     text-align: right;
 }
