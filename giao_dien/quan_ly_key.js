@@ -1,23 +1,13 @@
 /* ============================================================
    quan_ly_key.js - Dán + quản lý API Key model (Boss + Tiểu Boss)
    ------------------------------------------------------------
-   ĐÃ SỬA (Giai đoạn 1.5 — tách trang Key riêng):
-     - FIX 1: Tách thành 2 khối độc lập:
-              + BOSS: o-key-boss + nut-run-key-boss
-                       + danh-sach-key-boss
-              + TIỂU BOSS: o-key-tieu-boss + nut-run-key-tieu-boss
-                       + danh-sach-key-tieu-boss
-     - FIX 2: Khách lưu sessionStorage riêng theo từng loại.
-     - FIX 3: Tài khoản gửi loai_nao="boss" / "tieu_boss".
-     - FIX 4: Lấy danh sách + quota lọc theo loai_nao.
+   ĐÃ SỬA:
+     - Thêm hàm taiLaiTatCa() — reset phiên + reload cả 2 khối key.
    ============================================================ */
 
 (function () {
     'use strict';
 
-    // ============================================================
-    // HẰNG SỐ DÙNG CHUNG
-    // ============================================================
     const THOI_GIAN_CAP_NHAT_QUOTA = 60 * 1000;
 
     const BANG_PROVIDER = [
@@ -33,9 +23,6 @@
     let laKhach = false;
     let daKiemTraPhien = false;
 
-    // ============================================================
-    // HÀM DÙNG CHUNG
-    // ============================================================
     async function kiemTraPhien() {
         if (daKiemTraPhien) return laKhach;
         try {
@@ -437,6 +424,17 @@
     }
 
     // ============================================================
+    // HÀM CÔNG KHAI: TẢI LẠI TẤT CẢ
+    // ============================================================
+    async function taiLaiTatCa() {
+        daKiemTraPhien = false;   // Reset để check lại phiên
+        await Promise.all([
+            taiDanhSachBoss(),
+            taiDanhSachTieuBoss(),
+        ]);
+    }
+
+    // ============================================================
     // VÒNG LẶP CẬP NHẬT QUOTA
     // ============================================================
     let idHenQuota = null;
@@ -453,7 +451,7 @@
     // KHỞI ĐỘNG
     // ============================================================
     async function khoiDong() {
-        await kiemTraPhien();
+        daKiemTraPhien = false;
         await Promise.all([
             taiDanhSachBoss(),
             taiDanhSachTieuBoss(),
@@ -467,7 +465,8 @@
         khoiDong();
     }
 
-    window.taiDanhSachKeyBoss     = taiDanhSachBoss;
-    window.taiDanhSachKeyTieuBoss = taiDanhSachTieuBoss;
+    window.taiDanhSachKeyBoss       = taiDanhSachBoss;
+    window.taiDanhSachKeyTieuBoss   = taiDanhSachTieuBoss;
+    window.taiLaiKeyTatCa           = taiLaiTatCa;
 
 })();

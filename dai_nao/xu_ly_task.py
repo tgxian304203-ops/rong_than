@@ -3,15 +3,15 @@ xu_ly_task.py - Trung tâm điều phối Đại não Rồng Thần.
 
 Nhiệm vụ:
     - Nhận task từ nhan_task.py.
-    - Điều phối 12 bước xử lý theo Phần 4 của dự án.
-    - Gọi Boss (nếu task phức tạp) → chia task + lưu snapshot.
-    - Gọi Tiểu não khi bí, gọi Tra web khi cần, gọi Sandbox khi chạy code.
+    - Điều phối 12 bước xử lý theo Phần 4.
+    - Gọi Boss (chỉ tài khoản) → chia task + snapshot.
+    - Khách → không gọi Boss, dùng luồng cũ.
+    - Gọi Tiểu não, Tra web, Sandbox khi cần.
     - Cập nhật cây quyết định sau mỗi task.
 
-ĐÃ SỬA (Giai đoạn 2 — Boss có model riêng):
-    - FIX 1: Thêm BƯỚC 3.5 — gọi Boss (chi_huy.py) cho task phức tạp.
-    - FIX 2: Nếu Boss phân tích được dự án → lưu snapshot + trả info cho user.
-    - FIX 3: Nếu Boss hết quota → fallback về luồng cũ (không sập).
+ĐÃ SỬA (Giai đoạn 2 — phân biệt khách / tài khoản):
+    - FIX 1: Chỉ gọi Boss khi là TÀI KHOẢN (chu_so_huu != "khach").
+    - FIX 2: Khách → chạy luồng cũ (cây + Tiểu não).
 
 Các fix cũ giữ nguyên:
     - FIX 1: Ngưỡng chấm điểm 0.75.
@@ -37,6 +37,8 @@ TU_MO_HO = (
 
 SO_LAN_TU_SUA_TOI_DA = 3
 NGUONG_DUNG_NODE = 0.75
+
+CHU_SO_HUU_KHACH = "khach"
 
 
 # ----------------------------------------------------------------
@@ -154,14 +156,19 @@ def _goi_tieu_nao(task, ngu_canh, chu_so_huu=""):
 
 
 # ----------------------------------------------------------------
-# FIX 1: HÀM PHỤ: GỌI BOSS
+# HÀM PHỤ: GỌI BOSS (CHỈ TÀI KHOẢN)
 # ----------------------------------------------------------------
 def _goi_boss(noi_dung, chu_so_huu=""):
     """
-    Gọi Boss (Đại não có model riêng) cho task phức tạp.
+    Gọi Boss (Đại não có model riêng).
 
-    Trả về dict hoặc None nếu Boss không dùng / hết quota.
+    FIX 1: Chỉ gọi khi là TÀI KHOẢN — khách bỏ qua.
     """
+    # FIX 1: Khách → không gọi Boss
+    if not chu_so_huu or chu_so_huu == CHU_SO_HUU_KHACH:
+        _ghi_log("dai-nao", "Khách — không gọi Boss.")
+        return None
+
     try:
         from dai_nao.chi_huy import chi_huy
 
@@ -173,12 +180,10 @@ def _goi_boss(noi_dung, chu_so_huu=""):
         if not ket_qua:
             return None
 
-        # Boss hết quota → trả None → fallback
         if not ket_qua.get("thanh_cong"):
             _ghi_log("dai-nao", f"Boss thất bại: {ket_qua.get('loi', '')}")
             return None
 
-        # Task không cần Boss → trả None
         if not ket_qua.get("can_boss"):
             return None
 
@@ -193,18 +198,9 @@ def _goi_boss(noi_dung, chu_so_huu=""):
 
 
 # ----------------------------------------------------------------
-# FIX 2: HÀM PHỤ: TẠO PHẢN HỒI TỪ BOSS
+# HÀM PHỤ: TẠO PHẢN HỒI TỪ BOSS
 # ----------------------------------------------------------------
 def _tao_phan_hoi_boss(ket_qua_boss):
-    """
-    Tạo phản hồi cho user từ kết quả Boss.
-
-    Hiển thị:
-        - Loại dự án.
-        - Số task.
-        - Danh sách task.
-        - Mã dự án (snapshot).
-    """
     if not ket_qua_boss:
         return ""
 
@@ -537,12 +533,12 @@ def xu_ly_task(du_lieu):
         return _hoi_lai("Task chưa đủ rõ để thực hiện.", cau_hoi)
 
     # ============================================================
-    # FIX 1: BƯỚC 3.5 — GỌI BOSS CHO TASK PHỨC TẠP
+    # BƯỚC 3.5: GỌI BOSS (CHỈ TÀI KHOẢN)
+    # FIX 1: _goi_boss tự kiểm tra — khách không gọi Boss.
     # ============================================================
     ket_qua_boss = _goi_boss(noi_dung_chuan, chu_so_huu)
 
     if ket_qua_boss and ket_qua_boss.get("can_boss"):
-        # Boss đã phân tích dự án → trả kết quả cho user
         _ghi_log("dai-nao", f"Boss đã phân tích dự án cho {chu_so_huu}")
 
         tra_loi_boss = _tao_phan_hoi_boss(ket_qua_boss)
@@ -556,10 +552,6 @@ def xu_ly_task(du_lieu):
                 "yeu_cau": ket_qua_boss.get("yeu_cau", {}),
             },
         }
-
-    # Boss không dùng được → tiếp tục luồng cũ
-    if ket_qua_boss and not ket_qua_boss.get("thanh_cong"):
-        _ghi_log("dai-nao", "Boss hết quota — fallback luồng cũ.")
 
     # BƯỚC 4: PHÂN LOẠI
     try:
@@ -594,7 +586,7 @@ def xu_ly_task(du_lieu):
         except Exception as e:
             _ghi_log("loi", f"Kiểm tra failed_paths lỗi: {e}")
 
-    # BƯỚC 7: CHẤM ĐIỂM + KIỂM TRA NỘI DUNG THỰC
+    # BƯỚC 7: CHẤM ĐIỂM
     if nhanh_tot_nhat:
         nhanh_dict = _node_sang_dict(nhanh_tot_nhat)
 

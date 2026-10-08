@@ -1,12 +1,11 @@
 /* ============================================================
    app.js - Khởi động chung giao diện Rồng Thần
    ------------------------------------------------------------
-   ĐÃ SỬA:
-     - Đổi localStorage → sessionStorage cho dữ liệu khách
-       (đóng tab mất sạch).
+   ĐÃ SỬA (Giai đoạn 2):
      - taiThongTinPhien(goiLai): sau đăng nhập/đăng xuất →
-       làm mới luôn danh sách key model + key web + URI.
-     - Sau khi phiên đổi → xóa sạch sessionStorage của khách.
+       gọi taiLaiKeyTatCa() + taiLaiKeyWeb() + taiUriKho()
+       để load key từ MongoDB vào UI.
+     - Sửa lỗi: trước đây gọi hàm không tồn tại (taiDanhSachKeyModel).
    ============================================================ */
 
 (function () {
@@ -24,6 +23,8 @@
         'rong_than_tin_nhan_khach',
         'rong_than_key_model_khach',
         'rong_than_key_web_khach',
+        'rong_than_key_boss_khach',
+        'rong_than_key_tieu_boss_khach',
         'rong_than_uri_kho_1_khach',
         'rong_than_uri_kho_2_khach',
     ];
@@ -206,12 +207,15 @@
                 await taiDanhSachDuAn();
                 await taiDanhSachChatNhanh();
 
-                if (typeof window.taiDanhSachKeyModel === 'function') {
-                    await window.taiDanhSachKeyModel();
+                // FIX: Gọi taiLaiKeyTatCa (Boss + Tiểu Boss)
+                if (typeof window.taiLaiKeyTatCa === 'function') {
+                    await window.taiLaiKeyTatCa();
                 }
-                if (typeof window.taiDanhSachKeyWeb === 'function') {
-                    await window.taiDanhSachKeyWeb();
+                // FIX: Gọi taiLaiKeyWeb (Key Tra web)
+                if (typeof window.taiLaiKeyWeb === 'function') {
+                    await window.taiLaiKeyWeb();
                 }
+                // URI kho
                 if (typeof window.taiUriKho === 'function') {
                     await window.taiUriKho();
                 }

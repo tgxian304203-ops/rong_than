@@ -1,15 +1,9 @@
 /* ============================================================
    quan_ly_key_web.js - Dán + quản lý API Key tra web
    ------------------------------------------------------------
-   ĐÃ SỬA (Giai đoạn 1.5 — tách trang Key Tra web):
-     - FIX 1: Chỉ xử lý trang Key Tra web (ID không đổi).
-     - FIX 2: Khách lưu sessionStorage.
-     - FIX 3: Tài khoản gửi server lưu kho 1.
-
-   Giữ nguyên:
-     - Nhận diện provider qua BẢNG ÁNH XẠ.
-     - Kiểm tra phiên mỗi lần tải.
-     - Cập nhật quota mỗi 60 giây.
+   ĐÃ SỬA:
+     - Thêm hàm taiLaiKeyWeb() — reset phiên + reload key.
+     - Sau khi đăng nhập → gọi hàm này để load key từ MongoDB.
    ============================================================ */
 
 (function () {
@@ -27,6 +21,7 @@
     const THOI_GIAN_CAP_NHAT_QUOTA = 60 * 1000;
     let idHenQuota = null;
     let laKhach = false;
+    let daKiemTraPhien = false;
 
     const BANG_PROVIDER = [
         { tien_to: 'serpjet',     provider: 'SERPJET' },
@@ -37,6 +32,7 @@
     ];
 
     async function kiemTraPhien() {
+        if (daKiemTraPhien) return laKhach;
         try {
             const ph = await fetch('/api/phien');
             const dl = await ph.json();
@@ -44,6 +40,7 @@
         } catch (e) {
             laKhach = true;
         }
+        daKiemTraPhien = true;
         return laKhach;
     }
 
@@ -71,7 +68,6 @@
                 return BANG_PROVIDER[i].provider;
             }
         }
-        // Fallback: nếu không nhận diện được, để "Khác"
         return 'Khác';
     }
 
@@ -270,8 +266,16 @@
         }
     });
 
+    // ============================================================
+    // HÀM CÔNG KHAI: TẢI LẠI KEY WEB
+    // ============================================================
+    async function taiLaiKeyWeb() {
+        daKiemTraPhien = false;   // Reset để check lại phiên
+        await taiDanhSach();
+    }
+
     async function khoiDong() {
-        await kiemTraPhien();
+        daKiemTraPhien = false;
         await taiDanhSach();
         batDauCapNhatQuota();
     }
@@ -283,5 +287,6 @@
     }
 
     window.taiDanhSachKeyWeb = taiDanhSach;
+    window.taiLaiKeyWeb = taiLaiKeyWeb;
 
 })();
