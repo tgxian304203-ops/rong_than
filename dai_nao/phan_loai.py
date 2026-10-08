@@ -5,12 +5,18 @@ Nhiệm vụ:
     - phan_loai(noi_dung, yeu_to): phân loại task thành 12 lĩnh vực chính.
     - Học thêm từ khóa mới khi gặp task không phân loại được.
 
+ĐÃ SỬA (fix "phân loại sai lĩnh vực"):
+    - FIX 1: _dem_khop xử lý từ khóa ngắn (1-2 ký tự) phải đứng riêng.
+             VD: "x" không khớp với "xã hội", "xám".
+    - FIX 2: Từ khóa toán "+", "-", "*", "/" cũng phải đứng riêng.
+    - FIX 3: Ưu tiên từ khóa dài — cộng điểm theo độ dài từ khóa.
+    - FIX 4: Với "văn" — ưu tiên khớp cụm từ dài (viết đoạn văn, nghị luận).
+    - FIX 5: Bỏ "x" khỏi từ khóa "nhân" (thay bằng "×").
+
 Cấu trúc:
     12 lĩnh vực ngang:
         toán, văn, code, bug, khoa học, đời sống, kinh doanh,
         sáng tạo, học tập, tra cứu, kỹ thuật, luật - hành chính.
-
-    Mỗi lĩnh vực chia nhiều nhóm dọc (nhóm → loại).
 
 Cơ chế học:
     - Ưu tiên 1: từ khóa đã học (kho 2, collection tu_khoa_phan_loai).
@@ -44,17 +50,18 @@ def _ghi_log(loai, noi_dung):
 
 
 # ================================================================
-# TỪ KHÓA TĨNH — 12 LĨNH VỰC NGANG, CHIA SÂU
+# TỪ KHÓA TĨNH — 12 LĨNH VỰC NGANG
 # ================================================================
 
 # ----------------------------------------------------------------
 # 1. TOÁN
+# FIX 5: Bỏ "x" khỏi "nhân" — thay bằng "×"
 # ----------------------------------------------------------------
 TU_KHOA_TOAN = {
     "số học": {
         "cộng": ["cộng", "tổng", "+"],
         "trừ": ["trừ", "hiệu", "-"],
-        "nhân": ["nhân", "tích", "x", "*"],
+        "nhân": ["nhân", "tích", "×", "*"],
         "chia": ["chia", "thương", "/"],
         "phân số": ["phân số", "tử số", "mẫu số"],
         "phần trăm": ["phần trăm", "percent", "%"],
@@ -345,7 +352,6 @@ BANG_TU_KHOA_TINH = {
 # NHẬN DIỆN NGÔN NGỮ LẬP TRÌNH
 # ================================================================
 def _nhan_dien_ngon_ngu(noi_dung):
-    """Đoán ngôn ngữ lập trình từ nội dung."""
     if not noi_dung:
         return ""
     t = noi_dung.lower()
@@ -370,20 +376,94 @@ def _nhan_dien_ngon_ngu(noi_dung):
 
 
 # ================================================================
-# ĐẾM KHỚP TỪ KHÓA
+# FIX 1 + FIX 2: ĐẾM KHỚP TỪ KHÓA — CHẶT HƠN
 # ================================================================
 def _dem_khop(noi_dung, danh_sach_tu_khoa):
-    """Đếm số từ khóa khớp (xử lý ký tự đặc biệt)."""
+    """
+    Đếm số từ khóa khớp.
+
+    FIX 1: Từ khóa ngắn (1-2 ký tự) phải đứng riêng (word boundary).
+    FIX 2: Ký tự toán tử "+-*/^%×√" cũng phải đứng riêng.
+    """
+    if not noi_dung or not danh_sach_tu_khoa:
+        return 0
+
     dem = 0
+    noi_dung_lower = noi_dung.lower()
+
     for tk in danh_sach_tu_khoa:
-        if tk and tk[0] in "+-*/^%":
-            # Ký tự toán tử — chỉ khớp nếu đứng riêng
-            if re.search(r"(?<!\w)" + re.escape(tk) + r"(?!\w)", noi_dung):
+        if not tk:
+            continue
+        tk_lower = tk.lower()
+
+        # FIX 1 + FIX 2: Nếu từ khóa ngắn (≤ 2 ký tự) HOẶC là ký tự đặc biệt
+        # → bắt buộc phải đứng riêng (word boundary)
+        if len(tk_lower) <= 2 or tk_lower[0] in "+-*/^%×√":
+            # Dùng regex word boundary — không khớp giữa chữ
+            mau = r"(?<![\w])" + re.escape(tk_lower) + r"(?![\w])"
+            if re.search(mau, noi_dung_lower):
                 dem += 1
         else:
-            if tk in noi_dung:
+            # Từ khóa dài — khớp substring bình thường
+            if tk_lower in noi_dung_lower:
                 dem += 1
+
     return dem
+
+
+# ================================================================
+# FIX 3 + FIX 4: ĐIỂM KHỚP CÓ TRỌNG SỐ THEO ĐỘ DÀI
+# ================================================================
+def _diem_khop_co_trong_so(noi_dung, danh_sach_tu_khoa):
+    """
+    Tính điểm khớp có trọng số theo độ dài từ khóa.
+
+    FIX 3: Từ khóa dài (≥ 5 ký tự) → +2 điểm. Ngắn hơn → +1 điểm.
+    FIX 4: Cụm từ dài (có khoảng trắng) → +3 điểm.
+
+    VD:
+        "viết đoạn văn" (cụm 3 từ) → +3 điểm
+        "nghị luận" (2 từ) → +2 điểm
+        "văn" (ngắn) → +1 điểm
+    """
+    if not noi_dung or not danh_sach_tu_khoa:
+        return 0.0
+
+    diem = 0.0
+    noi_dung_lower = noi_dung.lower()
+
+    for tk in danh_sach_tu_khoa:
+        if not tk:
+            continue
+        tk_lower = tk.lower()
+
+        # Kiểm tra khớp
+        khop = False
+        if len(tk_lower) <= 2 or tk_lower[0] in "+-*/^%×√":
+            mau = r"(?<![\w])" + re.escape(tk_lower) + r"(?![\w])"
+            if re.search(mau, noi_dung_lower):
+                khop = True
+        else:
+            if tk_lower in noi_dung_lower:
+                khop = True
+
+        if not khop:
+            continue
+
+        # Tính trọng số theo độ dài / số từ
+        so_tu = len(tk_lower.split())
+        do_dai = len(tk_lower)
+
+        if so_tu >= 3:
+            diem += 3.0
+        elif so_tu == 2:
+            diem += 2.0
+        elif do_dai >= 5:
+            diem += 2.0
+        else:
+            diem += 1.0
+
+    return diem
 
 
 # ================================================================
@@ -392,71 +472,62 @@ def _dem_khop(noi_dung, danh_sach_tu_khoa):
 def _duyet_tu_khoa_tinh(noi_dung, co_so):
     """
     Duyệt bảng từ khóa tĩnh, trả về kết quả tốt nhất.
-    co_so: True nếu nội dung có số (cần cho toán).
+    FIX 3 + FIX 4: dùng điểm có trọng số thay vì đếm thô.
     """
     tot_nhat = None
-    diem_tot_nhat = 0
+    diem_tot_nhat = 0.0
 
     for linh_vuc, cau_truc in BANG_TU_KHOA_TINH.items():
 
-        # --- Trường hợp cấu trúc là dict 2 tầng ---
+        # --- Dict 2 tầng (VD: toán → số học → cộng) ---
         if isinstance(cau_truc, dict) and cau_truc and isinstance(next(iter(cau_truc.values())), dict):
-            # Ví dụ: toán → { "số học": { "cộng": [...] } }
-            # Hoặc: bug → { "runtime": { "NameError": [...] } }
             for nhom, tu_khoa_con in cau_truc.items():
                 if not isinstance(tu_khoa_con, dict):
                     continue
                 for loai, danh_sach in tu_khoa_con.items():
                     if not isinstance(danh_sach, list):
                         continue
-                    so_khop = _dem_khop(noi_dung, danh_sach)
-                    if so_khop > 0:
+                    diem = _diem_khop_co_trong_so(noi_dung, danh_sach)
+                    if diem > 0:
                         # Toán cần có số
                         if linh_vuc == "toán" and not co_so:
                             continue
-                        diem = so_khop
                         if diem > diem_tot_nhat:
                             diem_tot_nhat = diem
                             tot_nhat = {
                                 "linh_vuc": linh_vuc,
                                 "nhom": nhom,
                                 "loai": loai,
-                                "so_khop": so_khop,
+                                "so_khop": int(diem),
                             }
 
-        # --- Trường hợp cấu trúc là dict 1 tầng (list giá trị) ---
+        # --- Dict 1 tầng (list giá trị) ---
         elif isinstance(cau_truc, dict) and cau_truc and isinstance(next(iter(cau_truc.values())), list):
-            # Ví dụ: văn → { "viết đoạn văn": [...], "tóm tắt": [...] }
-            # Hoặc: code → { "tạo mới": { ... }, "sửa": [...] }  ← lẫn
             for nhom, danh_sach in cau_truc.items():
                 if isinstance(danh_sach, dict):
-                    # Nhóm con (như code → tạo mới → {web: [...]})
+                    # Nhóm con (code → tạo mới → web)
                     for loai, ds_con in danh_sach.items():
                         if not isinstance(ds_con, list):
                             continue
-                        so_khop = _dem_khop(noi_dung, ds_con)
-                        if so_khop > 0:
-                            diem = so_khop
-                            if diem > diem_tot_nhat:
-                                diem_tot_nhat = diem
-                                tot_nhat = {
-                                    "linh_vuc": linh_vuc,
-                                    "nhom": nhom,
-                                    "loai": loai,
-                                    "so_khop": so_khop,
-                                }
-                elif isinstance(danh_sach, list):
-                    so_khop = _dem_khop(noi_dung, danh_sach)
-                    if so_khop > 0:
-                        diem = so_khop
-                        if diem > diem_tot_nhat:
+                        diem = _diem_khop_co_trong_so(noi_dung, ds_con)
+                        if diem > 0 and diem > diem_tot_nhat:
                             diem_tot_nhat = diem
                             tot_nhat = {
                                 "linh_vuc": linh_vuc,
                                 "nhom": nhom,
-                                "loai": nhom,
-                                "so_khop": so_khop,
+                                "loai": loai,
+                                "so_khop": int(diem),
                             }
+                elif isinstance(danh_sach, list):
+                    diem = _diem_khop_co_trong_so(noi_dung, danh_sach)
+                    if diem > 0 and diem > diem_tot_nhat:
+                        diem_tot_nhat = diem
+                        tot_nhat = {
+                            "linh_vuc": linh_vuc,
+                            "nhom": nhom,
+                            "loai": nhom,
+                            "so_khop": int(diem),
+                        }
 
     return tot_nhat
 
@@ -465,10 +536,6 @@ def _duyet_tu_khoa_tinh(noi_dung, co_so):
 # DUYỆT TỪ KHÓA ĐÃ HỌC (KHO 2)
 # ================================================================
 def _duyet_tu_khoa_da_hoc(noi_dung):
-    """
-    Duyệt từ khóa đã học từ kho 2.
-    Ưu tiên từ khóa dài (khớp chính xác hơn) + nhiều lần dùng.
-    """
     try:
         from dai_nao.ghi_nho import lay_tat_ca_tu_khoa_phan_loai
         danh_sach = lay_tat_ca_tu_khoa_phan_loai() or []
@@ -483,7 +550,6 @@ def _duyet_tu_khoa_da_hoc(noi_dung):
         if not tu_khoa:
             continue
         if tu_khoa in noi_dung:
-            # Điểm = độ dài từ khóa + số lần dùng
             diem = len(tu_khoa) + int(tk.get("so_lan_dung", 0))
             if diem > diem_tot_nhat:
                 diem_tot_nhat = diem
@@ -493,7 +559,6 @@ def _duyet_tu_khoa_da_hoc(noi_dung):
                     "loai": tk.get("loai", ""),
                     "so_khop": 1,
                 }
-                # Tăng đếm
                 try:
                     from dai_nao.ghi_nho import tang_dem_tu_khoa
                     tang_dem_tu_khoa(tu_khoa)
@@ -507,16 +572,10 @@ def _duyet_tu_khoa_da_hoc(noi_dung):
 # HÀM HỌC TỪ KHÓA MỚI
 # ================================================================
 def _hoc_tu_khoa_moi(noi_dung, linh_vuc="khac", nhom="", loai=""):
-    """
-    Khi không phân loại được → lưu lại toàn bộ nội dung làm mẫu học.
-    Lần sau gặp nội dung tương tự sẽ khớp nhanh hơn.
-    Chỉ lưu nếu nội dung đủ dài (≥ 3 ký tự) và chưa có.
-    """
     noi_dung = (noi_dung or "").strip().lower()
     if len(noi_dung) < 3:
         return
 
-    # Cắt gọn — chỉ lưu tối đa 200 ký tự đầu
     tu_khoa = noi_dung[:200]
 
     try:
@@ -561,9 +620,7 @@ def phan_loai(noi_dung, yeu_to=None):
 
     co_so = bool(re.search(r"\d", noi_dung))
 
-    # ------------------------------------------------------------
-    # 1. Ưu tiên từ khóa đã học
-    # ------------------------------------------------------------
+    # 1. Từ khóa đã học
     ket_qua_hoc = _duyet_tu_khoa_da_hoc(noi_dung)
     if ket_qua_hoc and ket_qua_hoc.get("linh_vuc") not in ("", "khac"):
         return {
@@ -575,13 +632,10 @@ def phan_loai(noi_dung, yeu_to=None):
             "nguon": "hoc",
         }
 
-    # ------------------------------------------------------------
-    # 2. Duyệt từ khóa tĩnh
-    # ------------------------------------------------------------
+    # 2. Từ khóa tĩnh
     ket_qua_tinh = _duyet_tu_khoa_tinh(noi_dung, co_so)
     if ket_qua_tinh:
         so_khop = ket_qua_tinh.get("so_khop", 1)
-        # Độ tin cậy dựa trên số khớp
         do_tin_cay = min(0.95, 0.6 + 0.08 * so_khop)
         return {
             "linh_vuc": ket_qua_tinh["linh_vuc"],
@@ -592,9 +646,7 @@ def phan_loai(noi_dung, yeu_to=None):
             "nguon": "tinh",
         }
 
-    # ------------------------------------------------------------
-    # 3. Không khớp → lưu mẫu học + trả "khac"
-    # ------------------------------------------------------------
+    # 3. Không khớp → lưu mẫu học
     _hoc_tu_khoa_moi(noi_dung_goc, linh_vuc="khac")
 
     return {
@@ -611,12 +663,10 @@ def phan_loai(noi_dung, yeu_to=None):
 # TIỆN ÍCH
 # ================================================================
 def lay_nhom_chinh(loai_task):
-    """Trả về lĩnh vực chính."""
     if not loai_task or not isinstance(loai_task, dict):
         return ""
     return loai_task.get("linh_vuc", "") or ""
 
 
 def lay_tat_ca_linh_vuc():
-    """Trả về danh sách 12 lĩnh vực."""
     return list(BANG_TU_KHOA_TINH.keys())
