@@ -1,28 +1,10 @@
 """
 chi_huy.py - Đại não gọi model riêng Rồng Thần.
 
-Nhiệm vụ:
-    - chi_huy(du_lieu): Đại não gọi model để suy luận.
-    - hieu_yeu_cau(noi_dung): hiểu yêu cầu user.
-    - chia_task(yeu_cau, du_lieu): chia task lớn thành task nhỏ.
-    - viet_brief(task_con): viết brief cho Tiểu não.
-    - kiem_tra_ket_qua(code, hop_dong): kiểm tra kết quả Tiểu não.
-    - phan_tich_du_an(noi_dung): phân tích dự án lớn.
-
-Đại não (Boss) dùng:
-    - Key Boss (loai_nao="boss") — tách biệt với Tiểu não.
-    - Model mạnh (Gemini / Groq / OpenRouter) — để suy luận.
-
-Khi nào gọi Boss:
-    - Task phức tạp (dự án nhiều file, viết văn dài).
-    - KHÔNG gọi cho task đơn giản (1+1, hỏi thời gian).
-
-Boss hết quota:
-    - Trả về thanh_cong=False.
-    - Đại não fallback về logic Python cũ.
-
-Tầng dữ liệu: dai_nao/ghi_nho.py
-Điều phối model: tieu_nao/do_model.py
+ĐÃ SỬA:
+    - Bọc try/except từng bước trong phan_tich_du_an.
+    - Chia task fail → vẫn trả kết quả hieu_yeu_cau (không crash).
+    - Timeout nhanh cho từng bước → tránh Render timeout.
 """
 
 import re
@@ -30,9 +12,6 @@ import json
 import time
 
 
-# ================================================================
-# GHI LOG
-# ================================================================
 def _ghi_log(loai, noi_dung):
     try:
         from logs.ghi_log import ghi_log
@@ -45,27 +24,22 @@ def _ghi_log(loai, noi_dung):
 # KIỂM TRA CÓ CẦN BOSS KHÔNG
 # ================================================================
 def can_boss(noi_dung):
-    """Kiểm tra task có cần Boss không."""
     if not noi_dung:
         return False
 
     noi_dung_lower = noi_dung.lower().strip()
 
-    # Câu rất ngắn → không cần Boss
     if len(noi_dung_lower) < 10:
         return False
 
-    # Câu hỏi thời gian → không cần Boss
     for tk in ("hôm nay", "bây giờ", "mấy giờ", "ngày mấy"):
         if tk in noi_dung_lower:
             return False
 
-    # Câu chào hỏi → không cần Boss
     for tk in ("chào", "hello", "hi ", "cảm ơn"):
         if noi_dung_lower.startswith(tk):
             return False
 
-    # Từ khoá hành động + đối tượng
     tu_hanh_dong = ("làm", "tạo", "xây", "viết", "dựng", "thiết kế", "code", "lập trình")
     tu_doi_tuong = (
         "web", "app", "ứng dụng", "dự án", "game", "tool", "công cụ",
@@ -80,11 +54,9 @@ def can_boss(noi_dung):
     if co_hanh_dong and co_doi_tuong:
         return True
 
-    # Task dài + có động từ hành động
     if len(noi_dung_lower) > 25 and co_hanh_dong:
         return True
 
-    # Nhiều yêu cầu + có động từ hành động
     so_dau_cau = (
         noi_dung_lower.count(",") +
         noi_dung_lower.count(";") +
@@ -100,7 +72,6 @@ def can_boss(noi_dung):
 # GỌI MODEL BOSS
 # ================================================================
 def _goi_model_boss(prompt, chu_so_huu=""):
-    """Gọi model Boss qua do_model với loai_nao='boss'."""
     if not chu_so_huu:
         chu_so_huu = "khach"
 
@@ -170,7 +141,6 @@ def _trich_json(chuoi):
 # HIỂU YÊU CẦU
 # ================================================================
 def hieu_yeu_cau(noi_dung, chu_so_huu=""):
-    """Boss phân tích yêu cầu user."""
     ket_qua = {
         "thanh_cong": False,
         "loai_task": "khac",
@@ -184,24 +154,17 @@ def hieu_yeu_cau(noi_dung, chu_so_huu=""):
         ket_qua["loi"] = "Nội dung rỗng."
         return ket_qua
 
-    prompt = f"""Bạn là chuyên gia phân tích yêu cầu. Hãy phân tích yêu cầu sau của user.
+    prompt = f"""Bạn là chuyên gia phân tích yêu cầu. Phân tích yêu cầu sau.
 
 YÊU CẦU: "{noi_dung}"
 
-Hãy trả về JSON (CHỈ JSON, không text khác):
+Trả về JSON (CHỈ JSON):
 {{
   "loai_task": "lam_web | lam_python | viet_van | sua_bug | giai_toan | khac",
   "do_phuc_tap": "don_gian | trung_binh | phuc_tap",
-  "yeu_cau_chinh": "Tóm tắt yêu cầu chính (1 câu)",
+  "yeu_cau_chinh": "Tóm tắt 1 câu",
   "cac_yeu_cau_con": ["yêu cầu con 1", "yêu cầu con 2"]
 }}
-
-QUY TẮC:
-1. loai_task: chọn 1 trong các giá trị trên.
-2. do_phuc_tap: đơn giản (1 bước), trung bình (2-3 bước), phức tạp (>3 bước).
-3. yeu_cau_chinh: 1 câu ngắn gọn.
-4. cac_yeu_cau_con: tách thành các yêu cầu nhỏ nếu có.
-5. Nếu không có yêu cầu con → để mảng rỗng [].
 
 CHỈ TRẢ VỀ JSON."""
 
@@ -222,10 +185,7 @@ CHỈ TRẢ VỀ JSON."""
     ket_qua["cac_yeu_cau_con"] = du_lieu.get("cac_yeu_cau_con", [])
     ket_qua["model"] = kq.get("model", "")
 
-    _ghi_log(
-        "dai-nao",
-        f"Boss hiểu yêu cầu: {ket_qua['loai_task']} / {ket_qua['do_phuc_tap']}",
-    )
+    _ghi_log("dai-nao", f"Boss hiểu yêu cầu: {ket_qua['loai_task']} / {ket_qua['do_phuc_tap']}")
 
     return ket_qua
 
@@ -234,7 +194,6 @@ CHỈ TRẢ VỀ JSON."""
 # CHIA TASK
 # ================================================================
 def chia_task(noi_dung, yeu_cau_da_hieu=None, chu_so_huu=""):
-    """Boss chia task lớn thành nhiều task nhỏ."""
     ket_qua = {
         "thanh_cong": False,
         "ds_task": [],
@@ -253,33 +212,18 @@ def chia_task(noi_dung, yeu_cau_da_hieu=None, chu_so_huu=""):
     if not cac_yeu_cau_con:
         cac_yeu_cau_con = [yeu_cau_chinh]
 
-    prompt = f"""Bạn là chuyên gia chia task dự án.
+    prompt = f"""Chia task dự án sau thành các task nhỏ.
 
-LOẠI DỰ ÁN: {loai_task}
-YÊU CẦU CHÍNH: {yeu_cau_chinh}
-CÁC YÊU CẦU CON: {json.dumps(cac_yeu_cau_con, ensure_ascii=False)}
-
-Hãy chia thành các task NHỎ để làm từng bước.
+LOẠI: {loai_task}
+YÊU CẦU: {yeu_cau_chinh}
+YÊU CẦU CON: {json.dumps(cac_yeu_cau_con, ensure_ascii=False)}
 
 Trả về JSON (CHỈ JSON):
 {{
   "ds_task": [
-    {{
-      "so": 1,
-      "ten": "Tên task ngắn",
-      "file": "Tên file (VD index.html) hoặc để rỗng",
-      "mo_ta": "Mô tả chi tiết task này",
-      "phu_thuoc": []
-    }}
+    {{"so": 1, "ten": "...", "file": "...", "mo_ta": "...", "phu_thuoc": []}}
   ]
 }}
-
-QUY TẮC:
-1. Mỗi task làm 1 việc cụ thể (1 file, 1 chức năng).
-2. Task sau có thể phụ thuộc task trước (phu_thuoc = [số task]).
-3. Số task tùy dự án — có thể 2, 3, 5, 10.
-4. Đánh số từ 1 tăng dần.
-5. Nếu task không có file riêng → để file rỗng "".
 
 CHỈ TRẢ VỀ JSON."""
 
@@ -301,24 +245,16 @@ CHỈ TRẢ VỀ JSON."""
     ket_qua["thanh_cong"] = True
     ket_qua["ds_task"] = ds_task
 
-    _ghi_log(
-        "dai-nao",
-        f"Boss chia thành {len(ds_task)} task cho dự án {loai_task}",
-    )
+    _ghi_log("dai-nao", f"Boss chia thành {len(ds_task)} task cho dự án {loai_task}")
 
     return ket_qua
 
 
 # ================================================================
-# VIẾT BRIEF CHO TIỂU NÃO
+# VIẾT BRIEF
 # ================================================================
 def viet_brief(task_con, ngu_canh=None, chu_so_huu=""):
-    """Boss viết brief chi tiết cho Tiểu não viết code."""
-    ket_qua = {
-        "thanh_cong": False,
-        "brief": {},
-        "loi": "",
-    }
+    ket_qua = {"thanh_cong": False, "brief": {}, "loi": ""}
 
     if not task_con:
         ket_qua["loi"] = "Task con rỗng."
@@ -328,46 +264,22 @@ def viet_brief(task_con, ngu_canh=None, chu_so_huu=""):
     file = task_con.get("file", "")
     mo_ta = task_con.get("mo_ta", "")
 
-    tom_tat_ngu_canh = ""
-    if ngu_canh:
-        quy_uoc = ngu_canh.get("quy_uoc_chung", {})
-        if quy_uoc:
-            tom_tat_ngu_canh = f"Quy ước dự án: {json.dumps(quy_uoc, ensure_ascii=False)}"
+    prompt = f"""Viết brief cho lập trình viên viết file sau.
 
-    prompt = f"""Bạn là chuyên gia viết brief cho lập trình viên.
-
-TASK CẦN LÀM:
-- Tên: {ten}
-- File: {file}
-- Mô tả: {mo_ta}
-
-{tom_tat_ngu_canh}
-
-Hãy viết brief chi tiết cho Tiểu não (lập trình viên) viết code.
+TASK: {ten}
+FILE: {file}
+MÔ TẢ: {mo_ta}
 
 Trả về JSON (CHỈ JSON):
 {{
-  "yeu_cau": "Yêu cầu cụ thể cho file này",
+  "yeu_cau": "...",
   "file": "{file}",
   "ngon_ngu": "html | python | javascript | css",
-  "ham_yeu_cau": [
-    {{"ten": "tenHam", "tham_so": ["a", "b"], "tra_ve": "number", "mo_ta": "..."}}
-  ],
-  "bien_yeu_cau": [
-    {{"ten": "tenBien", "kieu": "string", "mo_ta": "..."}}
-  ],
-  "quy_uoc": ["Dùng camelCase", "Không dùng framework"],
-  "mo_ta": "Mô tả chi tiết nội dung file"
+  "ham_yeu_cau": [],
+  "bien_yeu_cau": [],
+  "quy_uoc": [],
+  "mo_ta": "..."
 }}
-
-QUY TẮC:
-1. Nếu file HTML → ngon_ngu = "html".
-2. Nếu file JS → ngon_ngu = "javascript".
-3. Nếu file CSS → ngon_ngu = "css".
-4. Nếu file Python → ngon_ngu = "python".
-5. ham_yeu_cau: liệt kê các hàm cần có (nếu có).
-6. bien_yeu_cau: liệt kê các biến chính (nếu có).
-7. quy_uoc: quy ước viết code cho file này.
 
 CHỈ TRẢ VỀ JSON."""
 
@@ -384,26 +296,14 @@ CHỈ TRẢ VỀ JSON."""
     ket_qua["thanh_cong"] = True
     ket_qua["brief"] = du_lieu
 
-    _ghi_log(
-        "dai-nao",
-        f"Boss viết brief cho {file}: "
-        f"{len(du_lieu.get('ham_yeu_cau', []))} hàm, "
-        f"{len(du_lieu.get('bien_yeu_cau', []))} biến",
-    )
-
     return ket_qua
 
 
 # ================================================================
-# KIỂM TRA KẾT QUẢ TIỂU NÃO
+# KIỂM TRA KẾT QUẢ
 # ================================================================
 def kiem_tra_ket_qua(code, hop_dong, ngon_ngu="", chu_so_huu=""):
-    """Boss kiểm tra code Tiểu não viết có khớp hợp đồng không."""
-    ket_qua = {
-        "thanh_cong": False,
-        "dat": False,
-        "ly_do": "",
-    }
+    ket_qua = {"thanh_cong": False, "dat": False, "ly_do": ""}
 
     if not code or not hop_dong:
         ket_qua["ly_do"] = "Thiếu code hoặc hợp đồng."
@@ -430,10 +330,15 @@ def kiem_tra_ket_qua(code, hop_dong, ngon_ngu="", chu_so_huu=""):
 
 
 # ================================================================
-# PHÂN TÍCH DỰ ÁN LỚN
+# PHÂN TÍCH DỰ ÁN — BỌC TRY/EXCEPT TỪNG BƯỚC
 # ================================================================
 def phan_tich_du_an(noi_dung, chu_so_huu=""):
-    """Boss phân tích dự án lớn — hiểu yêu cầu + chia task + tạo snapshot."""
+    """
+    Bọc try/except từng bước.
+    - Bước 1 (hiểu yêu cầu): BẮT BUỘC. Fail → return lỗi.
+    - Bước 2 (chia task): TÙY CHỌN. Fail → bỏ qua, vẫn tiếp tục.
+    - Bước 3 (snapshot): TÙY CHỌN. Fail → bỏ qua, vẫn tiếp tục.
+    """
     ket_qua = {
         "thanh_cong": False,
         "yeu_cau": {},
@@ -446,24 +351,34 @@ def phan_tich_du_an(noi_dung, chu_so_huu=""):
         ket_qua["loi"] = "Nội dung rỗng."
         return ket_qua
 
-    # Bước 1: Hiểu yêu cầu
-    yeu_cau = hieu_yeu_cau(noi_dung, chu_so_huu)
+    # Bước 1: Hiểu yêu cầu (BẮT BUỘC)
+    try:
+        yeu_cau = hieu_yeu_cau(noi_dung, chu_so_huu)
+    except Exception as e:
+        ket_qua["loi"] = f"Lỗi hiểu yêu cầu: {e}"
+        _ghi_log("loi", ket_qua["loi"])
+        return ket_qua
+
     if not yeu_cau.get("thanh_cong"):
         ket_qua["loi"] = f"Không hiểu yêu cầu: {yeu_cau.get('loi', '')}"
         return ket_qua
 
     ket_qua["yeu_cau"] = yeu_cau
 
-    # Bước 2: Chia task
-    chia = chia_task(noi_dung, yeu_cau, chu_so_huu)
-    if not chia.get("thanh_cong"):
-        ket_qua["loi"] = f"Không chia task: {chia.get('loi', '')}"
-        return ket_qua
+    # Bước 2: Chia task (TÙY CHỌN)
+    ds_task = []
+    try:
+        chia = chia_task(noi_dung, yeu_cau, chu_so_huu)
+        if chia.get("thanh_cong"):
+            ds_task = chia.get("ds_task", [])
+        else:
+            _ghi_log("dai-nao", f"Chia task fail (bỏ qua): {chia.get('loi', '')}")
+    except Exception as e:
+        _ghi_log("loi", f"Chia task lỗi (bỏ qua): {e}")
 
-    ds_task = chia.get("ds_task", [])
     ket_qua["ds_task"] = ds_task
 
-    # Bước 3: Tạo snapshot
+    # Bước 3: Tạo snapshot (TÙY CHỌN)
     try:
         from dai_nao.snapshot import tao_snapshot
         import secrets
@@ -489,15 +404,8 @@ def phan_tich_du_an(noi_dung, chu_so_huu=""):
         if snapshot:
             ket_qua["snapshot"] = snapshot
             ket_qua["id_du_an"] = id_du_an
-        else:
-            ket_qua["loi"] = "Không tạo được snapshot."
-
-    except ImportError:
-        ket_qua["loi"] = "snapshot.py chưa có."
-        return ket_qua
     except Exception as e:
-        ket_qua["loi"] = f"Lỗi tạo snapshot: {e}"
-        return ket_qua
+        _ghi_log("loi", f"Tạo snapshot lỗi (bỏ qua): {e}")
 
     ket_qua["thanh_cong"] = True
 
@@ -510,10 +418,9 @@ def phan_tich_du_an(noi_dung, chu_so_huu=""):
 
 
 # ================================================================
-# HÀM CHÍNH — CHI_HUY
+# HÀM CHÍNH
 # ================================================================
 def chi_huy(du_lieu):
-    """Đại não gọi Boss để xử lý task."""
     ket_qua = {
         "thanh_cong": False,
         "can_boss": False,
@@ -530,7 +437,6 @@ def chi_huy(du_lieu):
         ket_qua["loi"] = "Nội dung rỗng."
         return ket_qua
 
-    # Kiểm tra có cần Boss không
     if not can_boss(noi_dung):
         ket_qua["can_boss"] = False
         ket_qua["thanh_cong"] = True
@@ -539,8 +445,12 @@ def chi_huy(du_lieu):
 
     ket_qua["can_boss"] = True
 
-    # Phân tích dự án
-    kq_phan_tich = phan_tich_du_an(noi_dung, chu_so_huu)
+    try:
+        kq_phan_tich = phan_tich_du_an(noi_dung, chu_so_huu)
+    except Exception as e:
+        ket_qua["loi"] = f"Lỗi phân tích: {e}"
+        _ghi_log("loi", f"Boss phân tích lỗi: {e}")
+        return ket_qua
 
     if not kq_phan_tich.get("thanh_cong"):
         ket_qua["loi"] = kq_phan_tich.get("loi", "Boss thất bại.")
@@ -560,7 +470,6 @@ def chi_huy(du_lieu):
 # HÀM PHỤ
 # ================================================================
 def tom_tat_ket_qua(ket_qua):
-    """Tóm tắt kết quả Boss."""
     if not ket_qua:
         return ""
 

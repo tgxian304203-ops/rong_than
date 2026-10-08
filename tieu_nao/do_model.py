@@ -1,27 +1,11 @@
 """
 do_model.py - Bước 2 Tiểu não: Dò model, xoay quota Rồng Thần.
 
-Nhiệm vụ:
-    - do_model(chu_so_huu, prompt, loai_nao): dò model theo thứ tự gọi.
-    - _goi_model(key_info, prompt, model): gọi 1 model cụ thể.
-    - _xu_ly_loi(key_info, ket_qua): xử lý lỗi (hết quota, model lỗi).
-    - _chuyen_key_tiep(danh_sach_key, vi_tri): chuyển sang key tiếp.
-
-ĐÃ SỬA (Giai đoạn 2 — tách bể key Boss / Tiểu Boss):
-    - FIX 1: Thêm tham số loai_nao vào do_model.
-    - FIX 2: Truyền loai_nao xuống kiem_ke_key.
-    - FIX 3: Thứ tự provider: OpenRouter → Groq → Gemini.
-             (do kiem_ke_key quyết định)
-
-Các fix cũ giữ nguyên:
-    - L7: Timeout tổng (25 giây).
-    - L14: Check blacklist trước khi gọi model.
-
-Quy tắc:
-    - Gọi theo thứ tự do kiem_ke_key sắp xếp.
-    - Key nào hết quota → nhảy key tiếp.
-    - Model nào bị blacklist → bỏ qua.
-    - Model lỗi 3 lần → blacklist.
+ĐÃ SỬA (fix Boss timeout):
+    - FIX: Timeout tổng khác nhau cho Boss và Tiểu não.
+      + Boss: 20 giây (đủ cho 1 lần gọi model).
+      + Tiểu não: 25 giây (giữ nguyên).
+    - Boss gọi 2 lần (hiểu yêu cầu + chia task) → tổng 40s < Render timeout 100s.
 """
 
 import time
@@ -44,11 +28,21 @@ def _ghi_log(loai, noi_dung):
 SO_LAN_THU_TOI_DA = 3
 SO_LAN_BLACKLIST = 3
 TIMEOUT_GOI = 30
-TIMEOUT_TONG = 25
+
+# FIX: Timeout tổng theo loại não
+TIMEOUT_TONG_BOSS = 20      # Boss: 20s / lần gọi
+TIMEOUT_TONG_TIEU_BOSS = 25  # Tiểu não: 25s / lần gọi
+
+
+def _lay_timeout_tong(loai_nao):
+    """Lấy timeout tổng theo loại não."""
+    if loai_nao == "boss":
+        return TIMEOUT_TONG_BOSS
+    return TIMEOUT_TONG_TIEU_BOSS
 
 
 # ================================================================
-# KIỂM TRA BLACKLIST (L14)
+# KIỂM TRA BLACKLIST
 # ================================================================
 def _bi_blacklist(provider, model):
     if not provider or not model:
@@ -63,7 +57,7 @@ def _bi_blacklist(provider, model):
 
 
 # ================================================================
-# GHI LỖI MODEL (L14)
+# GHI LỖI MODEL
 # ================================================================
 def _ghi_loi(provider, model, loi, loai_loi="khac"):
     if not provider or not model:
@@ -327,22 +321,16 @@ def _blacklist_model(provider, model, loi="", loai_loi="khac"):
 
 
 # ================================================================
-# HÀM CHÍNH (FIX 1)
+# HÀM CHÍNH
 # ================================================================
 def do_model(chu_so_huu, prompt, loai_nao=None):
     """
     Bước 2: Dò model theo thứ tự gọi.
 
-    FIX 1: Nhận thêm tham số loai_nao để lọc key Boss / Tiểu Boss.
-    FIX 2: Truyền loai_nao xuống kiem_ke_key.
-
-    chu_so_huu: tên đăng nhập.
-    prompt: câu hỏi gửi model.
-    loai_nao: "boss" | "tieu_boss" | None.
-
-    Trả về dict đầy đủ.
+    FIX: Timeout tổng khác nhau cho Boss (20s) và Tiểu não (25s).
     """
     thoi_gian_bat_dau = time.time()
+    timeout_tong = _lay_timeout_tong(loai_nao)
 
     ket_qua = {
         "thanh_cong": False,
@@ -361,7 +349,7 @@ def do_model(chu_so_huu, prompt, loai_nao=None):
         ket_qua["loi"] = "Thiếu tài khoản hoặc prompt."
         return ket_qua
 
-    # 1. Kiểm kê key (FIX 2: truyền loai_nao)
+    # 1. Kiểm kê key
     try:
         from tieu_nao.kiem_ke_key import kiem_ke_key
         kiem_ke = kiem_ke_key(chu_so_huu, loai_nao)
@@ -380,18 +368,16 @@ def do_model(chu_so_huu, prompt, loai_nao=None):
 
     # 2. Duyệt từng key
     for key_info in thu_tu_goi:
-        # L7: Kiểm tra timeout tổng
-        if time.time() - thoi_gian_bat_dau >= TIMEOUT_TONG:
-            ket_qua["loi"] = f"Hết thời gian tổng ({TIMEOUT_TONG}s)."
+        if time.time() - thoi_gian_bat_dau >= timeout_tong:
+            ket_qua["loi"] = f"Hết thời gian tổng ({timeout_tong}s)."
             ket_qua["het_thoi_gian"] = True
-            _ghi_log("tieu-nao", f"Hết timeout tổng sau {TIMEOUT_TONG}s.")
+            _ghi_log("tieu-nao", f"Hết timeout tổng sau {timeout_tong}s.")
             break
 
         provider = key_info.get("provider", "")
         key_id = key_info.get("id", "")
         ds_model = key_info.get("model_co_the_dung") or []
 
-        # L14: Lọc model bị blacklist
         ds_model_sach = []
         for m in ds_model:
             if _bi_blacklist(provider, m):
@@ -399,25 +385,20 @@ def do_model(chu_so_huu, prompt, loai_nao=None):
             ds_model_sach.append(m)
 
         if not ds_model_sach:
-            _ghi_log(
-                "tieu-nao",
-                f"Key {key_id[:8]} ({provider}) không có model khả dụng "
-                f"(tất cả bị blacklist).",
-            )
+            _ghi_log("tieu-nao", f"Key {key_id[:8]} ({provider}) không có model khả dụng.")
             continue
 
-        # Thử từng model trong key này
         for model in ds_model_sach:
-            if time.time() - thoi_gian_bat_dau >= TIMEOUT_TONG:
-                ket_qua["loi"] = f"Hết thời gian tổng ({TIMEOUT_TONG}s)."
+            if time.time() - thoi_gian_bat_dau >= timeout_tong:
+                ket_qua["loi"] = f"Hết thời gian tổng ({timeout_tong}s)."
                 ket_qua["het_thoi_gian"] = True
                 break
 
             hanh_dong = ""
 
             for lan_thu in range(1, SO_LAN_THU_TOI_DA + 1):
-                if time.time() - thoi_gian_bat_dau >= TIMEOUT_TONG:
-                    ket_qua["loi"] = f"Hết thời gian tổng ({TIMEOUT_TONG}s)."
+                if time.time() - thoi_gian_bat_dau >= timeout_tong:
+                    ket_qua["loi"] = f"Hết thời gian tổng ({timeout_tong}s)."
                     ket_qua["het_thoi_gian"] = True
                     break
 
@@ -480,7 +461,6 @@ def do_model(chu_so_huu, prompt, loai_nao=None):
         if ket_qua.get("het_thoi_gian"):
             break
 
-    # 3. Hết tất cả
     if not ket_qua["loi"]:
         ket_qua["loi"] = "Đã thử tất cả key và model nhưng không thành công."
 
