@@ -7,20 +7,19 @@ Nhiệm vụ:
     - chuan_hoa_node(node): chuẩn hóa node về đúng format.
     - goi_tieu_nao(task, ngu_canh, chu_so_huu): gọi trực tiếp module Tiểu não.
 
-ĐÃ SỬA:
+ĐÃ SỬA (fix "Ta chưa hiểu rõ task này"):
+    - FIX 1: Bỏ "cach_giai" khỏi TRUONG_BAT_BUOC — chỉ giữ 7 trường đúng
+             theo schema mới của ep_viet_truong.py.
+    - FIX 2: kiem_tra_node không đòi cach_giai.mo_ta nữa.
+    - FIX 3: Kiểm tra hanh_dong.code hoặc cach_giai_phap mới là đủ.
+
+Các fix cũ giữ nguyên:
     - Truyền chu_so_huu xuống ep_viet_truong và tao_nhanh.
-    - Trước đây không truyền → ep_viet_truong fail vì thiếu chu_so_huu.
 
 Quy tắc:
     - Đây là CẦU NỐI Đại não → Tiểu não.
     - Không sinh node tại đây — chỉ điều phối.
-    - Validate node theo schema của cây quyết định.
     - Nếu Tiểu não lỗi → trả None, không sập.
-    - Ghi log mỗi lần gọi.
-
-Trả về:
-    - Nut object (từ cay_quyet_dinh.py) nếu thành công.
-    - None nếu thất bại.
 
 Tầng dữ liệu: dai_nao/ghi_nho.py
 Điều phối Tiểu não: tieu_nao/ep_viet_truong.py
@@ -41,7 +40,7 @@ def _ghi_log(loai, noi_dung):
 
 
 # ================================================================
-# SCHEMA NODE
+# FIX 1: SCHEMA NODE — bỏ cach_giai, chỉ giữ 7 trường đúng
 # ================================================================
 TRUONG_BAT_BUOC = [
     "id",
@@ -50,7 +49,6 @@ TRUONG_BAT_BUOC = [
     "loai_van_de",
     "cach_giai_phap",
     "dieu_kien",
-    "cach_giai",
     "hanh_dong",
 ]
 
@@ -75,7 +73,7 @@ TRUONG_MAC_DINH = {
 
 
 # ================================================================
-# VALIDATE NODE
+# FIX 2 + FIX 3: VALIDATE NODE — không đòi cach_giai nữa
 # ================================================================
 def kiem_tra_node(node):
     """Kiểm tra node sinh ra có hợp lệ không."""
@@ -99,12 +97,20 @@ def kiem_tra_node(node):
     if not isinstance(node.get("id"), str) or len(node["id"]) < 3:
         return False, "id không hợp lệ."
 
-    cach_giai = node.get("cach_giai", {})
-    if isinstance(cach_giai, dict):
-        if not cach_giai.get("mo_ta") and not cach_giai.get("cac_buoc"):
-            return False, "cach_giai rỗng."
-    elif not cach_giai:
-        return False, "cach_giai rỗng."
+    if not isinstance(node.get("dieu_kien"), dict):
+        return False, "dieu_kien không phải dict."
+
+    if not isinstance(node.get("hanh_dong"), dict):
+        return False, "hanh_dong không phải dict."
+
+    # FIX 3: Node phải có nội dung thực (code HOẶC cach_giai_phap)
+    hanh_dong = node.get("hanh_dong", {})
+    code = (hanh_dong.get("code") or "").strip()
+    loai_hd = (hanh_dong.get("loai") or "").strip()
+    cach_giai_phap = (node.get("cach_giai_phap") or "").strip()
+
+    if not code and loai_hd != "tra_web" and not cach_giai_phap:
+        return False, "Node không có code, không có cach_giai_phap."
 
     return True, ""
 
@@ -140,18 +146,21 @@ def chuan_hoa_node(node):
             "yeu_to_can": ["hanh_dong", "doi_tuong"],
         }
 
-    if not isinstance(ket_qua.get("cach_giai"), dict):
-        ket_qua["cach_giai"] = {
-            "mo_ta": str(ket_qua.get("cach_giai", "")),
-            "cac_buoc": [],
-        }
-
     if not isinstance(ket_qua.get("hanh_dong"), dict):
         ket_qua["hanh_dong"] = {
             "loai": "tra_loi",
             "code": "",
             "ngon_ngu": "",
         }
+
+    # Đảm bảo hanh_dong có đủ 3 trường
+    hd = ket_qua["hanh_dong"]
+    if not hd.get("loai"):
+        hd["loai"] = "tra_loi"
+    if "code" not in hd:
+        hd["code"] = ""
+    if "ngon_ngu" not in hd:
+        hd["ngon_ngu"] = ""
 
     for truong_list in ("phu_thuoc", "nhanh_con", "chia_se_voi", "failed_paths"):
         if not isinstance(ket_qua.get(truong_list), list):
@@ -176,14 +185,10 @@ def chuan_hoa_node(node):
 
 
 # ================================================================
-# GỌI TIỂU NÃO (SỬA: TRUYỀN chu_so_huu)
+# GỌI TIỂU NÃO
 # ================================================================
 def goi_tieu_nao(task, ngu_canh=None, chu_so_huu=""):
-    """
-    Gọi module Tiểu não để sinh node mới.
-
-    ĐÃ SỬA: Truyền chu_so_huu xuống ep_viet_truong / tao_nhanh.
-    """
+    """Gọi module Tiểu não để sinh node mới."""
     ngu_canh = ngu_canh or {}
 
     if not chu_so_huu:
@@ -202,11 +207,9 @@ def goi_tieu_nao(task, ngu_canh=None, chu_so_huu=""):
             if not ham:
                 continue
 
-            # SỬA: truyền chu_so_huu
             try:
                 ket_qua = ham(task, ngu_canh, chu_so_huu)
             except TypeError:
-                # Fallback nếu hàm cũ chỉ nhận 2 tham số
                 ket_qua = ham(task, ngu_canh)
 
             if ket_qua:
@@ -227,14 +230,10 @@ def goi_tieu_nao(task, ngu_canh=None, chu_so_huu=""):
 
 
 # ================================================================
-# HÀM CHÍNH (SỬA: NHẬN chu_so_huu)
+# HÀM CHÍNH
 # ================================================================
 def su_dung_model(task, ngu_canh=None, chu_so_huu=""):
-    """
-    Gọi Tiểu não sinh node khi Đại não bí.
-
-    ĐÃ SỬA: Nhận chu_so_huu, truyền xuống goi_tieu_nao.
-    """
+    """Gọi Tiểu não sinh node khi Đại não bí."""
     if not task:
         return None
 
@@ -248,7 +247,7 @@ def su_dung_model(task, ngu_canh=None, chu_so_huu=""):
         f"(tài khoản: {chu_so_huu})",
     )
 
-    # 1. Gọi Tiểu não (truyền chu_so_huu)
+    # 1. Gọi Tiểu não
     node_tho = goi_tieu_nao(task, ngu_canh, chu_so_huu)
     if not node_tho:
         return None
@@ -286,7 +285,7 @@ def su_dung_model(task, ngu_canh=None, chu_so_huu=""):
 
 
 # ================================================================
-# HÀM PHỤ: KIỂM TRA SẴN SÀNG
+# HÀM PHỤ
 # ================================================================
 def tieu_nao_san_sang():
     cac_module = [
