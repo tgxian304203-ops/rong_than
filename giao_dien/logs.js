@@ -2,8 +2,10 @@
    logs.js - Hiển thị + lọc + quản lý logs Rồng Thần
    ------------------------------------------------------------
    ĐÃ SỬA:
-     - FIX 1: Dùng thoi_gian_hien_thi (đã format giờ VN) từ server.
+     - FIX 1: Dùng thoi_gian_hien_thi (giờ VN từ server).
      - FIX 2: Đảo ngược thứ tự log — MỚI NHẤT ở DƯỚI CÙNG.
+     - FIX 3: Không tự động nhảy xuống khi user đang cuộn lên xem log cũ.
+              Chỉ nhảy xuống khi có log MỚI hoặc user đang ở gần cuối.
    ============================================================ */
 
 (function () {
@@ -21,9 +23,13 @@
 
     const THOI_GIAN_CAP_NHAT = 3 * 1000;
     const SO_LOG_TOI_DA = 500;
+    const KHOANG_CACH_DAY = 80; // px — coi như đang ở cuối
 
     let idHen = null;
     let boLocHienTai = 'tat-ca';
+
+    // FIX 3: Lưu id log cuối cùng để phát hiện log mới
+    let idLogCuoiCung = null;
 
     const NHAN_LOAI = {
         'dai-nao':  'Đại não',
@@ -46,7 +52,6 @@
         return 'khac';
     }
 
-    /* FIX 1: Dùng thoi_gian_hien_thi, fallback tự format */
     function dinhDangThoiGian(log) {
         if (log.thoi_gian_hien_thi) {
             return log.thoi_gian_hien_thi;
@@ -92,11 +97,44 @@
         return dong;
     }
 
-    /* FIX 2: Đảo ngược — mới nhất dưới cùng */
+    /* FIX 3: Kiểm tra user đang ở gần cuối không */
+    function dangOGanCuoi() {
+        const cachDay = danhSach.scrollHeight - danhSach.scrollTop - danhSach.clientHeight;
+        return cachDay < KHOANG_CACH_DAY;
+    }
+
+    /* FIX 3: Lấy id của log cuối cùng (mới nhất trong danh sách gốc) */
+    function layIdLogMoiNhat(danhSachLog) {
+        if (!Array.isArray(danhSachLog) || danhSachLog.length === 0) {
+            return null;
+        }
+        // Mảng gốc từ server: log mới nhất ở đầu (index 0) nếu server trả DESC
+        // Hoặc ở cuối nếu server trả ASC
+        // → Lấy id của log có thoi_gian lớn nhất
+        let idMax = null;
+        let tgMax = -1;
+        danhSachLog.forEach(function (log) {
+            const tg = log.thoi_gian || 0;
+            if (tg > tgMax) {
+                tgMax = tg;
+                idMax = log.id || String(tg);
+            }
+        });
+        return idMax;
+    }
+
+    /* FIX 3: Vẽ danh sách — có logic giữ vị trí cuộn */
     function veDanhSach(danhSachLog) {
+        const dangOGanCuoiTruoc = dangOGanCuoi();
+
+        // Phát hiện có log mới không
+        const idMoiNhat = layIdLogMoiNhat(danhSachLog);
+        const coLogMoi = (idLogCuoiCung !== null && idMoiNhat !== null && idMoiNhat !== idLogCuoiCung);
+
         danhSach.innerHTML = '';
 
         if (!Array.isArray(danhSachLog) || danhSachLog.length === 0) {
+            idLogCuoiCung = null;
             return;
         }
 
@@ -107,7 +145,16 @@
             danhSach.appendChild(taoDongLog(log));
         });
 
-        danhSach.scrollTop = danhSach.scrollHeight;
+        // Cập nhật id log cuối cùng
+        idLogCuoiCung = idMoiNhat;
+
+        // Chỉ tự nhảy xuống khi:
+        // 1. User đang ở gần cuối TRƯỚC KHI vẽ lại, HOẶC
+        // 2. Có log mới xuất hiện (và user đang ở gần cuối)
+        if (dangOGanCuoiTruoc || (coLogMoi && dangOGanCuoiTruoc)) {
+            danhSach.scrollTop = danhSach.scrollHeight;
+        }
+        // Còn nếu user đang cuộn lên xem log cũ → giữ nguyên vị trí cuộn
     }
 
     function locLog(danhSachLog, loai) {
@@ -166,6 +213,7 @@
                 nut.classList.add('dang-chon');
 
                 boLocHienTai = nut.dataset.loc || 'tat-ca';
+                idLogCuoiCung = null; // reset khi đổi bộ lọc
                 taiLog();
             });
         });
@@ -180,6 +228,7 @@
                 });
                 const duLieu = await phanHoi.json();
                 if (duLieu && duLieu.thanh_cong) {
+                    idLogCuoiCung = null;
                     veDanhSach([]);
                 } else {
                     alert((duLieu && duLieu.loi) || 'Không xóa được log.');
@@ -225,6 +274,8 @@
 
     const observer = new MutationObserver(function () {
         if (trangLogs.classList.contains('dang-mo')) {
+            // Khi mở trang lần đầu → reset để nhảy xuống cuối
+            idLogCuoiCung = null;
             taiLog();
         }
     });
