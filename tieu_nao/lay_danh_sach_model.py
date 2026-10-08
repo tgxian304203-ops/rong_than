@@ -4,28 +4,20 @@ lay_danh_sach_model.py - Lấy danh sách model TỰ ĐỘNG CẬP NHẬT Rồng
 Nhiệm vụ:
     - lay_danh_sach_model(provider, key): lấy model thật từ API.
     - TỰ ĐỘNG CẬP NHẬT: gọi API trước, danh sách mặc định chỉ là fallback.
-    - TỰ ĐỘNG LOẠI BỎ model đã bị khai tử (không có trong API).
+    - TỰ ĐỘNG LOẠI BỎ model không phải chat (image, embedding, audio, ...).
     - Lọc model free, model đang hoạt động.
 
 Quy tắc:
     - Ưu tiên số 1: gọi API thật để lấy danh sách model hiện tại.
     - Ưu tiên số 2: nếu API lỗi, dùng danh sách mặc định (đã cập nhật).
-    - Tự động loại bỏ model đã bị khai tử.
+    - Tự động loại bỏ model không phải chat.
     - Cache 6 giờ để tiết kiệm quota.
     - Timeout 10s — tránh treo server.
 
-Cập nhật lần cuối: 2026-10-06
-    - Groq: đã loại bỏ mixtral-8x7b-32768, llama3-70b-8192,
-      llama3-8b-8192, gemma2-9b-it, llama-3.1-8b-instant,
-      llama-3.3-70b-versatile, groq/compound, llama-4-*.
-      Model còn sống: openai/gpt-oss-120b, openai/gpt-oss-20b,
-      qwen/qwen3.8-27b.
-    - Gemini: đã loại bỏ dòng 1.5 và 2.0.
-      Free tier: gemini-3.8-flash, gemini-3.7-flash, gemini-3.5-flash,
-      gemini-3.1-flash-lite, gemini-2.5-flash.
-    - OpenRouter: giữ các model free từ API.
-      Top: space-bunny-alpha, nemotron-3-ultra, laguna-s-2.1,
-      gpt-oss-120b:free, qwen3-coder:free.
+Cập nhật lần cuối: 2026-10-09
+    - Groq: giữ các model chat còn sống.
+    - OpenRouter: giữ các model free, loại bỏ model không phải chat.
+    - Gemini: loại bỏ model image/vision/embedding/audio.
 
 Tầng dữ liệu: Không.
 """
@@ -89,33 +81,52 @@ def xoa_cache_provider(provider, key):
 
 
 # ================================================================
+# HẰNG SỐ: MODEL KHÔNG PHẢI CHAT — LOẠI BỎ
+# ================================================================
+# Dùng cho tất cả provider
+TU_KHOA_LOAI_BO = (
+    "image", "vision", "embedding", "embed", "aqa",
+    "imagen", "veo", "tts", "audio", "whisper",
+    "gemma", "learnlm", "text-embedding",
+    "guard", "safeguard", "moderation",
+    "rerank", "clip", "blip", "dall-e", "stable-diffusion",
+)
+
+
+def _la_model_chat(model_id):
+    """Kiểm tra model có phải chat/text không."""
+    if not model_id:
+        return False
+    m = model_id.lower()
+    for tk in TU_KHOA_LOAI_BO:
+        if tk in m:
+            return False
+    return True
+
+
+# ================================================================
 # DANH SÁCH MẶC ĐỊNH (ĐÃ CẬP NHẬT THÁNG 10/2026)
 # CHỈ LÀ FALLBACK KHI API CHẾT HOÀN TOÀN
 # ================================================================
 MODEL_MAC_DINH = {
     "Groq": [
-        # Model free còn sống (tháng 10/2026)
         "openai/gpt-oss-120b",
         "openai/gpt-oss-20b",
         "qwen/qwen3.8-27b",
     ],
     "OpenRouter": [
-        # Free tier — theo OpenRouter docs tháng 10/2026
-        "space-bunny-alpha",
-        "nvidia/nemotron-3-ultra:free",
-        "poolside/laguna-s-2.1:free",
-        "nvidia/nemotron-3.5-lightning:free",
-        "dots-studio/dots3-note-preview:free",
+        "qwen/qwen3.6-plus",
+        "deepseek/deepseek-r1:free",
+        "meta-llama/llama-3.3-70b-instruct:free",
         "openai/gpt-oss-120b:free",
         "openai/gpt-oss-20b:free",
+        "google/gemma-4-31b-it:free",
         "qwen/qwen3-coder:free",
-        "meta-llama/llama-3.3-70b-instruct:free",
+        "nvidia/nemotron-3-super-120b-a12b",
+        "inclusionai/ling-3.0-flash",
         "arcee-ai/trinity-large-preview:free",
-        "z-ai/glm-4.5-air:free",
-        "deepseek/deepseek-r1:free",
     ],
     "Gemini": [
-        # Free tier — theo Gemini docs tháng 10/2026
         "gemini-3.8-flash",
         "gemini-3.7-flash",
         "gemini-3.5-flash",
@@ -133,28 +144,20 @@ def _loai_bo_model_chet(danh_sach_api, danh_sach_mac_dinh):
     """
     So sánh danh sách API và mặc định.
     Trả về danh sách chỉ gồm model CÒN SỐNG trong API.
-
-    Nếu API trả về danh sách → dùng danh sách API (model chết tự bị loại).
-    Nếu API trống → dùng danh sách mặc định (đã cập nhật).
     """
     if danh_sach_api:
-        # API có dữ liệu → dùng API.
-        # Model mặc định không có trong API = đã chết → tự bị loại.
         return list(danh_sach_api)
-
-    # API không trả về → fallback mặc định
     return list(danh_sach_mac_dinh)
 
 
 # ================================================================
-# LẤY MODEL GROQ
+# LẤY MODEL GROQ (SỬA — LỌC MODEL CHAT)
 # ================================================================
 def lay_model_groq(key):
     """
     Lấy danh sách model từ Groq API.
 
-    Endpoint: GET https://api.groq.com/openai/v1/models
-    Auth: Bearer <key>
+    FIX: Lọc bỏ model không phải chat (guard, safeguard, ...).
     """
     if not key:
         return []
@@ -183,16 +186,17 @@ def lay_model_groq(key):
             model_id = model.get("id", "")
             if not model_id:
                 continue
-            # Groq: bỏ model đã deprecated (active=False)
             if model.get("active", True) is False:
+                continue
+            # FIX: Bỏ model không phải chat
+            if not _la_model_chat(model_id):
                 continue
             ket_qua.append(model_id)
 
         if ket_qua:
-            # Tự động loại bỏ model chết
             ket_qua = _loai_bo_model_chet(ket_qua, MODEL_MAC_DINH["Groq"])
             _luu_cache(khoa_cache, ket_qua)
-            _ghi_log("tieu-nao", f"Groq API: {len(ket_qua)} model sống.")
+            _ghi_log("tieu-nao", f"Groq API: {len(ket_qua)} model chat.")
             return ket_qua
 
         return list(MODEL_MAC_DINH["Groq"])
@@ -206,14 +210,13 @@ def lay_model_groq(key):
 
 
 # ================================================================
-# LẤY MODEL OPENROUTER
+# LẤY MODEL OPENROUTER (SỬA — LỌC MODEL CHAT)
 # ================================================================
 def lay_model_openrouter(key):
     """
     Lấy danh sách model từ OpenRouter API.
 
-    Endpoint: GET https://openrouter.ai/api/v1/models
-    Auth: Bearer <key>
+    FIX: Lọc bỏ model không phải chat (image, embedding, ...).
     """
     if not key:
         return []
@@ -249,10 +252,12 @@ def lay_model_openrouter(key):
             gia_completion = float(gia.get("completion", 0) or 0)
 
             if gia_prompt == 0 and gia_completion == 0:
+                # FIX: Bỏ model không phải chat
+                if not _la_model_chat(model_id):
+                    continue
                 ket_qua.append(model_id)
 
         if ket_qua:
-            # Tự động loại bỏ model chết
             ket_qua = _loai_bo_model_chet(ket_qua, MODEL_MAC_DINH["OpenRouter"])
             # Ưu tiên model instruct/chat
             ket_qua_sap_xep = sorted(
@@ -264,7 +269,7 @@ def lay_model_openrouter(key):
                 ),
             )
             _luu_cache(khoa_cache, ket_qua_sap_xep)
-            _ghi_log("tieu-nao", f"OpenRouter API: {len(ket_qua_sap_xep)} model free.")
+            _ghi_log("tieu-nao", f"OpenRouter API: {len(ket_qua_sap_xep)} model chat free.")
             return ket_qua_sap_xep
 
         return list(MODEL_MAC_DINH["OpenRouter"])
@@ -278,13 +283,14 @@ def lay_model_openrouter(key):
 
 
 # ================================================================
-# LẤY MODEL GEMINI
+# LẤY MODEL GEMINI (SỬA — LỌC MODEL CHAT)
 # ================================================================
 def lay_model_gemini(key):
     """
     Lấy danh sách model từ Gemini API.
 
-    Endpoint: GET https://generativelanguage.googleapis.com/v1beta/models?key=<key>
+    FIX: Lọc bỏ model image/vision/embedding/audio.
+         Chỉ giữ model chat/text.
     """
     if not key:
         return []
@@ -319,10 +325,13 @@ def lay_model_gemini(key):
             if "generateContent" not in phuong_thuc:
                 continue
 
+            # FIX: Bỏ model không phải chat
+            if not _la_model_chat(ten_ngan):
+                continue
+
             ket_qua.append(ten_ngan)
 
         if ket_qua:
-            # Tự động loại bỏ model chết
             ket_qua = _loai_bo_model_chet(ket_qua, MODEL_MAC_DINH["Gemini"])
             # Ưu tiên flash trước pro, version mới trước
             ket_qua_sap_xep = sorted(
@@ -334,7 +343,7 @@ def lay_model_gemini(key):
                 ),
             )
             _luu_cache(khoa_cache, ket_qua_sap_xep)
-            _ghi_log("tieu-nao", f"Gemini API: {len(ket_qua_sap_xep)} model sống.")
+            _ghi_log("tieu-nao", f"Gemini API: {len(ket_qua_sap_xep)} model chat.")
             return ket_qua_sap_xep
 
         return list(MODEL_MAC_DINH["Gemini"])
@@ -353,11 +362,6 @@ def lay_model_gemini(key):
 def lay_danh_sach_model(provider, key):
     """
     Lấy danh sách model từ API provider.
-
-    TỰ ĐỘNG CẬP NHẬT:
-        - Luôn gọi API thật trước.
-        - Tự động loại bỏ model đã khai tử.
-        - Chỉ dùng fallback khi API chết.
 
     provider: "Groq" | "OpenRouter" | "Gemini".
     key: API key.
@@ -510,7 +514,6 @@ def lay_model_thay_the(provider, key, model_chet):
     if not danh_sach:
         return ""
 
-    # Cùng prefix (ví dụ: "gemini-3.8" thay cho "gemini-3.7")
     prefix = ""
     if model_chet and "/" in model_chet:
         prefix = model_chet.split("/")[0] + "/"
@@ -519,13 +522,11 @@ def lay_model_thay_the(provider, key, model_chet):
         if len(phan) >= 2:
             prefix = phan[0] + "-"
 
-    # Tìm model cùng prefix
     if prefix:
         for m in danh_sach:
             if m.startswith(prefix) and m != model_chet:
                 return m
 
-    # Fallback: model đầu tiên
     return danh_sach[0] if danh_sach else ""
 
 
@@ -541,13 +542,11 @@ def dong_bo_model_vao_kho(chu_so_huu):
         from dai_nao.ghi_nho import _ket_noi_kho_2
         db = _ket_noi_kho_2()
 
-        # Lấy tất cả key của tài khoản
         from tieu_nao.kiem_ke_key import kiem_ke_key
         ket_qua = kiem_ke_key(chu_so_huu)
         if not ket_qua.get("thanh_cong"):
             return False
 
-        # Với mỗi key, lấy danh sách model + lưu vào kho 2
         for provider, danh_sach_key in ket_qua.get("theo_provider", {}).items():
             for key in danh_sach_key:
                 danh_sach_model = lay_danh_sach_model(provider, key.get("key", ""))
