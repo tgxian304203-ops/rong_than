@@ -1,12 +1,15 @@
 /* ============================================================
    quan_ly_key_web.js - Dán + quản lý API Key tra web
    ------------------------------------------------------------
-   ĐÃ SỬA:
-     - Khách  : lưu sessionStorage (đóng tab mất).
-     - Tài khoản: gửi server lưu kho 1.
-     - taiDanhSach() tự kiểm tra lại phiên mỗi lần chạy.
-     - Nhận diện provider qua BẢNG ÁNH XẠ (dễ mở rộng).
-     - Cập nhật tiền tố SERPJET: 'sj_'.
+   ĐÃ SỬA (Giai đoạn 1.5 — tách trang Key Tra web):
+     - FIX 1: Chỉ xử lý trang Key Tra web (ID không đổi).
+     - FIX 2: Khách lưu sessionStorage.
+     - FIX 3: Tài khoản gửi server lưu kho 1.
+
+   Giữ nguyên:
+     - Nhận diện provider qua BẢNG ÁNH XẠ.
+     - Kiểm tra phiên mỗi lần tải.
+     - Cập nhật quota mỗi 60 giây.
    ============================================================ */
 
 (function () {
@@ -25,20 +28,14 @@
     let idHenQuota = null;
     let laKhach = false;
 
-    /* ------------------------------------------------------------
-       BẢNG ÁNH XẠ PROVIDER
-       ------------------------------------------------------------
-       Khi nhà cung cấp đổi tiền tố key → chỉ cần thêm 1 dòng.
-       ------------------------------------------------------------ */
     const BANG_PROVIDER = [
-        { tien_to: 'sj_',   provider: 'SERPJET' },
-        { tien_to: 'tvly-', provider: 'Tavily' },
-        { tien_to: 'brd-',  provider: 'Bright Data' },
+        { tien_to: 'serpjet',     provider: 'SERPJET' },
+        { tien_to: 'tvly-',       provider: 'Tavily' },
+        { tien_to: 'tavily-',     provider: 'Tavily' },
+        { tien_to: 'bd_',         provider: 'Bright Data' },
+        { tien_to: 'brightdata-', provider: 'Bright Data' },
     ];
 
-    /* ------------------------------------------------------------
-       KIỂM TRA PHIÊN
-       ------------------------------------------------------------ */
     async function kiemTraPhien() {
         try {
             const ph = await fetch('/api/phien');
@@ -50,9 +47,6 @@
         return laKhach;
     }
 
-    /* ------------------------------------------------------------
-       SESSIONSTORAGE
-       ------------------------------------------------------------ */
     function docLS() {
         try {
             const raw = sessionStorage.getItem(KHOA_LS);
@@ -70,29 +64,17 @@
         } catch (e) {}
     }
 
-    /* ------------------------------------------------------------
-       NHẬN DIỆN PROVIDER TỪ KEY (dùng bảng ánh xạ)
-       ------------------------------------------------------------
-       - SERPJET    : bắt đầu bằng sj_
-       - Tavily     : bắt đầu bằng tvly-
-       - Bright Data: bắt đầu bằng brd-
-       ------------------------------------------------------------ */
     function nhanDienProvider(key) {
-        const k = String(key || '').trim();
-        const kLower = k.toLowerCase();
-
+        const k = String(key || '').trim().toLowerCase();
         for (let i = 0; i < BANG_PROVIDER.length; i++) {
-            if (kLower.startsWith(BANG_PROVIDER[i].tien_to)) {
+            if (k.startsWith(BANG_PROVIDER[i].tien_to.toLowerCase())) {
                 return BANG_PROVIDER[i].provider;
             }
         }
-
-        return null;
+        // Fallback: nếu không nhận diện được, để "Khác"
+        return 'Khác';
     }
 
-    /* ------------------------------------------------------------
-       MÀU QUOTA
-       ------------------------------------------------------------ */
     function layClassQuota(phanTram) {
         if (phanTram <= 0) return 'quota-den';
         if (phanTram < 20) return 'quota-do';
@@ -100,17 +82,6 @@
         return 'quota-xanh';
     }
 
-    function nhanProvider(ten) {
-        const t = String(ten || '').toLowerCase();
-        if (t.includes('serp'))   return 'SERPJET';
-        if (t.includes('tavily')) return 'Tavily';
-        if (t.includes('bright')) return 'Bright Data';
-        return ten || 'Không rõ';
-    }
-
-    /* ------------------------------------------------------------
-       TẠO CARD KEY
-       ------------------------------------------------------------ */
     function taoTheKey(key, chiSo) {
         const the = document.createElement('div');
         the.classList.add('the-key');
@@ -120,12 +91,12 @@
 
         const icon = document.createElement('span');
         icon.classList.add('the-key-icon');
-        icon.textContent = '🔥🐉';
+        icon.textContent = '🌐';
         hang.appendChild(icon);
 
         const ten = document.createElement('span');
         ten.classList.add('the-key-ten');
-        ten.textContent = nhanProvider(key.provider || key.ten);
+        ten.textContent = key.provider || key.ten || 'Không rõ';
         hang.appendChild(ten);
 
         const so = document.createElement('span');
@@ -159,9 +130,6 @@
         return the;
     }
 
-    /* ------------------------------------------------------------
-       VẼ DANH SÁCH
-       ------------------------------------------------------------ */
     function veDanhSach(ds) {
         danhSach.innerHTML = '';
         if (!Array.isArray(ds) || ds.length === 0) return;
@@ -170,9 +138,6 @@
         });
     }
 
-    /* ------------------------------------------------------------
-       TẢI DANH SÁCH
-       ------------------------------------------------------------ */
     async function taiDanhSach() {
         await kiemTraPhien();
         if (laKhach) {
@@ -192,9 +157,6 @@
         }
     }
 
-    /* ------------------------------------------------------------
-       LƯU KEY TRA WEB
-       ------------------------------------------------------------ */
     async function luuKey() {
         const giaTri = oKey.value.trim();
         if (!giaTri) {
@@ -207,15 +169,13 @@
         nutRun.textContent = '...';
 
         try {
+            await kiemTraPhien();
+
             if (laKhach) {
                 const provider = nhanDienProvider(giaTri);
-                if (!provider) {
-                    alert('Không nhận diện được provider. Key phải là SERPJET (sj_...), Tavily (tvly-...) hoặc Bright Data (brd-...).');
-                    return;
-                }
                 const ds = docLS();
                 ds.push({
-                    id: 'khach-keyweb-' + Date.now(),
+                    id: 'khach-web-' + Date.now(),
                     provider: provider,
                     ten: provider,
                     phan_tram: 100,
@@ -247,11 +207,8 @@
         }
     }
 
-    /* ------------------------------------------------------------
-       XÓA KEY
-       ------------------------------------------------------------ */
     function xacNhanXoaKey(key) {
-        const ten = nhanProvider(key.provider || key.ten);
+        const ten = key.provider || key.ten || 'Không rõ';
         const noiDung = 'Bạn có chắc muốn xóa key ' + ten + '?';
 
         const hamDongY = async function () {
@@ -264,7 +221,7 @@
                     const ph = await fetch('/api/xoa-key-web', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ id: key.id || key.key || key.ten }),
+                        body: JSON.stringify({ id: key.id }),
                     });
                     const dl = await ph.json();
                     if (dl && dl.thanh_cong) {
@@ -285,11 +242,8 @@
         }
     }
 
-    /* ------------------------------------------------------------
-       CẬP NHẬT QUOTA
-       ------------------------------------------------------------ */
     async function capNhatQuota() {
-        if (laKhach) return; // khách không có server để kiểm tra quota
+        if (laKhach) return;
         try {
             const ph = await fetch('/api/quota-key-web');
             const dl = await ph.json();
@@ -304,9 +258,6 @@
         idHenQuota = setInterval(capNhatQuota, THOI_GIAN_CAP_NHAT_QUOTA);
     }
 
-    /* ------------------------------------------------------------
-       SỰ KIỆN
-       ------------------------------------------------------------ */
     nutRun.addEventListener('click', function (e) {
         e.preventDefault();
         luuKey();
@@ -319,9 +270,6 @@
         }
     });
 
-    /* ------------------------------------------------------------
-       KHỞI ĐỘNG
-       ------------------------------------------------------------ */
     async function khoiDong() {
         await kiemTraPhien();
         await taiDanhSach();
@@ -335,6 +283,5 @@
     }
 
     window.taiDanhSachKeyWeb = taiDanhSach;
-    window.veDanhSachKeyWeb = veDanhSach;
 
 })();

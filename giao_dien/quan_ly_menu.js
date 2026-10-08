@@ -1,10 +1,18 @@
 /* ============================================================
    quan_ly_menu.js - Quản lý menu, popup, trang Rồng Thần
    ------------------------------------------------------------
-   ĐÃ SỬA:
-     - Bỏ nút Share.
-     - Lưu trò chuyện vào localStorage khi khách tạo.
-     - Set __ID_CHAT_NHANH_HIEN_TAI cho cả khách lẫn user.
+   ĐÃ SỬA (Giai đoạn 1.5 — tách trang Key):
+     - FIX 1: Thêm 5 hàm mở/đóng trang key mới:
+              + moTrangKeyChinh()     — trang trung gian 4 nút
+              + moTrangKeyBoss()      — trang dán Key Boss
+              + moTrangKeyTieuBoss()  — trang dán Key Tiểu Boss
+              + moTrangKeyWeb()       — trang dán Key Tra web
+              + moTrangUriKho()       — trang dán URI kho 1 + 2
+     - FIX 2: nut-mo-key → mở trang-key-chinh (không mở trang-key cũ).
+     - FIX 3: Thêm nút back cho từng trang key.
+
+   Giữ nguyên:
+     - Menu trái/phải, cài đặt, logs, cây, dự án, đăng ký/đăng nhập.
    ============================================================ */
 
 (function () {
@@ -29,14 +37,73 @@
     function dongMenuPhai() { dong(lay('menu-phai')); }
 
     /* ------------------------------------------------------------
-       CÀI ĐẶT / KEY / LOGS / CÂY
+       CÀI ĐẶT
        ------------------------------------------------------------ */
     function moCaiDat() { dongMenuTrai(); mo(lay('trang-cai-dat')); }
     function dongCaiDat() { dong(lay('trang-cai-dat')); }
 
-    function moTrangKey() { dongCaiDat(); mo(lay('trang-key')); }
-    function dongTrangKey() { dong(lay('trang-key')); }
+    /* ------------------------------------------------------------
+       TRANG KEY CHÍNH (4 NÚT)
+       ------------------------------------------------------------ */
+    function moTrangKeyChinh() {
+        dongCaiDat();
+        mo(lay('trang-key-chinh'));
+    }
+    function dongTrangKeyChinh() {
+        dong(lay('trang-key-chinh'));
+    }
 
+    /* ------------------------------------------------------------
+       TRANG KEY BOSS
+       ------------------------------------------------------------ */
+    function moTrangKeyBoss() {
+        dongTrangKeyChinh();
+        mo(lay('trang-key-boss'));
+    }
+    function dongTrangKeyBoss() {
+        dong(lay('trang-key-boss'));
+        moTrangKeyChinh();
+    }
+
+    /* ------------------------------------------------------------
+       TRANG KEY TIỂU BOSS
+       ------------------------------------------------------------ */
+    function moTrangKeyTieuBoss() {
+        dongTrangKeyChinh();
+        mo(lay('trang-key-tieu-boss'));
+    }
+    function dongTrangKeyTieuBoss() {
+        dong(lay('trang-key-tieu-boss'));
+        moTrangKeyChinh();
+    }
+
+    /* ------------------------------------------------------------
+       TRANG KEY TRA WEB
+       ------------------------------------------------------------ */
+    function moTrangKeyWeb() {
+        dongTrangKeyChinh();
+        mo(lay('trang-key-web'));
+    }
+    function dongTrangKeyWeb() {
+        dong(lay('trang-key-web'));
+        moTrangKeyChinh();
+    }
+
+    /* ------------------------------------------------------------
+       TRANG URI KHO
+       ------------------------------------------------------------ */
+    function moTrangUriKho() {
+        dongTrangKeyChinh();
+        mo(lay('trang-uri-kho'));
+    }
+    function dongTrangUriKho() {
+        dong(lay('trang-uri-kho'));
+        moTrangKeyChinh();
+    }
+
+    /* ------------------------------------------------------------
+       LOGS / CÂY
+       ------------------------------------------------------------ */
     function moTrangLogs() { dongMenuPhai(); mo(lay('trang-logs')); }
     function dongTrangLogs() { dong(lay('trang-logs')); }
 
@@ -352,12 +419,10 @@
             const khung = lay('danh-sach-tin-nhan');
             if (khung) khung.innerHTML = '';
 
-            // Set id chat nhanh hiện tại — áp dụng cho cả khách và user
             if (dl && dl.thanh_cong && dl.chat && dl.chat.id) {
                 window.__ID_CHAT_NHANH_HIEN_TAI = dl.chat.id;
             }
 
-            // Nếu là khách thì lưu vào localStorage
             if (dl && dl.thanh_cong && dl.tam && dl.chat) {
                 if (typeof window.luuChatNhanhKhach === 'function') {
                     window.luuChatNhanhKhach(dl.chat);
@@ -429,11 +494,29 @@
 
         ganSuKien('nut-cai-dat', 'click', moCaiDat);
         ganSuKien('dong-cai-dat', 'click', dongCaiDat);
-        ganSuKien('nut-mo-key', 'click', moTrangKey);
+        ganSuKien('nut-mo-key', 'click', moTrangKeyChinh);
         ganSuKien('nut-mo-doi-mat-khau', 'click', moPopupDoiMatKhau);
-        ganSuKien('dong-key', 'click', dongTrangKey);
         ganSuKien('dong-popup-doi-mat-khau', 'click', dongPopupDoiMatKhau);
         ganSuKien('nut-huy-doi-mk', 'click', dongPopupDoiMatKhau);
+
+        // Trang key chính
+        ganSuKien('dong-key-chinh', 'click', dongTrangKeyChinh);
+        ganSuKien('nut-mo-key-boss', 'click', moTrangKeyBoss);
+        ganSuKien('nut-mo-key-tieu-boss', 'click', moTrangKeyTieuBoss);
+        ganSuKien('nut-mo-key-web', 'click', moTrangKeyWeb);
+        ganSuKien('nut-mo-uri-kho', 'click', moTrangUriKho);
+
+        // Trang key boss
+        ganSuKien('dong-key-boss', 'click', dongTrangKeyBoss);
+
+        // Trang key tiểu boss
+        ganSuKien('dong-key-tieu-boss', 'click', dongTrangKeyTieuBoss);
+
+        // Trang key tra web
+        ganSuKien('dong-key-web', 'click', dongTrangKeyWeb);
+
+        // Trang uri kho
+        ganSuKien('dong-uri-kho', 'click', dongTrangUriKho);
 
         ganSuKien('nut-mo-logs', 'click', moTrangLogs);
         ganSuKien('dong-logs', 'click', dongTrangLogs);
@@ -479,9 +562,10 @@
 
         document.addEventListener('keydown', function (e) {
             if (e.key === 'Escape') {
-                ['menu-trai', 'menu-phai', 'trang-cai-dat', 'trang-key',
-                 'trang-logs', 'trang-cay', 'trang-du-an', 'trang-chi-tiet-du-an',
-                 'trang-chat-du-an']
+                ['menu-trai', 'menu-phai', 'trang-cai-dat', 'trang-key-chinh',
+                 'trang-key-boss', 'trang-key-tieu-boss', 'trang-key-web',
+                 'trang-uri-kho', 'trang-logs', 'trang-cay', 'trang-du-an',
+                 'trang-chi-tiet-du-an', 'trang-chat-du-an']
                     .forEach(function (id) { dong(lay(id)); });
                 ['popup-dang-ky', 'popup-dang-nhap', 'popup-xac-nhan-xoa',
                  'popup-doi-mat-khau', 'popup-tao-du-an', 'popup-tao-tro-chuyen']
@@ -498,7 +582,11 @@
     window.dongMenuTrai = dongMenuTrai;
     window.moMenuPhai = moMenuPhai;
     window.dongMenuPhai = dongMenuPhai;
-    window.moTrangKey = moTrangKey;
+    window.moTrangKeyChinh = moTrangKeyChinh;
+    window.moTrangKeyBoss = moTrangKeyBoss;
+    window.moTrangKeyTieuBoss = moTrangKeyTieuBoss;
+    window.moTrangKeyWeb = moTrangKeyWeb;
+    window.moTrangUriKho = moTrangUriKho;
     window.moTrangLogs = moTrangLogs;
     window.moTrangCay = moTrangCay;
     window.moTrangDuAn = moTrangDuAn;

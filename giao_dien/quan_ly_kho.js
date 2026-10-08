@@ -1,9 +1,14 @@
 /* ============================================================
    quan_ly_kho.js - Dán + quản lý URI 2 kho MongoDB
    ------------------------------------------------------------
-   ĐÃ SỬA:
-     - Khách  : lưu sessionStorage (đóng tab mất).
-     - Tài khoản: gửi server lưu kho 1.
+   ĐÃ SỬA (Giai đoạn 1.5 — tách trang URI Kho riêng):
+     - FIX 1: Chỉ xử lý trang URI Kho riêng.
+     - FIX 2: Khách lưu sessionStorage (đóng tab mất).
+     - FIX 3: Tài khoản gửi server lưu kho 1.
+
+   ID không đổi:
+     - o-uri-kho-1-2 + nut-run-kho-1-2
+     - o-uri-kho-2-2 + nut-run-kho-2-2
    ============================================================ */
 
 (function () {

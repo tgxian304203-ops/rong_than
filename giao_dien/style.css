@@ -573,8 +573,8 @@ body.sang .overlay {
 .danh-sach-cuon {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    max-height: 90vh;
+    gap: 6px;
+    max-height: 400px;
     overflow-y: auto;
     padding-right: 2px;
     -webkit-overflow-scrolling: touch;
@@ -708,7 +708,7 @@ body.sang .overlay {
 
 .o-nhap-key {
     flex: 1;
-    padding: 12px 14px;
+    padding: 8px 12px;
     border-radius: var(--bo-goc-nho);
     border: 1px solid var(--kinh-vien);
     background: var(--kinh-nen);
@@ -720,7 +720,7 @@ body.sang .overlay {
 .o-nhap-key::placeholder { color: var(--chu-mo); }
 
 .nut-run {
-    padding: 0 18px;
+    padding: 0 16px;
     border-radius: var(--bo-goc-nho);
     background: var(--kinh-nen-dam);
     border: 1px solid var(--kinh-vien);

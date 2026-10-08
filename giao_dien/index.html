@@ -6,7 +6,7 @@
     <title>Rồng Thần 🐉</title>
     <link rel="stylesheet" href="style.css">
 
-    <!-- Pyodide: chạy Python client-side (SỬA LỖI B) -->
+    <!-- Pyodide: chạy Python client-side -->
     <script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js" defer></script>
 </head>
 <body>
@@ -264,11 +264,11 @@
 </div>
 
 <!-- ============================================================ -->
-<!-- TRANG QUẢN LÝ KEY                                            -->
+<!-- TRANG KEY CHÍNH (4 NÚT)                                      -->
 <!-- ============================================================ -->
-<div id="trang-key" class="overlay overlay-phai">
+<div id="trang-key-chinh" class="overlay overlay-phai">
     <div class="overlay-header">
-        <button id="dong-key" class="nut-icon" aria-label="Đóng key">
+        <button id="dong-key-chinh" class="nut-icon" aria-label="Quay lại">
             <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="19" y1="12" x2="5" y2="12"/>
                 <polyline points="12,19 5,12 12,5"/>
@@ -278,45 +278,134 @@
     </div>
 
     <div class="overlay-body">
-        <div class="muc-tieude">KEY BOSS</div>
+        <button id="nut-mo-key-boss" class="muc-menu">
+            <span class="muc-icon">🔑</span>
+            <span class="muc-chu">Key Boss</span>
+        </button>
+
+        <button id="nut-mo-key-tieu-boss" class="muc-menu">
+            <span class="muc-icon">🔑</span>
+            <span class="muc-chu">Key Tiểu Boss</span>
+        </button>
+
+        <button id="nut-mo-key-web" class="muc-menu">
+            <span class="muc-icon">🌐</span>
+            <span class="muc-chu">Key Tra web</span>
+        </button>
+
+        <button id="nut-mo-uri-kho" class="muc-menu">
+            <span class="muc-icon">🔗</span>
+            <span class="muc-chu">URI Kho MongoDB</span>
+        </button>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- TRANG KEY BOSS                                               -->
+<!-- ============================================================ -->
+<div id="trang-key-boss" class="overlay overlay-phai">
+    <div class="overlay-header">
+        <button id="dong-key-boss" class="nut-icon" aria-label="Quay lại">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12"/>
+                <polyline points="12,19 5,12 12,5"/>
+            </svg>
+        </button>
+        <div class="tieude-overlay">🔑 KEY BOSS</div>
+    </div>
+
+    <div class="overlay-body">
         <div class="nhom-input">
             <input type="text" id="o-key-boss" class="o-nhap-key" placeholder="Dán API Key Boss...">
             <button id="nut-run-key-boss" class="nut-run">Run</button>
         </div>
 
-        <div class="muc-tieude">KEY TIỂU BOSS</div>
+        <div class="muc-ngan"></div>
+        <div class="muc-tieude">KEY BOSS ĐÃ LƯU</div>
+        <div id="danh-sach-key-boss" class="danh-sach-cuon"></div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- TRANG KEY TIỂU BOSS                                          -->
+<!-- ============================================================ -->
+<div id="trang-key-tieu-boss" class="overlay overlay-phai">
+    <div class="overlay-header">
+        <button id="dong-key-tieu-boss" class="nut-icon" aria-label="Quay lại">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12"/>
+                <polyline points="12,19 5,12 12,5"/>
+            </svg>
+        </button>
+        <div class="tieude-overlay">🔑 KEY TIỂU BOSS</div>
+    </div>
+
+    <div class="overlay-body">
         <div class="nhom-input">
             <input type="text" id="o-key-tieu-boss" class="o-nhap-key" placeholder="Dán API Key Tiểu Boss...">
             <button id="nut-run-key-tieu-boss" class="nut-run">Run</button>
         </div>
 
-        <div class="muc-tieude">KEY TRA WEB</div>
+        <div class="muc-ngan"></div>
+        <div class="muc-tieude">KEY TIỂU BOSS ĐÃ LƯU</div>
+        <div id="danh-sach-key-tieu-boss" class="danh-sach-cuon"></div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- TRANG KEY TRA WEB                                            -->
+<!-- ============================================================ -->
+<div id="trang-key-web" class="overlay overlay-phai">
+    <div class="overlay-header">
+        <button id="dong-key-web" class="nut-icon" aria-label="Quay lại">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12"/>
+                <polyline points="12,19 5,12 12,5"/>
+            </svg>
+        </button>
+        <div class="tieude-overlay">🌐 KEY TRA WEB</div>
+    </div>
+
+    <div class="overlay-body">
         <div class="nhom-input">
             <input type="text" id="o-key-web-2" class="o-nhap-key" placeholder="Dán API Key tra web...">
             <button id="nut-run-key-web-2" class="nut-run">Run</button>
         </div>
 
-        <div class="muc-tieude">URI KHO MONGODB</div>
+        <div class="muc-ngan"></div>
+        <div class="muc-tieude">KEY TRA WEB ĐÃ LƯU</div>
+        <div id="danh-sach-key-web-2" class="danh-sach-cuon"></div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- TRANG URI KHO MONGODB                                        -->
+<!-- ============================================================ -->
+<div id="trang-uri-kho" class="overlay overlay-phai">
+    <div class="overlay-header">
+        <button id="dong-uri-kho" class="nut-icon" aria-label="Quay lại">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12"/>
+                <polyline points="12,19 5,12 12,5"/>
+            </svg>
+        </button>
+        <div class="tieude-overlay">🔗 URI KHO MONGODB</div>
+    </div>
+
+    <div class="overlay-body">
+        <div class="muc-tieude">KHO 1 — DỮ LIỆU NGƯỜI DÙNG</div>
         <div class="nhom-input">
             <input type="text" id="o-uri-kho-1-2" class="o-nhap-key" placeholder="Dán URI kho 1...">
             <button id="nut-run-kho-1-2" class="nut-run">Run</button>
         </div>
+
+        <div class="muc-ngan"></div>
+
+        <div class="muc-tieude">KHO 2 — CÂY QUYẾT ĐỊNH</div>
         <div class="nhom-input">
             <input type="text" id="o-uri-kho-2-2" class="o-nhap-key" placeholder="Dán URI kho 2...">
             <button id="nut-run-kho-2-2" class="nut-run">Run</button>
         </div>
-
-        <div class="muc-ngan"></div>
-        <div class="muc-tieude">KEY BOSS ĐÃ LƯU</div>
-        <div id="danh-sach-key-boss" class="danh-sach-cuon"></div>
-
-        <div class="muc-ngan"></div>
-        <div class="muc-tieude">KEY TIỂU BOSS ĐÃ LƯU</div>
-        <div id="danh-sach-key-tieu-boss" class="danh-sach-cuon"></div>
-
-        <div class="muc-ngan"></div>
-        <div class="muc-tieude">KEY TRA WEB ĐÃ LƯU</div>
-        <div id="danh-sach-key-web-2" class="danh-sach-cuon"></div>
     </div>
 </div>
 

@@ -1,20 +1,15 @@
 /* ============================================================
-   quan_ly_key.js - Dán + quản lý API Key model
+   quan_ly_key.js - Dán + quản lý API Key model (Boss + Tiểu Boss)
    ------------------------------------------------------------
-   ĐÃ SỬA (Giai đoạn 1.5 — tách bể key Boss / Tiểu Boss):
-     - FIX 1: Tách thành 2 khối xử lý độc lập:
-              + BOSS: input o-key-boss + nút nut-run-key-boss
-                       + danh sách danh-sach-key-boss
-              + TIỂU BOSS: input o-key-tieu-boss + nút nut-run-key-tieu-boss
-                       + danh sách danh-sach-key-tieu-boss
+   ĐÃ SỬA (Giai đoạn 1.5 — tách trang Key riêng):
+     - FIX 1: Tách thành 2 khối độc lập:
+              + BOSS: o-key-boss + nut-run-key-boss
+                       + danh-sach-key-boss
+              + TIỂU BOSS: o-key-tieu-boss + nut-run-key-tieu-boss
+                       + danh-sach-key-tieu-boss
      - FIX 2: Khách lưu sessionStorage riêng theo từng loại.
-     - FIX 3: Tài khoản gửi loai_nao="boss" hoặc "tieu_boss" lên server.
+     - FIX 3: Tài khoản gửi loai_nao="boss" / "tieu_boss".
      - FIX 4: Lấy danh sách + quota lọc theo loai_nao.
-
-   Giữ nguyên:
-     - Nhận diện provider qua BẢNG ÁNH XẠ.
-     - Kiểm tra phiên mỗi lần tải.
-     - Cập nhật quota mỗi 60 giây.
    ============================================================ */
 
 (function () {
@@ -32,8 +27,8 @@
         { tien_to: 'AQ.Ab',   provider: 'Gemini' },
     ];
 
-    const KHOA_LS_BOSS       = 'rong_than_key_boss_khach';
-    const KHOA_LS_TIEU_BOSS  = 'rong_than_key_tieu_boss_khach';
+    const KHOA_LS_BOSS      = 'rong_than_key_boss_khach';
+    const KHOA_LS_TIEU_BOSS = 'rong_than_key_tieu_boss_khach';
 
     let laKhach = false;
     let daKiemTraPhien = false;
@@ -96,7 +91,6 @@
         return ten || 'Không rõ';
     }
 
-    // Tạo thẻ hiển thị 1 key
     function taoTheKey(key, chiSo, hamXoa) {
         const the = document.createElement('div');
         the.classList.add('the-key');
@@ -473,8 +467,7 @@
         khoiDong();
     }
 
-    // API công khai cho module khác (nếu cần)
-    window.taiDanhSachKeyBoss      = taiDanhSachBoss;
-    window.taiDanhSachKeyTieuBoss  = taiDanhSachTieuBoss;
+    window.taiDanhSachKeyBoss     = taiDanhSachBoss;
+    window.taiDanhSachKeyTieuBoss = taiDanhSachTieuBoss;
 
 })();
