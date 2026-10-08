@@ -1,5 +1,22 @@
 """
 ghi_nho.py - Tầng dữ liệu Rồng Thần.
+
+ĐÃ SỬA (Giai đoạn 2 — Boss có model riêng):
+    - FIX 1: Thêm 2 collection mới ở kho 2:
+             + snapshot     — trạng thái dự án
+             + hop_dong     — hợp đồng giữa các file
+    - FIX 2: Thêm 9 hàm cho snapshot:
+             + luu_snapshot()
+             + lay_snapshot()
+             + cap_nhat_snapshot()
+             + xoa_snapshot()
+             + lay_tat_ca_snapshot()
+    - FIX 3: Thêm 6 hàm cho hợp đồng:
+             + luu_hop_dong()
+             + lay_hop_dong()
+             + lay_tat_ca_hop_dong()
+             + xoa_hop_dong()
+             + xoa_tat_ca_hop_dong()
 """
 
 import os
@@ -30,6 +47,7 @@ MAX_TAI_KHOAN = 50
 TEN_KHO_1 = "rong_than_user"
 TEN_KHO_2 = "rong_than_cay"
 
+# Kho 1
 C_TAI_KHOAN = "tai_khoan"
 C_PHIEN = "phien_dang_nhap"
 C_LICH_SU_CHAT = "lich_su_chat"
@@ -41,11 +59,16 @@ C_NOI_DUNG_TRICH_XUAT = "noi_dung_da_trich_xuat"
 C_LICH_SU_GUI = "lich_su_gui"
 C_TRO_CHUYEN = "tro_chuyen"
 
+# Kho 2
 C_NODE = "node"
 C_LICH_SU_HOC = "lich_su_hoc"
 C_TU_DIEN_LOI = "tu_dien_loi"
 C_FAILED_PATHS = "failed_paths"
 C_TU_KHOA_PHAN_LOAI = "tu_khoa_phan_loai"
+
+# Kho 2 — MỚI (Giai đoạn 2)
+C_SNAPSHOT = "snapshot"
+C_HOP_DONG = "hop_dong"
 
 
 _khoa = Lock()
@@ -150,6 +173,7 @@ def _tao_index_kho_1():
         _db_1[C_DU_AN].create_index([("chu_so_huu", ASCENDING)])
         _db_1[C_KEY].create_index([("chu_so_huu", ASCENDING)])
         _db_1[C_KEY].create_index([("loai_key", ASCENDING)])
+        _db_1[C_KEY].create_index([("loai_nao", ASCENDING)])
         _db_1[C_ANH_FILE].create_index([("chu_so_huu", ASCENDING)])
         _db_1[C_NOI_DUNG_TRICH_XUAT].create_index([("id_file", ASCENDING)])
         _db_1[C_LICH_SU_GUI].create_index([("chu_so_huu", ASCENDING)])
@@ -167,10 +191,16 @@ def _tao_index_kho_2():
         _db_2[C_TU_DIEN_LOI].create_index([("loai_loi", ASCENDING)], unique=True)
         _db_2[C_FAILED_PATHS].create_index([("id_node", ASCENDING)])
         _db_2[C_TU_KHOA_PHAN_LOAI].create_index([("tu_khoa", ASCENDING)], unique=True)
+        # MỚI (Giai đoạn 2)
+        _db_2[C_SNAPSHOT].create_index([("id_du_an", ASCENDING)], unique=True)
+        _db_2[C_HOP_DONG].create_index([("id_du_an", ASCENDING), ("ten_file", ASCENDING)], unique=True)
     except Exception:
         pass
 
 
+# ================================================================
+# TÀI KHOẢN
+# ================================================================
 def dem_tai_khoan():
     db, _ = _ket_noi_kho_1()
     return db[C_TAI_KHOAN].count_documents({})
@@ -248,6 +278,9 @@ def xoa_tai_khoan_va_du_lieu(ten_dang_nhap):
     return True
 
 
+# ================================================================
+# PHIÊN ĐĂNG NHẬP
+# ================================================================
 def luu_phien_dang_nhap(phien):
     if not phien or not phien.get("token"):
         return False
@@ -291,6 +324,9 @@ def gia_han_phien_dang_nhap(token, thoi_gian_het_han_moi):
         return False
 
 
+# ================================================================
+# DỰ ÁN
+# ================================================================
 def lay_danh_sach_du_an_cua(ten_tk):
     if not ten_tk:
         return []
@@ -333,6 +369,9 @@ def xoa_du_an_theo_id(id_du_an):
         return False
 
 
+# ================================================================
+# CHAT NHANH
+# ================================================================
 def lay_danh_sach_chat_nhanh_cua(ten_tk):
     if not ten_tk:
         return []
@@ -383,6 +422,9 @@ def cap_nhat_ten_chat_nhanh(id_chat, ten_tk, ten_moi):
         return False
 
 
+# ================================================================
+# KEY
+# ================================================================
 def luu_key_da_luu(key):
     if not key or not key.get("id"):
         return False
@@ -449,6 +491,9 @@ def cap_nhat_quota_key(id_key, phan_tram):
         return False
 
 
+# ================================================================
+# URI KHO
+# ================================================================
 def luu_uri_kho_cua(ten_tk, so_kho, uri):
     if not ten_tk or so_kho not in (1, 2) or not uri:
         return False
@@ -480,6 +525,9 @@ def lay_uri_kho_cua(ten_tk, so_kho):
     return ket_qua.get(f"uri_kho_{so_kho}", "") or ""
 
 
+# ================================================================
+# GRIDFS
+# ================================================================
 def luu_file_gridfs(ten_file, noi_dung, metadata=None):
     if not noi_dung:
         return None
@@ -578,10 +626,6 @@ def lay_lich_su_chat(ten_tk, id_chat, gioi_han=20):
 
 
 def lay_tin_nhan_chat_nhanh(id_chat, ten_tk, gioi_han=200):
-    """
-    Lấy toàn bộ tin nhắn của 1 chat nhanh theo id_chat.
-    Trả về mảng tin nhắn sắp xếp theo thời gian tăng dần.
-    """
     if not id_chat or not ten_tk:
         return []
     db, _ = _ket_noi_kho_1()
@@ -597,6 +641,9 @@ def lay_tin_nhan_chat_nhanh(id_chat, ten_tk, gioi_han=200):
         return []
 
 
+# ================================================================
+# CÂY QUYẾT ĐỊNH
+# ================================================================
 def doc_cay():
     cay_goc = _doc_cay_local()
     cay_kho_2 = _doc_cay_kho_2()
@@ -956,6 +1003,9 @@ def _chuan_hoa_doc(doc):
     return ket_qua
 
 
+# ================================================================
+# TRÒ CHUYỆN
+# ================================================================
 def luu_tro_chuyen(tro_chuyen):
     if not tro_chuyen or not tro_chuyen.get("id"):
         return False
@@ -1026,6 +1076,9 @@ def lay_tin_nhan_tro_chuyen_cua(id_du_an, id_tro_chuyen, ten_tk):
     return [_chuan_hoa_doc(t) for t in ket_qua]
 
 
+# ================================================================
+# TIỆN ÍCH
+# ================================================================
 def ping_ca_2_kho():
     ket_qua = {"kho_1": False, "kho_2": False}
     try:
@@ -1044,12 +1097,6 @@ def ping_ca_2_kho():
 
 
 def xoa_file_theo_tro_chuyen(id_tro_chuyen, chu_so_huu):
-    """
-    Xóa toàn bộ ảnh/file thuộc 1 trò chuyện.
-    - Xóa file thật trong GridFS.
-    - Xóa metadata trong anh_file, noi_dung_da_trich_xuat, lich_su_gui.
-    Trả về: số file đã xóa khỏi GridFS.
-    """
     if not id_tro_chuyen or not chu_so_huu:
         return 0
     db, fs = _ket_noi_kho_1()
@@ -1079,12 +1126,140 @@ def xoa_file_theo_tro_chuyen(id_tro_chuyen, chu_so_huu):
 
 
 def lay_file_theo_id(id_file):
-    """
-    Lấy metadata của file theo id_file.
-    Trả về dict hoặc None.
-    """
     if not id_file:
         return None
     db, _ = _ket_noi_kho_1()
     ket_qua = db[C_ANH_FILE].find_one({"id_file": id_file})
     return _chuan_hoa_doc(ket_qua) if ket_qua else None
+
+
+# ================================================================
+# SNAPSHOT (MỚI — GIAI ĐOẠN 2)
+# ================================================================
+def luu_snapshot(du_lieu):
+    """Lưu snapshot vào kho 2. Upsert theo id_du_an."""
+    if not du_lieu or not du_lieu.get("id_du_an"):
+        return False
+    db = _ket_noi_kho_2()
+    try:
+        db[C_SNAPSHOT].update_one(
+            {"id_du_an": du_lieu["id_du_an"]},
+            {"$set": dict(du_lieu)},
+            upsert=True,
+        )
+        return True
+    except Exception:
+        return False
+
+
+def lay_snapshot(id_du_an):
+    """Lấy snapshot theo id_du_an."""
+    if not id_du_an:
+        return None
+    db = _ket_noi_kho_2()
+    ket_qua = db[C_SNAPSHOT].find_one({"id_du_an": id_du_an})
+    return _chuan_hoa_doc(ket_qua) if ket_qua else None
+
+
+def cap_nhat_snapshot(id_du_an, cap_nhat):
+    """Cập nhật 1 số trường trong snapshot."""
+    if not id_du_an or not cap_nhat:
+        return False
+    db = _ket_noi_kho_2()
+    try:
+        cap_nhat["lan_cap_nhat_cuoi"] = int(time.time())
+        ket_qua = db[C_SNAPSHOT].update_one(
+            {"id_du_an": id_du_an},
+            {"$set": cap_nhat},
+        )
+        return ket_qua.modified_count > 0
+    except Exception:
+        return False
+
+
+def xoa_snapshot(id_du_an):
+    """Xóa snapshot theo id_du_an."""
+    if not id_du_an:
+        return False
+    db = _ket_noi_kho_2()
+    try:
+        ket_qua = db[C_SNAPSHOT].delete_one({"id_du_an": id_du_an})
+        return ket_qua.deleted_count > 0
+    except Exception:
+        return False
+
+
+def lay_tat_ca_snapshot():
+    """Lấy tất cả snapshot."""
+    db = _ket_noi_kho_2()
+    return [_chuan_hoa_doc(s) for s in db[C_SNAPSHOT].find({})]
+
+
+# ================================================================
+# HỢP ĐỒNG FILE (MỚI — GIAI ĐOẠN 2)
+# ================================================================
+def luu_hop_dong(du_lieu):
+    """Lưu hợp đồng file. Upsert theo (id_du_an, ten_file)."""
+    if not du_lieu or not du_lieu.get("id_du_an") or not du_lieu.get("ten_file"):
+        return False
+    db = _ket_noi_kho_2()
+    try:
+        db[C_HOP_DONG].update_one(
+            {
+                "id_du_an": du_lieu["id_du_an"],
+                "ten_file": du_lieu["ten_file"],
+            },
+            {"$set": dict(du_lieu)},
+            upsert=True,
+        )
+        return True
+    except Exception:
+        return False
+
+
+def lay_hop_dong(id_du_an, ten_file):
+    """Lấy hợp đồng theo (id_du_an, ten_file)."""
+    if not id_du_an or not ten_file:
+        return None
+    db = _ket_noi_kho_2()
+    ket_qua = db[C_HOP_DONG].find_one({
+        "id_du_an": id_du_an,
+        "ten_file": ten_file,
+    })
+    return _chuan_hoa_doc(ket_qua) if ket_qua else None
+
+
+def lay_tat_ca_hop_dong(id_du_an):
+    """Lấy tất cả hợp đồng của 1 dự án."""
+    if not id_du_an:
+        return []
+    db = _ket_noi_kho_2()
+    ket_qua = db[C_HOP_DONG].find({"id_du_an": id_du_an})
+    return [_chuan_hoa_doc(h) for h in ket_qua]
+
+
+def xoa_hop_dong(id_du_an, ten_file):
+    """Xóa 1 hợp đồng."""
+    if not id_du_an or not ten_file:
+        return False
+    db = _ket_noi_kho_2()
+    try:
+        ket_qua = db[C_HOP_DONG].delete_one({
+            "id_du_an": id_du_an,
+            "ten_file": ten_file,
+        })
+        return ket_qua.deleted_count > 0
+    except Exception:
+        return False
+
+
+def xoa_tat_ca_hop_dong(id_du_an):
+    """Xóa tất cả hợp đồng của 1 dự án."""
+    if not id_du_an:
+        return False
+    db = _ket_noi_kho_2()
+    try:
+        ket_qua = db[C_HOP_DONG].delete_many({"id_du_an": id_du_an})
+        return ket_qua.deleted_count > 0
+    except Exception:
+        return False

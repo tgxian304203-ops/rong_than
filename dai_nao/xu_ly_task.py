@@ -4,17 +4,19 @@ xu_ly_task.py - Trung tâm điều phối Đại não Rồng Thần.
 Nhiệm vụ:
     - Nhận task từ nhan_task.py.
     - Điều phối 12 bước xử lý theo Phần 4 của dự án.
+    - Gọi Boss (nếu task phức tạp) → chia task + lưu snapshot.
     - Gọi Tiểu não khi bí, gọi Tra web khi cần, gọi Sandbox khi chạy code.
     - Cập nhật cây quyết định sau mỗi task.
 
-ĐÃ SỬA (fix "ngáo"):
-    - FIX 1: Nâng ngưỡng chấm điểm từ 0.7 → 0.75.
-    - FIX 2: Trước khi dùng node, kiểm tra node có nội dung thực.
-             Nếu không → coi như fail → gọi Tiểu não.
-    - FIX 3: Bỏ qua node có cach_giai.mo_ta rỗng VÀ hanh_dong.code rỗng.
+ĐÃ SỬA (Giai đoạn 2 — Boss có model riêng):
+    - FIX 1: Thêm BƯỚC 3.5 — gọi Boss (chi_huy.py) cho task phức tạp.
+    - FIX 2: Nếu Boss phân tích được dự án → lưu snapshot + trả info cho user.
+    - FIX 3: Nếu Boss hết quota → fallback về luồng cũ (không sập).
 
 Các fix cũ giữ nguyên:
-    L1, L2a, L18, L24, L34, L35, L36, L38, L39, L42, L43, LỖI A.
+    - FIX 1: Ngưỡng chấm điểm 0.75.
+    - FIX 2: Node rỗng nội dung → bỏ qua.
+    - FIX 3: Node có hanh_dong + cach_giai_phap.
 """
 
 import time
@@ -34,8 +36,6 @@ TU_MO_HO = (
 )
 
 SO_LAN_TU_SUA_TOI_DA = 3
-
-# FIX 1: Nâng ngưỡng dùng node từ 0.7 → 0.75
 NGUONG_DUNG_NODE = 0.75
 
 
@@ -86,12 +86,6 @@ def _node_sang_dict(nhanh):
 # HÀM PHỤ: KIỂM TRA NODE CÓ NỘI DUNG THỰC
 # ----------------------------------------------------------------
 def _node_co_noi_dung_thuc(nhanh_dict):
-    """
-    FIX 2 + FIX 3: Kiểm tra node có nội dung thực để dùng:
-        - hanh_dong.code không rỗng, HOẶC
-        - hanh_dong.loai == "tra_web" (được phép rỗng code), HOẶC
-        - cach_giai.mo_ta không rỗng.
-    """
     if not isinstance(nhanh_dict, dict):
         return False
 
@@ -148,7 +142,6 @@ def _lay_ngu_canh(du_lieu):
 # HÀM PHỤ: GỌI TIỂU NÃO
 # ----------------------------------------------------------------
 def _goi_tieu_nao(task, ngu_canh, chu_so_huu=""):
-    """Gọi Tiểu não khi Đại não bí."""
     try:
         from dai_nao.su_dung_model import su_dung_model
         return su_dung_model(task, ngu_canh, chu_so_huu)
@@ -158,6 +151,97 @@ def _goi_tieu_nao(task, ngu_canh, chu_so_huu=""):
     except Exception as e:
         _ghi_log("loi", f"Tiểu não lỗi: {e}")
         return None
+
+
+# ----------------------------------------------------------------
+# FIX 1: HÀM PHỤ: GỌI BOSS
+# ----------------------------------------------------------------
+def _goi_boss(noi_dung, chu_so_huu=""):
+    """
+    Gọi Boss (Đại não có model riêng) cho task phức tạp.
+
+    Trả về dict hoặc None nếu Boss không dùng / hết quota.
+    """
+    try:
+        from dai_nao.chi_huy import chi_huy
+
+        ket_qua = chi_huy({
+            "noi_dung": noi_dung,
+            "chu_so_huu": chu_so_huu,
+        })
+
+        if not ket_qua:
+            return None
+
+        # Boss hết quota → trả None → fallback
+        if not ket_qua.get("thanh_cong"):
+            _ghi_log("dai-nao", f"Boss thất bại: {ket_qua.get('loi', '')}")
+            return None
+
+        # Task không cần Boss → trả None
+        if not ket_qua.get("can_boss"):
+            return None
+
+        return ket_qua
+
+    except ImportError:
+        _ghi_log("loi", "chi_huy.py chưa có.")
+        return None
+    except Exception as e:
+        _ghi_log("loi", f"Boss lỗi: {e}")
+        return None
+
+
+# ----------------------------------------------------------------
+# FIX 2: HÀM PHỤ: TẠO PHẢN HỒI TỪ BOSS
+# ----------------------------------------------------------------
+def _tao_phan_hoi_boss(ket_qua_boss):
+    """
+    Tạo phản hồi cho user từ kết quả Boss.
+
+    Hiển thị:
+        - Loại dự án.
+        - Số task.
+        - Danh sách task.
+        - Mã dự án (snapshot).
+    """
+    if not ket_qua_boss:
+        return ""
+
+    yeu_cau = ket_qua_boss.get("yeu_cau", {})
+    ds_task = ket_qua_boss.get("ds_task", [])
+    id_du_an = ket_qua_boss.get("id_du_an", "")
+
+    loai_task = yeu_cau.get("loai_task", "khác")
+    do_phuc_tap = yeu_cau.get("do_phuc_tap", "?")
+    yeu_cau_chinh = yeu_cau.get("yeu_cau_chinh", "")
+
+    phan = []
+    phan.append(f"🔥 Boss đã phân tích dự án: **{yeu_cau_chinh}**")
+    phan.append("")
+    phan.append(f"📁 **Loại**: {loai_task}")
+    phan.append(f"🎯 **Độ phức tạp**: {do_phuc_tap}")
+    phan.append(f"📊 **Số task**: {len(ds_task)}")
+
+    if id_du_an:
+        phan.append(f"🆔 **Mã dự án**: `{id_du_an}`")
+
+    if ds_task:
+        phan.append("")
+        phan.append("**📝 DANH SÁCH TASK:**")
+        for task in ds_task:
+            so = task.get("so", "?")
+            ten = task.get("ten", "?")
+            file = task.get("file", "")
+            if file:
+                phan.append(f"  {so}. {ten} → `{file}`")
+            else:
+                phan.append(f"  {so}. {ten}")
+
+    phan.append("")
+    phan.append("💡 Bạn muốn Boss bắt đầu làm task nào? (Gõ số hoặc 'làm hết')")
+
+    return "\n".join(phan)
 
 
 # ----------------------------------------------------------------
@@ -452,6 +536,31 @@ def xu_ly_task(du_lieu):
         _ghi_log("dai-nao", f"Hỏi lại {chu_so_huu}: {ly_do_mo_ho}")
         return _hoi_lai("Task chưa đủ rõ để thực hiện.", cau_hoi)
 
+    # ============================================================
+    # FIX 1: BƯỚC 3.5 — GỌI BOSS CHO TASK PHỨC TẠP
+    # ============================================================
+    ket_qua_boss = _goi_boss(noi_dung_chuan, chu_so_huu)
+
+    if ket_qua_boss and ket_qua_boss.get("can_boss"):
+        # Boss đã phân tích dự án → trả kết quả cho user
+        _ghi_log("dai-nao", f"Boss đã phân tích dự án cho {chu_so_huu}")
+
+        tra_loi_boss = _tao_phan_hoi_boss(ket_qua_boss)
+
+        return {
+            "thanh_cong": True,
+            "tra_loi": tra_loi_boss,
+            "boss": {
+                "id_du_an": ket_qua_boss.get("id_du_an", ""),
+                "ds_task": ket_qua_boss.get("ds_task", []),
+                "yeu_cau": ket_qua_boss.get("yeu_cau", {}),
+            },
+        }
+
+    # Boss không dùng được → tiếp tục luồng cũ
+    if ket_qua_boss and not ket_qua_boss.get("thanh_cong"):
+        _ghi_log("dai-nao", "Boss hết quota — fallback luồng cũ.")
+
     # BƯỚC 4: PHÂN LOẠI
     try:
         from dai_nao.phan_loai import phan_loai
@@ -485,11 +594,10 @@ def xu_ly_task(du_lieu):
         except Exception as e:
             _ghi_log("loi", f"Kiểm tra failed_paths lỗi: {e}")
 
-    # BƯỚC 7: CHẤM ĐIỂM + KIỂM TRA NỘI DUNG THỰC (FIX 1 + FIX 2)
+    # BƯỚC 7: CHẤM ĐIỂM + KIỂM TRA NỘI DUNG THỰC
     if nhanh_tot_nhat:
         nhanh_dict = _node_sang_dict(nhanh_tot_nhat)
 
-        # FIX 2: Kiểm tra node có nội dung thực không
         if not _node_co_noi_dung_thuc(nhanh_dict):
             _ghi_log("dai-nao", "Nhánh rỗng nội dung — bỏ qua, gọi Tiểu não.")
             nhanh_tot_nhat = None
@@ -497,7 +605,6 @@ def xu_ly_task(du_lieu):
             try:
                 from dai_nao.cham_diem import cham_diem
                 diem = cham_diem(nhanh_tot_nhat, yeu_to)
-                # FIX 1: ngưỡng 0.75
                 if diem < NGUONG_DUNG_NODE:
                     _ghi_log(
                         "dai-nao",
@@ -520,7 +627,6 @@ def xu_ly_task(du_lieu):
     node_muon = _thu_muon_nhanh(noi_dung_chuan, loai_task, yeu_to, ngu_canh)
     if node_muon:
         node_muon_dict = _node_sang_dict(node_muon)
-        # FIX 2: mượn nhánh cũng phải có nội dung thực
         if _node_co_noi_dung_thuc(node_muon_dict):
             _ghi_log("dai-nao", "Đã mượn nhánh gần giống.")
             try:

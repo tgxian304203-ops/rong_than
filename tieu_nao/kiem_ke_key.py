@@ -2,31 +2,25 @@
 kiem_ke_key.py - Bước 1 Tiểu não: Kiểm kê key THỰC TẾ Rồng Thần.
 
 Nhiệm vụ:
-    - kiem_ke_key(chu_so_huu): kiểm kê key THỰC TẾ đã dán.
+    - kiem_ke_key(chu_so_huu, loai_nao): kiểm kê key theo loại não.
     - Xác định provider nào CÓ key (bỏ provider không có key).
     - Sắp xếp thứ tự gọi chỉ trong các provider có key.
     - Mỗi key chỉ dùng model của provider đó.
 
-ĐÃ SỬA:
-    - L6: MODEL_MAC_DINH cập nhật mới (10/2026), đồng bộ với
-      lay_danh_sach_model.py.
-    - L14: Lọc model bị blacklist trước khi trả về.
+ĐÃ SỬA (Giai đoạn 2 — tách bể key):
+    - FIX 1: Thêm tham số loai_nao — lọc key theo "boss" / "tieu_boss".
+    - FIX 2: Đổi thứ tự provider: OpenRouter → Groq → Gemini.
+    - FIX 3: Key cũ không có loai_nao → mặc định "tieu_boss".
+
+Các fix cũ giữ nguyên:
+    - L6: MODEL_MAC_DINH cập nhật mới (10/2026).
+    - L14: Lọc model bị blacklist.
 
 Quy tắc:
     - Chỉ gọi provider có key được dán.
-    - Thứ tự provider: Groq → OpenRouter → Gemini.
+    - Thứ tự provider: OpenRouter → Groq → Gemini.
     - Trong mỗi provider: key #1 → key #2 → key #3.
     - Bỏ key đã bị blacklist.
-
-Trả về:
-    {
-        thanh_cong: bool,
-        tong_key: int,
-        provider_co_key: [str],
-        theo_provider: {provider: [key_info]},
-        thu_tu_goi: [key_info],
-        loi: str?,
-    }
 """
 
 import time
@@ -46,9 +40,14 @@ def _ghi_log(loai, noi_dung):
 # ================================================================
 # HẰNG SỐ
 # ================================================================
-THU_TU_PROVIDER = ["Groq", "OpenRouter", "Gemini"]
+# FIX 2: Đổi thứ tự provider theo yêu cầu
+THU_TU_PROVIDER = ["OpenRouter", "Groq", "Gemini"]
 
-# MODEL MẶC ĐỊNH (cập nhật 10/2026) — đồng bộ với lay_danh_sach_model.py
+# FIX 1: Loại não hợp lệ
+LOAI_NAO_HOP_LE = ("boss", "tieu_boss")
+LOAI_NAO_MAC_DINH = "tieu_boss"
+
+# MODEL MẶC ĐỊNH (cập nhật 10/2026)
 MODEL_MAC_DINH = {
     "Groq": [
         "openai/gpt-oss-120b",
@@ -97,6 +96,19 @@ def _chuan_hoa_provider(provider):
 
 
 # ================================================================
+# FIX 1: CHUẨN HÓA LOAI_NAO
+# ================================================================
+def _chuan_hoa_loai_nao(gia_tri):
+    """Chuẩn hóa loai_nao. Mặc định 'tieu_boss' nếu sai."""
+    if not gia_tri:
+        return LOAI_NAO_MAC_DINH
+    gt = str(gia_tri).strip().lower()
+    if gt in LOAI_NAO_HOP_LE:
+        return gt
+    return LOAI_NAO_MAC_DINH
+
+
+# ================================================================
 # ĐỌC KEY TỪ KHO 1
 # ================================================================
 def _lay_key_tu_kho(chu_so_huu):
@@ -114,13 +126,28 @@ def _lay_key_tu_kho(chu_so_huu):
 
 
 # ================================================================
-# NHÓM KEY THEO PROVIDER
+# FIX 1: NHÓM KEY THEO PROVIDER — LỌC THEO loai_nao
 # ================================================================
-def _nhom_theo_provider(danh_sach_key):
+def _nhom_theo_provider(danh_sach_key, loai_nao=None):
+    """
+    Nhóm key theo provider.
+
+    FIX 1: Nếu loai_nao != None → chỉ lấy key cùng loai_nao.
+    FIX 3: Key cũ không có loai_nao → mặc định "tieu_boss".
+    """
+    loai_nao_chuan = _chuan_hoa_loai_nao(loai_nao) if loai_nao else None
+
     ket_qua = {}
     for key in danh_sach_key:
         if not isinstance(key, dict):
             continue
+
+        # FIX 1 + FIX 3: Lọc theo loai_nao
+        if loai_nao_chuan:
+            ln = key.get("loai_nao") or LOAI_NAO_MAC_DINH
+            if ln != loai_nao_chuan:
+                continue
+
         provider = _chuan_hoa_provider(key.get("provider", ""))
         if not provider:
             continue
@@ -136,11 +163,6 @@ def _nhom_theo_provider(danh_sach_key):
 # LỌC MODEL BỊ BLACKLIST (L14)
 # ================================================================
 def _loc_blacklist(danh_sach_model, provider):
-    """
-    Lọc bỏ model bị blacklist.
-
-    L14: Trước đây không lọc → model chết được gọi lại mãi.
-    """
     if not danh_sach_model or not provider:
         return list(danh_sach_model) if danh_sach_model else []
 
@@ -158,12 +180,10 @@ def _loc_blacklist(danh_sach_model, provider):
 # LIỆT KÊ MODEL CHO 1 KEY
 # ================================================================
 def _liet_ke_model(provider, key):
-    """Liệt kê model có thể dùng cho 1 key (đã lọc blacklist)."""
     if not provider or not key:
         return list(MODEL_MAC_DINH.get(provider, []))
 
     danh_sach = []
-    # Thử gọi API thật
     try:
         from tieu_nao.lay_danh_sach_model import lay_danh_sach_model
         danh_sach_api = lay_danh_sach_model(provider, key)
@@ -174,11 +194,9 @@ def _liet_ke_model(provider, key):
     except Exception as e:
         _ghi_log("loi", f"Lấy model lỗi ({provider}): {e}")
 
-    # Fallback: model mặc định
     if not danh_sach:
         danh_sach = list(MODEL_MAC_DINH.get(provider, []))
 
-    # L14: Lọc blacklist
     danh_sach = _loc_blacklist(danh_sach, provider)
 
     return danh_sach
@@ -215,17 +233,18 @@ def _xay_thu_tu_goi(nhom_theo_provider):
 # ================================================================
 # HÀM CHÍNH
 # ================================================================
-def kiem_ke_key(chu_so_huu):
+def kiem_ke_key(chu_so_huu, loai_nao=None):
     """
     Bước 1: Kiểm kê key THỰC TẾ đã dán của tài khoản.
 
-    ĐÃ SỬA:
-        - L6: MODEL_MAC_DINH cập nhật mới.
-        - L14: Lọc model bị blacklist.
+    FIX 1: Nhận thêm loai_nao để lọc key Boss / Tiểu Boss.
+
+    Trả về dict đầy đủ.
     """
     ket_qua = {
         "thanh_cong": False,
         "tong_key": 0,
+        "loai_nao": _chuan_hoa_loai_nao(loai_nao),
         "provider_co_key": [],
         "theo_provider": {},
         "thu_tu_goi": [],
@@ -242,10 +261,14 @@ def kiem_ke_key(chu_so_huu):
         ket_qua["loi"] = "Tài khoản chưa có key nào."
         return ket_qua
 
-    nhom = _nhom_theo_provider(danh_sach_key)
+    # FIX 1: Lọc theo loai_nao
+    nhom = _nhom_theo_provider(danh_sach_key, loai_nao)
 
     if not nhom:
-        ket_qua["loi"] = "Không có key nào hợp lệ (có thể bị blacklist)."
+        ket_qua["loi"] = (
+            f"Không có key nào cho loai_nao='{ket_qua['loai_nao']}' "
+            f"(có thể bị blacklist hoặc chưa dán)."
+        )
         return ket_qua
 
     provider_co_key = [p for p in THU_TU_PROVIDER if p in nhom]
@@ -263,8 +286,8 @@ def kiem_ke_key(chu_so_huu):
 
     _ghi_log(
         "tieu-nao",
-        f"Kiểm kê key cho {chu_so_huu}: {ket_qua['tong_key']} key, "
-        f"provider có key: {', '.join(provider_co_key)}",
+        f"Kiểm kê key cho {chu_so_huu} (loai_nao={ket_qua['loai_nao']}): "
+        f"{ket_qua['tong_key']} key, provider có key: {', '.join(provider_co_key)}",
     )
 
     return ket_qua
@@ -273,8 +296,8 @@ def kiem_ke_key(chu_so_huu):
 # ================================================================
 # HÀM PHỤ
 # ================================================================
-def dem_theo_provider(chu_so_huu):
-    ket_qua = kiem_ke_key(chu_so_huu)
+def dem_theo_provider(chu_so_huu, loai_nao=None):
+    ket_qua = kiem_ke_key(chu_so_huu, loai_nao)
     if not ket_qua.get("thanh_cong"):
         return {}
     return {
@@ -283,16 +306,16 @@ def dem_theo_provider(chu_so_huu):
     }
 
 
-def lay_key_dau_tien(chu_so_huu):
-    ket_qua = kiem_ke_key(chu_so_huu)
+def lay_key_dau_tien(chu_so_huu, loai_nao=None):
+    ket_qua = kiem_ke_key(chu_so_huu, loai_nao)
     if not ket_qua.get("thanh_cong"):
         return None
     thu_tu = ket_qua.get("thu_tu_goi", [])
     return thu_tu[0] if thu_tu else None
 
 
-def lay_key_theo_provider(chu_so_huu, provider):
-    ket_qua = kiem_ke_key(chu_so_huu)
+def lay_key_theo_provider(chu_so_huu, provider, loai_nao=None):
+    ket_qua = kiem_ke_key(chu_so_huu, loai_nao)
     if not ket_qua.get("thanh_cong"):
         return []
     provider_chuan = _chuan_hoa_provider(provider)
@@ -304,6 +327,7 @@ def tom_tat_kiem_ke(ket_qua):
         return f"❌ Không kiểm kê được: {ket_qua.get('loi', 'không rõ')}"
 
     phan = [f"📊 Tổng key: {ket_qua['tong_key']}"]
+    phan.append(f"🧠 Loại não: {ket_qua.get('loai_nao', '?')}")
     phan.append(f"🔑 Provider có key: {', '.join(ket_qua['provider_co_key'])}")
 
     for provider in ket_qua["provider_co_key"]:
@@ -314,28 +338,28 @@ def tom_tat_kiem_ke(ket_qua):
     return "\n".join(phan)
 
 
-def co_key(chu_so_huu):
-    ket_qua = kiem_ke_key(chu_so_huu)
+def co_key(chu_so_huu, loai_nao=None):
+    ket_qua = kiem_ke_key(chu_so_huu, loai_nao)
     return ket_qua.get("thanh_cong") and ket_qua.get("tong_key", 0) > 0
 
 
-def lay_danh_sach_provider_co_key(chu_so_huu):
-    ket_qua = kiem_ke_key(chu_so_huu)
+def lay_danh_sach_provider_co_key(chu_so_huu, loai_nao=None):
+    ket_qua = kiem_ke_key(chu_so_huu, loai_nao)
     if not ket_qua.get("thanh_cong"):
         return []
     return ket_qua.get("provider_co_key", [])
 
 
-def co_provider(chu_so_huu, provider):
+def co_provider(chu_so_huu, provider, loai_nao=None):
     provider_chuan = _chuan_hoa_provider(provider)
     if not provider_chuan:
         return False
-    ds = lay_danh_sach_provider_co_key(chu_so_huu)
+    ds = lay_danh_sach_provider_co_key(chu_so_huu, loai_nao)
     return provider_chuan in ds
 
 
-def liet_ke_model_theo_key(chu_so_huu):
-    ket_qua = kiem_ke_key(chu_so_huu)
+def liet_ke_model_theo_key(chu_so_huu, loai_nao=None):
+    ket_qua = kiem_ke_key(chu_so_huu, loai_nao)
     if not ket_qua.get("thanh_cong"):
         return []
     ket_qua_list = []
@@ -343,6 +367,7 @@ def liet_ke_model_theo_key(chu_so_huu):
         ket_qua_list.append({
             "provider": key.get("provider", ""),
             "key_id": key.get("id", ""),
+            "loai_nao": key.get("loai_nao", LOAI_NAO_MAC_DINH),
             "phan_tram": key.get("phan_tram", 100),
             "model": key.get("model_co_the_dung", []),
         })
