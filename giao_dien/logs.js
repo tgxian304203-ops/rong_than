@@ -1,14 +1,9 @@
 /* ============================================================
    logs.js - Hiển thị + lọc + quản lý logs Rồng Thần
    ------------------------------------------------------------
-   Nhiệm vụ:
-     - Tải logs từ GET /api/logs.
-     - Vẽ từng dòng log: thời gian + loại + nội dung.
-     - Bộ lọc theo loại: Tất cả / Đại não / Tiểu não / Tra web
-       / Sandbox / Lỗi.
-     - Cập nhật realtime mỗi 3 giây (chỉ khi trang Logs đang mở).
-     - Nút Xóa log: xóa toàn bộ log trên server.
-     - Nút Tải log: tải file .log về máy.
+   ĐÃ SỬA:
+     - Đảo ngược thứ tự log — hiển thị MỚI NHẤT ở DƯỚI CÙNG.
+       (Trước: mới nhất trên cùng, cũ nhất dưới cùng)
    ============================================================ */
 
 (function () {
@@ -24,14 +19,14 @@
     const cacNutLoc  = document.querySelectorAll('.nut-loc');
 
     if (!trangLogs || !danhSach) {
-        return; // Thiếu DOM thì thoát.
+        return;
     }
 
     /* ------------------------------------------------------------
        HẰNG SỐ
        ------------------------------------------------------------ */
-    const THOI_GIAN_CAP_NHAT = 3 * 1000; // 3 giây
-    const SO_LOG_TOI_DA = 500;           // tránh lag nếu log quá dài
+    const THOI_GIAN_CAP_NHAT = 3 * 1000;
+    const SO_LOG_TOI_DA = 500;
 
     let idHen = null;
     let boLocHienTai = 'tat-ca';
@@ -49,7 +44,6 @@
 
     /* ------------------------------------------------------------
        HÀM CHUẨN HÓA LOẠI LOG
-       Nhận nhiều dạng khác nhau từ server, đưa về 1 trong 5 loại.
        ------------------------------------------------------------ */
     function chuanHoaLoai(loai) {
         if (!loai) return 'khac';
@@ -94,23 +88,26 @@
     }
 
     /* ------------------------------------------------------------
-       VẼ DANH SÁCH LOG
+       VẼ DANH SÁCH LOG — ĐÃ SỬA: ĐẢO NGƯỢC THỨ TỰ
        ------------------------------------------------------------ */
     function veDanhSach(danhSachLog) {
         danhSach.innerHTML = '';
 
         if (!Array.isArray(danhSachLog) || danhSachLog.length === 0) {
-            return; // CSS tự hiển thị "Chưa có log"
+            return;
         }
 
         // Giới hạn số log để tránh lag
         const cat = danhSachLog.slice(-SO_LOG_TOI_DA);
 
-        cat.forEach(function (log) {
+        // ĐẢO NGƯỢC: log mới nhất xuống dưới cùng
+        const daoNguoc = cat.slice().reverse();
+
+        daoNguoc.forEach(function (log) {
             danhSach.appendChild(taoDongLog(log));
         });
 
-        // Cuộn xuống cuối
+        // Cuộn xuống cuối để thấy log mới nhất
         danhSach.scrollTop = danhSach.scrollHeight;
     }
 
@@ -141,22 +138,21 @@
                 ds = duLieu.danh_sach;
             }
 
-            // Nếu server trả full log (không lọc), tự lọc ở client
             if (boLocHienTai !== 'tat-ca' && duLieu && !duLieu.da_loc) {
                 ds = locLog(ds, boLocHienTai);
             }
 
             veDanhSach(ds);
         } catch (e) {
-            // Im lặng — không spam lỗi mỗi 3s
+            // Im lặng
         }
     }
 
     /* ------------------------------------------------------------
-       CẬP NHẬT ĐỊNH KỲ (chỉ khi trang Logs đang mở)
+       CẬP NHẬT ĐỊNH KỲ
        ------------------------------------------------------------ */
     function batDauCapNhat() {
-        if (idHen) return; // đã chạy rồi
+        if (idHen) return;
         idHen = setInterval(function () {
             if (trangLogs.classList.contains('dang-mo')) {
                 taiLog();
@@ -220,7 +216,6 @@
        TẢI LOG VỀ MÁY
        ------------------------------------------------------------ */
     function taiLogVeMay() {
-        // Lấy nội dung log hiện tại từ DOM, ghi ra file .log
         const cacDong = danhSach.querySelectorAll('.log-dong');
         if (!cacDong.length) {
             alert('Chưa có log để tải.');
@@ -250,8 +245,6 @@
     if (nutXoaLog) nutXoaLog.addEventListener('click', xoaLog);
     if (nutTaiLog) nutTaiLog.addEventListener('click', taiLogVeMay);
 
-    // Khi trang Logs mở → tải log ngay
-    // Dùng MutationObserver theo dõi class "dang-mo"
     const observer = new MutationObserver(function () {
         if (trangLogs.classList.contains('dang-mo')) {
             taiLog();
@@ -264,24 +257,8 @@
        ------------------------------------------------------------ */
     function khoiDong() {
         ganSuKienLoc();
-        batDauCapNhat();
-        // Nếu trang Logs đang mở sẵn thì tải luôn
+        batDauCuptNhat();
         if (trangLogs.classList.contains('dang-mo')) {
             taiLog();
         }
     }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', khoiDong);
-    } else {
-        khoiDong();
-    }
-
-    /* ------------------------------------------------------------
-       XUẤT RA TOÀN CỤC
-       ------------------------------------------------------------ */
-    window.taiLog = taiLog;
-    window.veDanhSachLog = veDanhSach;
-    window.dungCapNhatLog = dungCapNhat;
-
-})();
