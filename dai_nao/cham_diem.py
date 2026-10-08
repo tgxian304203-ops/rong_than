@@ -12,19 +12,24 @@ Công thức (theo Phần 4):
           + ưu_tiên          * 0.2
           + độ_khó           * 0.2
 
-ĐÃ SỬA (fix "ngáo"):
-    - FIX 1: Node chưa dùng (so_lan_thu=0) → ty_le = 0.5 (KHÔNG phải 1.0).
-    - FIX 2: uu_tien mặc định = 30 (KHÔNG phải 50) → node mới khó vượt 0.7.
-    - FIX 3: Node không có cach_giai.mo_ta và không có hanh_dong.code → score = 0.
-    - FIX 4: Ngưỡng dùng = 0.75 (chặt hơn 0.7).
-    - FIX 5: Thêm hàm kiem_tra_node_co_noi_dung_thuc.
+ĐÃ NÂNG CẤP (Giai đoạn 1 — học pattern):
+    - FIX 1: Node có pattern_regex → +0.10 (tổng quát, dùng nhiều lần).
+    - FIX 2: Node có placeholder_map → +0.10 (thay biến được).
+    - FIX 3: Node code cứng (không placeholder, không regex) → -0.10.
+    - FIX 4: Node regex + placeholder → +0.15 (bonus tổng quát cao nhất).
+    - FIX 5: Chặn score tối đa 1.0, tối thiểu 0.0.
+
+Các fix cũ giữ nguyên:
+    - Node chưa dùng → ty_le = 0.5 (không 1.0).
+    - uu_tien mặc định = 30.
+    - Node rỗng nội dung → 0 điểm.
+    - Ngưỡng dùng = 0.75.
 
 Quy tắc:
     - Node fail 3 lần → blacklist (score = 0).
     - Node fail > 50% → giảm 20%.
-    - Score < 0.5 → không dùng.
     - Score > 0.75 → dùng được.
-    - Score > 0.95 → tin cậy cao, ra lệnh luôn.
+    - Score > 0.95 → tin cậy cao.
 """
 
 import time
@@ -55,21 +60,24 @@ SO_LAN_FAIL_BLACKLIST = 3
 TY_LE_FAIL_GIAM_DIEM = 0.5
 MUC_GIAM_DIEM = 0.2
 
-# FIX 4: Nâng ngưỡng dùng từ 0.7 → 0.75
 NGUONG_DUNG = 0.75
 NGUONG_TIN_CAY_CAO = 0.95
 NGUONG_MUON_NHANH = 0.5
 
-# FIX 1 + FIX 2: Giá trị mặc định cho node mới
 TY_LE_MAC_DINH_NODE_MOI = 0.5
 UU_TIEN_MAC_DINH_NODE_MOI = 30
+
+# FIX 1, 2, 3, 4: Điểm thưởng cho node tổng quát
+DIEM_CO_REGEX = 0.10
+DIEM_CO_PLACEHOLDER = 0.10
+DIEM_CODE_CUNG = -0.10
+DIEM_REGEX_VA_PLACEHOLDER = 0.15  # Bonus cao nhất
 
 
 # ================================================================
 # LẤY THUỘC TÍNH NODE AN TOÀN
 # ================================================================
 def _lay(node, ten_truong, mac_dinh=None):
-    """Lấy thuộc tính node — hỗ trợ cả object Nut và dict."""
     if node is None:
         return mac_dinh
     if isinstance(node, dict):
@@ -78,14 +86,14 @@ def _lay(node, ten_truong, mac_dinh=None):
 
 
 # ================================================================
-# FIX 3 + FIX 5: KIỂM TRA NODE CÓ NỘI DUNG THỰC
+# KIỂM TRA NODE CÓ NỘI DUNG THỰC
 # ================================================================
 def kiem_tra_node_co_noi_dung_thuc(node):
     """
-    Node phải có nội dung thực mới được tính điểm:
+    Node phải có nội dung thực:
         - hanh_dong.code không rỗng, HOẶC
         - cach_giai.mo_ta không rỗng, HOẶC
-        - hanh_dong.loai == "tra_web" (được phép rỗng code)
+        - hanh_dong.loai == "tra_web"
     """
     if node is None:
         return False
@@ -111,15 +119,53 @@ def kiem_tra_node_co_noi_dung_thuc(node):
 
 
 # ================================================================
+# FIX 1, 2, 3, 4: TÍNH ĐIỂM TỔNG QUÁT
+# ================================================================
+def _diem_tong_quat(node):
+    """
+    Tính điểm thưởng/phạt dựa trên độ "tổng quát" của node.
+
+    FIX 1: Có pattern_regex → +0.10
+    FIX 2: Có placeholder_map → +0.10
+    FIX 3: Code cứng (không regex, không placeholder) → -0.10
+    FIX 4: Có CẢ regex VÀ placeholder → +0.15 (bonus gộp, thay vì +0.20)
+    """
+    if node is None:
+        return 0.0
+
+    pattern_regex = (_lay(node, "pattern_regex", "") or "").strip()
+    placeholder_map = _lay(node, "placeholder_map", {}) or {}
+    co_placeholder = isinstance(placeholder_map, dict) and bool(placeholder_map)
+
+    hanh_dong = _lay(node, "hanh_dong", {}) or {}
+    if isinstance(hanh_dong, dict):
+        code = (hanh_dong.get("code") or "").strip()
+    else:
+        code = ""
+
+    # FIX 4: Node vừa có regex vừa có placeholder → bonus cao nhất
+    if pattern_regex and co_placeholder:
+        return DIEM_REGEX_VA_PLACEHOLDER
+
+    # FIX 1: Có regex → +0.10
+    if pattern_regex:
+        return DIEM_CO_REGEX
+
+    # FIX 2: Có placeholder → +0.10
+    if co_placeholder:
+        return DIEM_CO_PLACEHOLDER
+
+    # FIX 3: Code cứng (không regex, không placeholder, có code) → -0.10
+    if code:
+        return DIEM_CODE_CUNG
+
+    return 0.0
+
+
+# ================================================================
 # ĐỘ TIN CẬY
 # ================================================================
 def lay_do_tin_cay(node, yeu_to=None):
-    """
-    Ước lượng độ tin cậy của node.
-
-    FIX 1: Node chưa dùng (so_lan_thu=0) → ty_le = 0.5 (không phải 0.5 base nữa,
-    mà tính toán riêng để không thổi phồng).
-    """
     if node is None:
         return 0.0
 
@@ -127,15 +173,12 @@ def lay_do_tin_cay(node, yeu_to=None):
     so_lan_thu = int(_lay(node, "so_lan_thu", 0) or 0)
 
     if so_lan_thu == 0:
-        # Node mới tinh — chưa có bằng chứng → tin cậy trung bình thấp
         ty_le = TY_LE_MAC_DINH_NODE_MOI
     else:
         ty_le = thanh_cong / so_lan_thu
 
-    # Điểm cộng kinh nghiệm (tối đa 0.2)
     diem_kinh_nghiem = min(0.2, so_lan_thu * 0.01)
 
-    # Điểm cộng có cách giải cụ thể
     diem_cach_giai = 0.0
     cach_giai = _lay(node, "cach_giai", {}) or {}
     hanh_dong = _lay(node, "hanh_dong", {}) or {}
@@ -144,7 +187,6 @@ def lay_do_tin_cay(node, yeu_to=None):
     if hanh_dong:
         diem_cach_giai += 0.05
 
-    # Điểm cộng khớp yếu tố
     diem_yeu_to = 0.0
     if yeu_to and isinstance(yeu_to, dict):
         dieu_kien = _lay(node, "dieu_kien", {}) or {}
@@ -163,44 +205,33 @@ def cham_diem(node, yeu_to=None):
     """
     Tính score cho 1 node.
 
-    FIX 1: Node chưa dùng (so_lan_thu=0) → ty_le_thanh_cong = 0.5.
-    FIX 2: uu_tien mặc định = 30.
-    FIX 3: Node rỗng nội dung → score = 0.
+    FIX 1-4: Thêm điểm tổng quát vào score cuối.
     """
     if node is None:
         return 0.0
 
-    # --- Kiểm tra blacklist ---
     if bool(_lay(node, "blacklist", False)):
         return 0.0
 
-    # FIX 3: Node rỗng nội dung → 0 điểm
     if not kiem_tra_node_co_noi_dung_thuc(node):
         return 0.0
 
-    # --- Tỷ lệ thành công ---
     thanh_cong = int(_lay(node, "thanh_cong", 0) or 0)
     so_lan_thu = int(_lay(node, "so_lan_thu", 0) or 0)
 
     if so_lan_thu <= 0:
-        # FIX 1: KHÔNG dùng 1.0 nữa — dùng 0.5
         ty_le_thanh_cong = TY_LE_MAC_DINH_NODE_MOI
     else:
         ty_le_thanh_cong = thanh_cong / so_lan_thu
 
-    # --- Độ tin cậy ---
     do_tin_cay = lay_do_tin_cay(node, yeu_to)
 
-    # --- Ưu tiên ---
-    # FIX 2: mặc định 30 (thay vì 50)
     uu_tien = int(_lay(node, "uu_tien", UU_TIEN_MAC_DINH_NODE_MOI) or UU_TIEN_MAC_DINH_NODE_MOI)
     uu_tien_chuan = uu_tien / 100.0
 
-    # --- Độ khó ---
     do_kho = float(_lay(node, "do_kho", 0.5) or 0.5)
     do_kho_chuan = 1.0 - do_kho
 
-    # --- Công thức Phần 4 ---
     score = (
         ty_le_thanh_cong * TRONG_SO["ty_le_thanh_cong"]
         + do_tin_cay * TRONG_SO["do_tin_cay"]
@@ -208,15 +239,17 @@ def cham_diem(node, yeu_to=None):
         + do_kho_chuan * TRONG_SO["do_kho"]
     )
 
-    # --- Giảm điểm nếu fail > 50% ---
+    # FIX 1-4: Cộng điểm tổng quát
+    score += _diem_tong_quat(node)
+
     that_bai = int(_lay(node, "that_bai", 0) or 0)
     if so_lan_thu > 0 and (that_bai / so_lan_thu) > TY_LE_FAIL_GIAM_DIEM:
         score = max(0.0, score - MUC_GIAM_DIEM)
 
-    # --- Blacklist nếu fail ≥ 3 lần ---
     if that_bai >= SO_LAN_FAIL_BLACKLIST:
         score = 0.0
 
+    # FIX 5: Chặn score trong khoảng [0.0, 1.0]
     return round(min(1.0, max(0.0, score)), 3)
 
 
@@ -224,7 +257,6 @@ def cham_diem(node, yeu_to=None):
 # HÀM PHỤ: CHẤM ĐIỂM NHIỀU NODE
 # ================================================================
 def cham_diem_nhieu(danh_sach_node, yeu_to=None):
-    """Chấm điểm nhiều node và sắp xếp theo score giảm dần."""
     if not danh_sach_node:
         return []
 
@@ -241,7 +273,6 @@ def cham_diem_nhieu(danh_sach_node, yeu_to=None):
 # HÀM PHỤ: LỌC NODE ĐỦ ĐIỂM
 # ================================================================
 def loc_node_du_diem(danh_sach_node, yeu_to=None, nguong=NGUONG_DUNG):
-    """Lọc các node có score ≥ nguong."""
     ket_qua = cham_diem_nhieu(danh_sach_node, yeu_to)
     return [item for item in ket_qua if item[1] >= nguong]
 
@@ -250,7 +281,6 @@ def loc_node_du_diem(danh_sach_node, yeu_to=None, nguong=NGUONG_DUNG):
 # HÀM PHỤ: LẤY NODE TỐT NHẤT
 # ================================================================
 def lay_node_tot_nhat(danh_sach_node, yeu_to=None):
-    """Trả về node có score cao nhất (hoặc None)."""
     ket_qua = cham_diem_nhieu(danh_sach_node, yeu_to)
     if not ket_qua:
         return None
@@ -261,7 +291,6 @@ def lay_node_tot_nhat(danh_sach_node, yeu_to=None):
 # HÀM PHỤ: XẾP HẠNG ƯU TIÊN
 # ================================================================
 def xep_hang_uu_tien(danh_sach_node):
-    """Xếp hạng node theo uu_tien rồi đến score."""
     def khoa(node):
         uu_tien = int(_lay(node, "uu_tien", UU_TIEN_MAC_DINH_NODE_MOI) or UU_TIEN_MAC_DINH_NODE_MOI)
         score = float(_lay(node, "score", 0.0) or 0.0)
@@ -274,9 +303,6 @@ def xep_hang_uu_tien(danh_sach_node):
 # HÀM PHỤ: ĐÁNH GIÁ MỨC TIN CẬY
 # ================================================================
 def danh_gia_muc_tin_cay(score):
-    """
-    Đánh giá mức tin cậy dựa trên score.
-    """
     if score is None:
         return "hoi_lai_nhieu"
     if score > 0.95:
@@ -292,7 +318,6 @@ def danh_gia_muc_tin_cay(score):
 # HÀM PHỤ: CẬP NHẬT SCORE SAU KHI DÙNG
 # ================================================================
 def cap_nhat_score_sau_dung(node, thanh_cong=True, duong_dan_sai=None):
-    """Cập nhật node sau khi dùng."""
     if node is None:
         return 0.0
 
@@ -332,3 +357,15 @@ def cap_nhat_score_sau_dung(node, thanh_cong=True, duong_dan_sai=None):
 
     score_moi = cham_diem(node)
     return score_moi
+
+
+# ================================================================
+# HÀM PHỤ: KIỂM TRA NODE CÓ PHẢI "TỔNG QUÁT" KHÔNG
+# ================================================================
+def node_co_tong_quat(node):
+    """FIX 1+2: Node có regex hoặc placeholder → tổng quát."""
+    if node is None:
+        return False
+    pattern_regex = (_lay(node, "pattern_regex", "") or "").strip()
+    placeholder_map = _lay(node, "placeholder_map", {}) or {}
+    return bool(pattern_regex) or bool(isinstance(placeholder_map, dict) and placeholder_map)
