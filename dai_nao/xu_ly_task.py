@@ -7,22 +7,14 @@ Nhiệm vụ:
     - Gọi Tiểu não khi bí, gọi Tra web khi cần, gọi Sandbox khi chạy code.
     - Cập nhật cây quyết định sau mỗi task.
 
-ĐÃ SỬA:
-    L1: Bước 3 chỉ hỏi lại khi THỰC SỰ mơ hồ.
-    L2a: _thuc_thi_nhanh chuyển Nut → dict.
-    L18: Không chạy sandbox backend — ĐÃ SỬA THEO CÁCH 3.
-    L24: _goi_tra_web không slice dict.
-    L34: ghi_that_bai_vao_cay (cho route /api/sandbox/ket-qua).
-    L35: Gọi tu_dong_chia_se sau khi sinh node mới.
-    L36: Gọi tim_va_muon trước khi gọi Tiểu não.
-    L38: Gọi cap_nhat_uu_tien sau khi node thay đổi.
-    L39: Gọi lay_ngu_canh ở BƯỚC 0.5.
-    L42: Gọi tao_code thay vì lấy code thô.
-    L43: Gọi phan_biet_code để nhận diện ngôn ngữ.
-    LỖI A: Truyền chu_so_huu vào xu_ly_cau_hoi_thoi_gian.
-    MỚI: Truyền chu_so_huu vào _goi_tieu_nao → su_dung_model.
+ĐÃ SỬA (fix "ngáo"):
+    - FIX 1: Nâng ngưỡng chấm điểm từ 0.7 → 0.75.
+    - FIX 2: Trước khi dùng node, kiểm tra node có nội dung thực.
+             Nếu không → coi như fail → gọi Tiểu não.
+    - FIX 3: Bỏ qua node có cach_giai.mo_ta rỗng VÀ hanh_dong.code rỗng.
 
-CÁCH 3: _thuc_thi_nhanh chạy sandbox backend trực tiếp.
+Các fix cũ giữ nguyên:
+    L1, L2a, L18, L24, L34, L35, L36, L38, L39, L42, L43, LỖI A.
 """
 
 import time
@@ -42,6 +34,9 @@ TU_MO_HO = (
 )
 
 SO_LAN_TU_SUA_TOI_DA = 3
+
+# FIX 1: Nâng ngưỡng dùng node từ 0.7 → 0.75
+NGUONG_DUNG_NODE = 0.75
 
 
 # ----------------------------------------------------------------
@@ -88,6 +83,39 @@ def _node_sang_dict(nhanh):
 
 
 # ----------------------------------------------------------------
+# HÀM PHỤ: KIỂM TRA NODE CÓ NỘI DUNG THỰC
+# ----------------------------------------------------------------
+def _node_co_noi_dung_thuc(nhanh_dict):
+    """
+    FIX 2 + FIX 3: Kiểm tra node có nội dung thực để dùng:
+        - hanh_dong.code không rỗng, HOẶC
+        - hanh_dong.loai == "tra_web" (được phép rỗng code), HOẶC
+        - cach_giai.mo_ta không rỗng.
+    """
+    if not isinstance(nhanh_dict, dict):
+        return False
+
+    hanh_dong = nhanh_dict.get("hanh_dong") or {}
+    if isinstance(hanh_dong, dict):
+        code = (hanh_dong.get("code") or "").strip()
+        loai = (hanh_dong.get("loai") or "").strip()
+        if code:
+            return True
+        if loai == "tra_web":
+            return True
+
+    cach_giai = nhanh_dict.get("cach_giai") or {}
+    if isinstance(cach_giai, dict):
+        mo_ta = (cach_giai.get("mo_ta") or "").strip()
+        if mo_ta:
+            return True
+    elif isinstance(cach_giai, str) and cach_giai.strip():
+        return True
+
+    return False
+
+
+# ----------------------------------------------------------------
 # HÀM PHỤ: KIỂM TRA MƠ HỒ
 # ----------------------------------------------------------------
 def _la_mo_ho(noi_dung):
@@ -117,14 +145,10 @@ def _lay_ngu_canh(du_lieu):
 
 
 # ----------------------------------------------------------------
-# HÀM PHỤ: GỌI TIỂU NÃO (SỬA — TRUYỀN chu_so_huu)
+# HÀM PHỤ: GỌI TIỂU NÃO
 # ----------------------------------------------------------------
 def _goi_tieu_nao(task, ngu_canh, chu_so_huu=""):
-    """
-    Gọi Tiểu não khi Đại não bí.
-
-    ĐÃ SỬA: Truyền chu_so_huu xuống su_dung_model.
-    """
+    """Gọi Tiểu não khi Đại não bí."""
     try:
         from dai_nao.su_dung_model import su_dung_model
         return su_dung_model(task, ngu_canh, chu_so_huu)
@@ -272,7 +296,7 @@ def _tao_code_tu_node(nhanh_dict, yeu_to, noi_dung):
 
 
 # ----------------------------------------------------------------
-# HÀM PHỤ: CHẠY SANDBOX BACKEND (CÁCH 3)
+# HÀM PHỤ: CHẠY SANDBOX BACKEND
 # ----------------------------------------------------------------
 def _chay_sandbox_backend(code, ngon_ngu):
     if not code:
@@ -317,7 +341,7 @@ def _chay_sandbox_backend(code, ngon_ngu):
 
 
 # ----------------------------------------------------------------
-# HÀM PHỤ: TỰ SỬA LỖI (CÁCH 3)
+# HÀM PHỤ: TỰ SỬA LỖI
 # ----------------------------------------------------------------
 def _tu_sua_va_chay_lai(code, ngon_ngu, ket_qua_chay):
     if ket_qua_chay.get("thanh_cong"):
@@ -461,18 +485,29 @@ def xu_ly_task(du_lieu):
         except Exception as e:
             _ghi_log("loi", f"Kiểm tra failed_paths lỗi: {e}")
 
-    # BƯỚC 7: CHẤM ĐIỂM
+    # BƯỚC 7: CHẤM ĐIỂM + KIỂM TRA NỘI DUNG THỰC (FIX 1 + FIX 2)
     if nhanh_tot_nhat:
-        try:
-            from dai_nao.cham_diem import cham_diem
-            diem = cham_diem(nhanh_tot_nhat, yeu_to)
-            if diem < 0.7:
-                _ghi_log("dai-nao", f"Nhánh có điểm thấp ({diem}) — bỏ qua.")
-                nhanh_tot_nhat = None
-        except ImportError:
-            pass
-        except Exception as e:
-            _ghi_log("loi", f"Chấm điểm lỗi: {e}")
+        nhanh_dict = _node_sang_dict(nhanh_tot_nhat)
+
+        # FIX 2: Kiểm tra node có nội dung thực không
+        if not _node_co_noi_dung_thuc(nhanh_dict):
+            _ghi_log("dai-nao", "Nhánh rỗng nội dung — bỏ qua, gọi Tiểu não.")
+            nhanh_tot_nhat = None
+        else:
+            try:
+                from dai_nao.cham_diem import cham_diem
+                diem = cham_diem(nhanh_tot_nhat, yeu_to)
+                # FIX 1: ngưỡng 0.75
+                if diem < NGUONG_DUNG_NODE:
+                    _ghi_log(
+                        "dai-nao",
+                        f"Nhánh có điểm thấp ({diem} < {NGUONG_DUNG_NODE}) — bỏ qua.",
+                    )
+                    nhanh_tot_nhat = None
+            except ImportError:
+                pass
+            except Exception as e:
+                _ghi_log("loi", f"Chấm điểm lỗi: {e}")
 
     # BƯỚC 8: THỰC THI NHÁNH
     if nhanh_tot_nhat:
@@ -484,29 +519,33 @@ def xu_ly_task(du_lieu):
     # BƯỚC 8.5: MƯỢN NHÁNH
     node_muon = _thu_muon_nhanh(noi_dung_chuan, loai_task, yeu_to, ngu_canh)
     if node_muon:
-        _ghi_log("dai-nao", "Đã mượn nhánh gần giống.")
-        try:
-            from dai_nao.ghi_nho import luu_node
-            node_dict = _node_sang_dict(node_muon)
-            if node_dict:
-                luu_node(node_dict)
-        except Exception as e:
-            _ghi_log("loi", f"Lưu node mượn lỗi: {e}")
+        node_muon_dict = _node_sang_dict(node_muon)
+        # FIX 2: mượn nhánh cũng phải có nội dung thực
+        if _node_co_noi_dung_thuc(node_muon_dict):
+            _ghi_log("dai-nao", "Đã mượn nhánh gần giống.")
+            try:
+                from dai_nao.ghi_nho import luu_node
+                if node_muon_dict:
+                    luu_node(node_muon_dict)
+            except Exception as e:
+                _ghi_log("loi", f"Lưu node mượn lỗi: {e}")
 
-        _thu_chia_se_nhanh(node_muon)
+            _thu_chia_se_nhanh(node_muon)
 
-        return _thuc_thi_nhanh(
-            node_muon, noi_dung_chuan, yeu_to, loai_task,
-            chu_so_huu, thoi_gian_bat_dau, ngu_canh,
-        )
+            return _thuc_thi_nhanh(
+                node_muon, noi_dung_chuan, yeu_to, loai_task,
+                chu_so_huu, thoi_gian_bat_dau, ngu_canh,
+            )
+        else:
+            _ghi_log("dai-nao", "Nhánh mượn rỗng nội dung — bỏ qua.")
 
-    # BƯỚC 9: GỌI TIỂU NÃO (SỬA — truyền chu_so_huu)
+    # BƯỚC 9: GỌI TIỂU NÃO
     _ghi_log("dai-nao", "Không có nhánh khớp — gọi Tiểu não.")
 
     node_moi = _goi_tieu_nao(
         {"noi_dung": noi_dung_chuan, "yeu_to": yeu_to, "loai_task": loai_task},
         ngu_canh,
-        chu_so_huu,   # ← THÊM
+        chu_so_huu,
     )
 
     if not node_moi:
@@ -565,7 +604,7 @@ def _thuc_thi_nhanh(nhanh, noi_dung, yeu_to, loai_task, chu_so_huu,
                 "tra_loi": ket_qua_web,
             }
 
-    # --- Chạy code (CÁCH 3) ---
+    # --- Chạy code ---
     code_mau = hanh_dong.get("code") or nhanh_dict.get("code")
     ngon_ngu = hanh_dong.get("ngon_ngu") or nhanh_dict.get("ngon_ngu") or ""
 
@@ -586,7 +625,7 @@ def _thuc_thi_nhanh(nhanh, noi_dung, yeu_to, loai_task, chu_so_huu,
         ket_qua_chay = _chay_sandbox_backend(code_final, ngon_ngu_final)
 
         if not ket_qua_chay.get("thanh_cong"):
-            _ghi_log("sandbox", f"Code lỗi — thử tự sửa.")
+            _ghi_log("sandbox", "Code lỗi — thử tự sửa.")
             ket_qua_chay = _tu_sua_va_chay_lai(code_final, ngon_ngu_final, ket_qua_chay)
             if ket_qua_chay.get("da_sua"):
                 code_final = ket_qua_chay.get("code", code_final)

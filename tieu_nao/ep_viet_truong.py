@@ -8,10 +8,12 @@ Nhiệm vụ:
     - _trich_json(chuoi): trích JSON từ response model.
     - _validate_node(node): validate node theo schema.
 
-ĐÃ SỬA:
-    - Prompt chi tiết hơn, yêu cầu model SUY LUẬN trước khi viết code.
-    - Thêm ví dụ cụ thể cho từng loại task.
-    - Yêu cầu code CỤ THỂ, KHÔNG dùng code mẫu chung.
+ĐÃ SỬA (fix "ngáo"):
+    - FIX 1: Bỏ "cach_giai" khỏi TRUONG_BAT_BUOC — chỉ còn cach_giai_phap (string).
+    - FIX 2: Rút ngắn prompt từ ~150 dòng → ~50 dòng.
+    - FIX 3: Yêu cầu rõ code PHẢI đầy đủ, đóng thẻ, không cắt cụt.
+    - FIX 4: Bỏ mo_ta/cac_buoc/vi_du khỏi schema — chỉ giữ cach_giai_phap.
+    - FIX 5: _validate_node kiểm tra code không rỗng nếu loai = "chay_code".
 
 Quy tắc (theo Phần 4, bước 3):
     - Tạo prompt yêu cầu model sinh node theo JSON schema.
@@ -29,6 +31,7 @@ Tầng dữ liệu: dai_nao/ghi_nho.py
 import re
 import json
 import time
+import secrets
 
 
 # ================================================================
@@ -49,7 +52,7 @@ SO_LAN_RETRY = 3
 
 
 # ================================================================
-# SCHEMA NODE BẮT BUỘC
+# FIX 1 + FIX 4: SCHEMA NODE BẮT BUỘC — bỏ "cach_giai", chỉ giữ cach_giai_phap
 # ================================================================
 TRUONG_BAT_BUOC = [
     "id",
@@ -58,19 +61,19 @@ TRUONG_BAT_BUOC = [
     "loai_van_de",
     "cach_giai_phap",
     "dieu_kien",
-    "cach_giai",
     "hanh_dong",
 ]
 
 
 # ================================================================
-# TẠO PROMPT (SỬA — CHI TIẾT HƠN)
+# FIX 2: PROMPT NGẮN GỌN
 # ================================================================
 def _tao_prompt(task, ngu_canh=None):
     """
     Tạo prompt yêu cầu model sinh node theo JSON schema.
 
-    SỬA: Prompt chi tiết, có ví dụ, yêu cầu code cụ thể.
+    FIX 2: Prompt ngắn gọn — không quá 60 dòng.
+    FIX 3: Yêu cầu rõ code PHẢI đầy đủ.
     """
     ngu_canh = ngu_canh or {}
 
@@ -82,97 +85,73 @@ def _tao_prompt(task, ngu_canh=None):
     nhom = loai_task.get("nhom", "")
     loai = loai_task.get("loai", "")
 
-    # Ngữ cảnh
+    # Ngữ cảnh ngắn gọn
     ngu_canh_str = ""
     if ngu_canh:
-        cac_manh = []
-        for key in ("hoi_thoai", "du_an", "file", "linh_vuc", "ngon_ngu", "moi_truong", "cam_xuc"):
+        manh = []
+        for key in ("hoi_thoai", "du_an", "ngon_ngu", "moi_truong"):
             v = ngu_canh.get(key, {})
             if v:
-                cac_manh.append(f"- {key}: {str(v)[:200]}")
-        if cac_manh:
-            ngu_canh_str = "Ngữ cảnh:\n" + "\n".join(cac_manh)
+                manh.append(f"- {key}: {str(v)[:120]}")
+        if manh:
+            ngu_canh_str = "\nNgữ cảnh:\n" + "\n".join(manh)
 
-    prompt = f"""Bạn là Tiểu não của Rồng Thần — chuyên gia viết code và giải quyết vấn đề.
+    prompt = f"""Bạn là Tiểu não Rồng Thần — chuyên gia code.
 
-NHIỆM VỤ CẦN XỬ LÝ:
-\"{noi_dung}\"
+TASK: "{noi_dung}"
 
-5 yếu tố đã trích:
-- Hành động: {yeu_to.get('hanh_dong', '(chưa rõ)')}
-- Đối tượng: {yeu_to.get('doi_tuong', '(chưa rõ)')}
-- Thuộc tính: {yeu_to.get('thuoc_tinh', '(chưa rõ)')}
-- Ràng buộc: {yeu_to.get('rang_buoc', '(chưa rõ)')}
-- Ngữ cảnh: {yeu_to.get('ngu_canh', '(chưa rõ)')}
-
-Phân loại sẵn có:
+Phân loại:
 - Lĩnh vực: {linh_vuc or '(chưa rõ)'}
 - Nhóm: {nhom or '(chưa rõ)'}
 - Loại: {loai or '(chưa rõ)'}
-
 {ngu_canh_str}
 
-═══════════════════════════════════════════
-BƯỚC 1: SUY LUẬN TRƯỚC KHI VIẾT
-═══════════════════════════════════════════
-Hãy tự hỏi (KHÔNG cần ghi vào JSON):
-1. Task này thực sự cần gì? (làm web? viết hàm? tạo AI? xử lý file?)
-2. Code cần làm gì CỤ THỂ?
-3. Cần thư viện nào?
-4. Có ràng buộc gì đặc biệt không?
+═══════════════════════════════════════
+QUY TẮC VIẾT CODE:
+═══════════════════════════════════════
+1. Code PHẢI CỤ THỂ cho task này — KHÔNG viết boilerplate chung.
+2. Code PHẢI ĐẦY ĐỦ — đóng thẻ, đóng hàm, KHÔNG cắt cụt.
+3. Nếu task yêu cầu HTML → viết HTML hoàn chỉnh, có <html></html>.
+4. Nếu task yêu cầu Python → viết hàm cụ thể, có return.
+5. KHÔNG viết "Flask boilerplate" nếu task không yêu cầu web.
+6. Nếu task đơn giản (1+1) → code đơn giản. Nếu phức tạp → code phức tạp.
 
-VÍ DỤ SUY LUẬN:
-- Task "tạo AI dùng nhiều API key" → cần code xử lý NHIỀU API KEY (array keys, xoay key, retry khi hết quota). KHÔNG viết Flask boilerplate chung.
-- Task "làm web bán hàng" → cần HTML có sản phẩm, giỏ hàng, thanh toán. KHÔNG viết `<h1>Web bán hàng</h1>`.
-- Task "tính 1+1" → cần code Python `def cong(a,b): return a+b`. KHÔNG viết Flask.
-
-═══════════════════════════════════════════
-BƯỚC 2: VIẾT CODE CỤ THỂ
-═══════════════════════════════════════════
-- Code PHẢI phù hợp với task.
-- KHÔNG viết code mẫu chung chung.
-- Nếu task đơn giản → code đơn giản.
-- Nếu task phức tạp → code phức tạp.
-
-═══════════════════════════════════════════
-BƯỚC 3: TRẢ VỀ JSON
-═══════════════════════════════════════════
-Hãy sinh 1 node mới dưới dạng JSON. Không giải thích gì thêm ngoài JSON.
-
-Schema bắt buộc (đúng 8 trường):
+═══════════════════════════════════════
+TRẢ VỀ JSON (đúng 7 trường, không thêm):
+═══════════════════════════════════════
 {{
-  "id": "nut-xxxxxxxx",
-  "ten": "Tên node ngắn gọn (tối đa 80 ký tự)",
+  "id": "nut-<16 ký tự hex ngẫu nhiên>",
+  "ten": "Tên ngắn gọn mô tả đúng task (tối đa 80 ký tự)",
   "linh_vuc": "toán | văn | code | bug | khoa học | đời sống | kinh doanh | sáng tạo | học tập | tra cứu | kỹ thuật | luật - hành chính",
-  "loai_van_de": "nhóm vấn đề (ví dụ: số học, tạo mới, runtime)",
-  "cach_giai_phap": "cách giải (ví dụ: cộng số nguyên, làm web)",
+  "loai_van_de": "nhóm vấn đề (ví dụ: số học, tạo_web, runtime)",
+  "cach_giai_phap": "cách giải ngắn (ví dụ: cộng_hai_số, tạo_shop_html)",
   "dieu_kien": {{
-    "chua": ["từ khóa 1", "từ khóa 2"],
-    "yeu_to_can": ["hanh_dong", "doi_tuong"]
-  }},
-  "cach_giai": {{
-    "mo_ta": "Mô tả cách giải bằng tiếng Việt",
-    "cac_buoc": ["bước 1", "bước 2"],
-    "vi_du": "Ví dụ minh họa"
+    "chua": ["từ khóa 1", "từ khóa 2"]
   }},
   "hanh_dong": {{
-    "loai": "tra_loi | chay_code | tra_web",
-    "code": "CODE CỤ THỂ — viết code đầy đủ, có comment giải thích",
-    "ngon_ngu": "python | html | javascript | ..."
+    "loai": "chay_code | tra_loi | tra_web",
+    "code": "CODE ĐẦY ĐỦ Ở ĐÂY",
+    "ngon_ngu": "python | html | javascript"
   }}
 }}
 
-LƯU Ý QUAN TRỌNG:
-- id: bắt đầu bằng "nut-" + 16 ký tự hex ngẫu nhiên.
-- ten: ngắn gọn, mô tả ĐÚNG vấn đề (VD: "Tạo AI dùng nhiều API key", KHÔNG viết "Hàm mới").
-- code: PHẢI là code CỤ THỂ cho task này. KHÔNG viết:
-  * Flask boilerplate `app = Flask(__name__)` nếu task không yêu cầu web.
-  * `<h1>Hello World</h1>` nếu task yêu cầu web bán hàng.
-  * Code rỗng nếu task yêu cầu viết hàm.
-- Không lưu kết quả cụ thể. Chỉ lưu quy tắc / thuật toán / cách giải.
-- Node phải áp dụng được cho mọi task cùng loại.
+VÍ DỤ ĐÚNG:
+- Task "tính 1+1":
+  hanh_dong.loai = "chay_code"
+  hanh_dong.code = "def cong(a, b):\\n    return a + b\\n\\nprint(cong(1, 1))"
+  hanh_dong.ngon_ngu = "python"
 
-Trả về CHỈ JSON, không có văn bản nào khác."""
+- Task "làm web bán hàng":
+  hanh_dong.loai = "chay_code"
+  hanh_dong.code = "<!DOCTYPE html>\\n<html>...đầy đủ...</html>"
+  hanh_dong.ngon_ngu = "html"
+
+VÍ DỤ SAI (KHÔNG ĐƯỢC VIẾT):
+- "app = Flask(__name__)..." khi task không yêu cầu Flask.
+- "<h1>Tiêu đề</h1>" không có phần thân.
+- "def ham_moi(): return {{}}" — hàm rỗng vô nghĩa.
+
+CHỈ TRẢ VỀ JSON. KHÔNG giải thích gì thêm."""
 
     return prompt
 
@@ -187,13 +166,11 @@ def _trich_json(chuoi):
 
     chuoi = chuoi.strip()
 
-    # 1. Parse trực tiếp
     try:
         return json.loads(chuoi)
     except (json.JSONDecodeError, ValueError):
         pass
 
-    # 2. Bỏ markdown ```json ... ```
     mau_markdown = r"```(?:json)?\s*([\s\S]*?)```"
     khop = re.search(mau_markdown, chuoi)
     if khop:
@@ -202,7 +179,6 @@ def _trich_json(chuoi):
         except (json.JSONDecodeError, ValueError):
             pass
 
-    # 3. Tìm { ... } đầu tiên
     vi_tri_dau = chuoi.find("{")
     vi_tri_cuoi = chuoi.rfind("}")
     if vi_tri_dau >= 0 and vi_tri_cuoi > vi_tri_dau:
@@ -212,7 +188,6 @@ def _trich_json(chuoi):
         except (json.JSONDecodeError, ValueError):
             pass
 
-    # 4. Sửa lỗi phổ biến
     chuoi_clean = re.sub(r"//[^\n]*", "", chuoi)
     chuoi_clean = re.sub(r",(\s*[}\]])", r"\1", chuoi_clean)
     vi_tri_dau = chuoi_clean.find("{")
@@ -227,10 +202,13 @@ def _trich_json(chuoi):
 
 
 # ================================================================
-# VALIDATE NODE
+# FIX 5: VALIDATE NODE
 # ================================================================
 def _validate_node(node):
-    """Kiểm tra node có đủ 8 trường bắt buộc không."""
+    """
+    Kiểm tra node có đủ 7 trường bắt buộc không.
+    FIX 5: Nếu hanh_dong.loai == "chay_code" → code phải không rỗng.
+    """
     if not node or not isinstance(node, dict):
         return False, "Node không phải dict."
 
@@ -245,14 +223,20 @@ def _validate_node(node):
     if not isinstance(node["dieu_kien"], dict):
         return False, "dieu_kien không phải dict."
 
-    if not isinstance(node["cach_giai"], dict):
-        return False, "cach_giai không phải dict."
-
-    if not node["cach_giai"].get("mo_ta"):
-        return False, "cach_giai.mo_ta rỗng."
-
     if not isinstance(node["hanh_dong"], dict):
         return False, "hanh_dong không phải dict."
+
+    # FIX 5: kiểm tra code nếu loai = chay_code
+    loai_hd = (node["hanh_dong"].get("loai") or "").strip()
+    if loai_hd == "chay_code":
+        code = (node["hanh_dong"].get("code") or "").strip()
+        if not code:
+            return False, "hanh_dong.loai='chay_code' nhưng code rỗng."
+        # Kiểm tra code có dấu hiệu bị cắt cụt
+        if code.count("<") != code.count(">"):
+            return False, "Code HTML có thẻ không đóng (bị cắt cụt)."
+        if code.count("(") != code.count(")"):
+            return False, "Code có ngoặc không khớp (bị cắt cụt)."
 
     return True, ""
 
@@ -261,7 +245,7 @@ def _validate_node(node):
 # GỌI MODEL VÀ LẤY JSON
 # ================================================================
 def _goi_va_lay_json(chu_so_huu, prompt):
-    """Gọi model qua do_model.py và parse JSON từ response."""
+    """Gọi model qua do_model.py và parse JSON."""
     try:
         from tieu_nao.do_model import do_model
     except ImportError:
@@ -287,15 +271,7 @@ def _goi_va_lay_json(chu_so_huu, prompt):
 # HÀM CHÍNH
 # ================================================================
 def ep_viet_truong(task, ngu_canh=None, chu_so_huu=""):
-    """
-    Bước 3: Ép model viết trường chuẩn.
-
-    task: dict { noi_dung, yeu_to, loai_task }.
-    ngu_canh: dict 10 loại ngữ cảnh.
-    chu_so_huu: tên tài khoản.
-
-    Trả về: dict node hoặc None nếu thất bại.
-    """
+    """Bước 3: Ép model viết trường chuẩn."""
     if not task:
         return None
 
@@ -312,21 +288,17 @@ def ep_viet_truong(task, ngu_canh=None, chu_so_huu=""):
 
         if not node:
             _ghi_log("loi", f"Lần {lan_thu} thất bại: {loi}")
-            if "Không gọi được model" in loi or "rỗng" in loi:
-                time.sleep(1)
-                continue
+            time.sleep(1)
             continue
 
         hop_le, ly_do = _validate_node(node)
         if not hop_le:
             _ghi_log("loi", f"Node không hợp lệ: {ly_do}")
-
             node = _chuan_hoa_node(node)
-            hop_le2, ly_do2 = _validate_node(node)
+            hop_le2, _ = _validate_node(node)
             if hop_le2:
-                _ghi_log("tieu-nao", f"Đã chuẩn hóa node thành công.")
+                _ghi_log("tieu-nao", "Đã chuẩn hóa node thành công.")
                 return node
-
             time.sleep(1)
             continue
 
@@ -345,12 +317,11 @@ def ep_viet_truong(task, ngu_canh=None, chu_so_huu=""):
 # CHUẨN HÓA NODE
 # ================================================================
 def _chuan_hoa_node(node):
-    """Chuẩn hóa node: bổ sung trường thiếu, sửa format."""
+    """Chuẩn hóa node: bổ sung trường thiếu."""
     if not isinstance(node, dict):
         return node
 
     if not node.get("id") or not isinstance(node["id"], str):
-        import secrets
         node["id"] = "nut-" + secrets.token_hex(8)
     elif not node["id"].startswith("nut-"):
         node["id"] = "nut-" + node["id"][:16]
@@ -364,14 +335,9 @@ def _chuan_hoa_node(node):
             "yeu_to_can": ["hanh_dong", "doi_tuong"],
         }
 
-    if not isinstance(node.get("cach_giai"), dict):
-        node["cach_giai"] = {
-            "mo_ta": str(node.get("cach_giai", "")),
-            "cac_buoc": [],
-            "vi_du": "",
-        }
-    elif not node["cach_giai"].get("mo_ta"):
-        node["cach_giai"]["mo_ta"] = node.get("ten", "Chưa có mô tả.")
+    # FIX 1: bỏ cach_giai — chỉ giữ cach_giai_phap
+    if not node.get("cach_giai_phap"):
+        node["cach_giai_phap"] = node.get("ten", "chưa rõ")
 
     if not isinstance(node.get("hanh_dong"), dict):
         node["hanh_dong"] = {
@@ -407,18 +373,16 @@ def ep_viet_truong_mot_lan(task, ngu_canh=None, chu_so_huu=""):
 # HÀM PHỤ: TẠO PROMPT NHIỀU NODE
 # ================================================================
 def tao_prompt_nhieu_node(task, so_luong=3, ngu_canh=None):
-    """Tạo prompt yêu cầu model sinh nhiều node cùng lúc."""
+    """Tạo prompt yêu cầu model sinh nhiều node."""
     prompt_goc = _tao_prompt(task, ngu_canh)
-
     prompt = prompt_goc.replace(
-        "sinh 1 node mới dưới dạng JSON",
-        f"sinh {so_luong} node mới dưới dạng JSON array",
-    ).replace(
-        "Trả về CHỈ JSON, không có văn bản nào khác.",
-        f"Trả về CHỈ JSON array chứa {so_luong} object, "
-        "mỗi object theo schema trên. Không có văn bản nào khác.",
+        "TRẢ VỀ JSON (đúng 7 trường, không thêm):",
+        f"TRẢ VỀ JSON ARRAY chứa {so_luong} object (mỗi object đúng 7 trường):",
     )
-
+    prompt = prompt.replace(
+        "CHỈ TRẢ VỀ JSON. KHÔNG giải thích gì thêm.",
+        "CHỈ TRẢ VỀ JSON ARRAY. KHÔNG giải thích gì thêm.",
+    )
     return prompt
 
 

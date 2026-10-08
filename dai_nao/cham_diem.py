@@ -12,17 +12,18 @@ Công thức (theo Phần 4):
           + ưu_tiên          * 0.2
           + độ_khó           * 0.2
 
-Trọng số:
-    - tỷ_lệ_thành_công: thanh_cong / so_lan_thu (mặc định 1.0 nếu chưa dùng).
-    - độ_tin_cậy:       do_tin_cay(node, yeu_to) — mặc định 0.9.
-    - ưu_tiên:          uu_tien / 100.
-    - độ_khó:           1.0 - do_kho (khó hơn → điểm thấp).
+ĐÃ SỬA (fix "ngáo"):
+    - FIX 1: Node chưa dùng (so_lan_thu=0) → ty_le = 0.5 (KHÔNG phải 1.0).
+    - FIX 2: uu_tien mặc định = 30 (KHÔNG phải 50) → node mới khó vượt 0.7.
+    - FIX 3: Node không có cach_giai.mo_ta và không có hanh_dong.code → score = 0.
+    - FIX 4: Ngưỡng dùng = 0.75 (chặt hơn 0.7).
+    - FIX 5: Thêm hàm kiem_tra_node_co_noi_dung_thuc.
 
 Quy tắc:
     - Node fail 3 lần → blacklist (score = 0).
     - Node fail > 50% → giảm 20%.
     - Score < 0.5 → không dùng.
-    - Score > 0.7 → dùng được.
+    - Score > 0.75 → dùng được.
     - Score > 0.95 → tin cậy cao, ra lệnh luôn.
 """
 
@@ -50,13 +51,18 @@ TRONG_SO = {
     "do_kho": 0.2,
 }
 
-SO_LAN_FAIL_BLACKLIST = 3      # fail 3 lần → blacklist
-TY_LE_FAIL_GIAM_DIEM = 0.5     # fail > 50% → giảm 20%
-MUC_GIAM_DIEM = 0.2            # giảm 20%
+SO_LAN_FAIL_BLACKLIST = 3
+TY_LE_FAIL_GIAM_DIEM = 0.5
+MUC_GIAM_DIEM = 0.2
 
-NGUONG_DUNG = 0.7              # score ≥ 0.7 → dùng
-NGUONG_TIN_CAY_CAO = 0.95      # score ≥ 0.95 → tin cậy cao
-NGUONG_MUON_NHANH = 0.5        # score ≥ 0.5 → mượn được
+# FIX 4: Nâng ngưỡng dùng từ 0.7 → 0.75
+NGUONG_DUNG = 0.75
+NGUONG_TIN_CAY_CAO = 0.95
+NGUONG_MUON_NHANH = 0.5
+
+# FIX 1 + FIX 2: Giá trị mặc định cho node mới
+TY_LE_MAC_DINH_NODE_MOI = 0.5
+UU_TIEN_MAC_DINH_NODE_MOI = 30
 
 
 # ================================================================
@@ -72,43 +78,73 @@ def _lay(node, ten_truong, mac_dinh=None):
 
 
 # ================================================================
+# FIX 3 + FIX 5: KIỂM TRA NODE CÓ NỘI DUNG THỰC
+# ================================================================
+def kiem_tra_node_co_noi_dung_thuc(node):
+    """
+    Node phải có nội dung thực mới được tính điểm:
+        - hanh_dong.code không rỗng, HOẶC
+        - cach_giai.mo_ta không rỗng, HOẶC
+        - hanh_dong.loai == "tra_web" (được phép rỗng code)
+    """
+    if node is None:
+        return False
+
+    hanh_dong = _lay(node, "hanh_dong", {}) or {}
+    if isinstance(hanh_dong, dict):
+        code = (hanh_dong.get("code") or "").strip()
+        loai = (hanh_dong.get("loai") or "").strip()
+        if code:
+            return True
+        if loai == "tra_web":
+            return True
+
+    cach_giai = _lay(node, "cach_giai", {}) or {}
+    if isinstance(cach_giai, dict):
+        mo_ta = (cach_giai.get("mo_ta") or "").strip()
+        if mo_ta:
+            return True
+    elif isinstance(cach_giai, str) and cach_giai.strip():
+        return True
+
+    return False
+
+
+# ================================================================
 # ĐỘ TIN CẬY
 # ================================================================
 def lay_do_tin_cay(node, yeu_to=None):
     """
-    Ước lượng độ tin cậy của node dựa trên:
-        - Số lần thử (càng nhiều càng tin).
-        - Tỷ lệ thành công.
-        - Có cách giải cụ thể không.
-        - Có khớp 5 yếu tố không.
+    Ước lượng độ tin cậy của node.
 
-    Trả về: float 0.0 – 1.0
+    FIX 1: Node chưa dùng (so_lan_thu=0) → ty_le = 0.5 (không phải 0.5 base nữa,
+    mà tính toán riêng để không thổi phồng).
     """
     if node is None:
         return 0.0
 
-    # Base = tỷ lệ thành công (đã là 0–1)
     thanh_cong = int(_lay(node, "thanh_cong", 0) or 0)
     so_lan_thu = int(_lay(node, "so_lan_thu", 0) or 0)
 
     if so_lan_thu == 0:
-        ty_le = 0.5  # chưa dùng bao giờ → trung bình
+        # Node mới tinh — chưa có bằng chứng → tin cậy trung bình thấp
+        ty_le = TY_LE_MAC_DINH_NODE_MOI
     else:
         ty_le = thanh_cong / so_lan_thu
 
-    # Điểm cộng dựa trên số lần dùng (kinh nghiệm)
+    # Điểm cộng kinh nghiệm (tối đa 0.2)
     diem_kinh_nghiem = min(0.2, so_lan_thu * 0.01)
 
-    # Điểm cộng nếu có cách giải cụ thể
+    # Điểm cộng có cách giải cụ thể
     diem_cach_giai = 0.0
     cach_giai = _lay(node, "cach_giai", {}) or {}
     hanh_dong = _lay(node, "hanh_dong", {}) or {}
     if cach_giai:
-        diem_cach_giai += 0.1
+        diem_cach_giai += 0.05
     if hanh_dong:
-        diem_cach_giai += 0.1
+        diem_cach_giai += 0.05
 
-    # Điểm cộng nếu khớp nhiều yếu tố trong 5 yếu tố
+    # Điểm cộng khớp yếu tố
     diem_yeu_to = 0.0
     if yeu_to and isinstance(yeu_to, dict):
         dieu_kien = _lay(node, "dieu_kien", {}) or {}
@@ -127,10 +163,9 @@ def cham_diem(node, yeu_to=None):
     """
     Tính score cho 1 node.
 
-    node: Nut object hoặc dict.
-    yeu_to: dict 5 yếu tố (tùy chọn — dùng để tính độ tin cậy).
-
-    Trả về: float 0.0 – 1.0
+    FIX 1: Node chưa dùng (so_lan_thu=0) → ty_le_thanh_cong = 0.5.
+    FIX 2: uu_tien mặc định = 30.
+    FIX 3: Node rỗng nội dung → score = 0.
     """
     if node is None:
         return 0.0
@@ -139,24 +174,29 @@ def cham_diem(node, yeu_to=None):
     if bool(_lay(node, "blacklist", False)):
         return 0.0
 
+    # FIX 3: Node rỗng nội dung → 0 điểm
+    if not kiem_tra_node_co_noi_dung_thuc(node):
+        return 0.0
+
     # --- Tỷ lệ thành công ---
     thanh_cong = int(_lay(node, "thanh_cong", 0) or 0)
     so_lan_thu = int(_lay(node, "so_lan_thu", 0) or 0)
 
     if so_lan_thu <= 0:
-        ty_le_thanh_cong = 1.0
+        # FIX 1: KHÔNG dùng 1.0 nữa — dùng 0.5
+        ty_le_thanh_cong = TY_LE_MAC_DINH_NODE_MOI
     else:
         ty_le_thanh_cong = thanh_cong / so_lan_thu
 
     # --- Độ tin cậy ---
     do_tin_cay = lay_do_tin_cay(node, yeu_to)
 
-    # --- Ưu tiên (0 – 100 → 0.0 – 1.0) ---
-    uu_tien = int(_lay(node, "uu_tien", 50) or 50)
+    # --- Ưu tiên ---
+    # FIX 2: mặc định 30 (thay vì 50)
+    uu_tien = int(_lay(node, "uu_tien", UU_TIEN_MAC_DINH_NODE_MOI) or UU_TIEN_MAC_DINH_NODE_MOI)
     uu_tien_chuan = uu_tien / 100.0
 
-    # --- Độ khó (0.0 – 1.0) ---
-    # Khó hơn → score thấp hơn (vì dễ fail hơn)
+    # --- Độ khó ---
     do_kho = float(_lay(node, "do_kho", 0.5) or 0.5)
     do_kho_chuan = 1.0 - do_kho
 
@@ -184,11 +224,7 @@ def cham_diem(node, yeu_to=None):
 # HÀM PHỤ: CHẤM ĐIỂM NHIỀU NODE
 # ================================================================
 def cham_diem_nhieu(danh_sach_node, yeu_to=None):
-    """
-    Chấm điểm nhiều node và sắp xếp theo score giảm dần.
-
-    Trả về: list [(node, score)] đã sắp xếp.
-    """
+    """Chấm điểm nhiều node và sắp xếp theo score giảm dần."""
     if not danh_sach_node:
         return []
 
@@ -205,11 +241,7 @@ def cham_diem_nhieu(danh_sach_node, yeu_to=None):
 # HÀM PHỤ: LỌC NODE ĐỦ ĐIỂM
 # ================================================================
 def loc_node_du_diem(danh_sach_node, yeu_to=None, nguong=NGUONG_DUNG):
-    """
-    Lọc các node có score ≥ nguong.
-
-    Trả về: list node đã qua lọc (kèm score trong tuple).
-    """
+    """Lọc các node có score ≥ nguong."""
     ket_qua = cham_diem_nhieu(danh_sach_node, yeu_to)
     return [item for item in ket_qua if item[1] >= nguong]
 
@@ -218,9 +250,7 @@ def loc_node_du_diem(danh_sach_node, yeu_to=None, nguong=NGUONG_DUNG):
 # HÀM PHỤ: LẤY NODE TỐT NHẤT
 # ================================================================
 def lay_node_tot_nhat(danh_sach_node, yeu_to=None):
-    """
-    Trả về node có score cao nhất (hoặc None nếu không có).
-    """
+    """Trả về node có score cao nhất (hoặc None)."""
     ket_qua = cham_diem_nhieu(danh_sach_node, yeu_to)
     if not ket_qua:
         return None
@@ -231,12 +261,9 @@ def lay_node_tot_nhat(danh_sach_node, yeu_to=None):
 # HÀM PHỤ: XẾP HẠNG ƯU TIÊN
 # ================================================================
 def xep_hang_uu_tien(danh_sach_node):
-    """
-    Xếp hạng node theo uu_tien (0-100) rồi đến score.
-    Dùng khi cần chọn nhánh sơ bộ trước khi chấm điểm đầy đủ.
-    """
+    """Xếp hạng node theo uu_tien rồi đến score."""
     def khoa(node):
-        uu_tien = int(_lay(node, "uu_tien", 50) or 50)
+        uu_tien = int(_lay(node, "uu_tien", UU_TIEN_MAC_DINH_NODE_MOI) or UU_TIEN_MAC_DINH_NODE_MOI)
         score = float(_lay(node, "score", 0.0) or 0.0)
         return (uu_tien, score)
 
@@ -248,13 +275,7 @@ def xep_hang_uu_tien(danh_sach_node):
 # ================================================================
 def danh_gia_muc_tin_cay(score):
     """
-    Đánh giá mức tin cậy dựa trên score (đúng Phần 4).
-
-    Trả về: str
-        - "ra_lenh_luon"  : > 95%
-        - "ra_lenh_ghi_chu": 90-95%
-        - "hoi_lai_1_cau" : 70-90%
-        - "hoi_lai_nhieu": < 70%
+    Đánh giá mức tin cậy dựa trên score.
     """
     if score is None:
         return "hoi_lai_nhieu"
@@ -271,14 +292,7 @@ def danh_gia_muc_tin_cay(score):
 # HÀM PHỤ: CẬP NHẬT SCORE SAU KHI DÙNG
 # ================================================================
 def cap_nhat_score_sau_dung(node, thanh_cong=True, duong_dan_sai=None):
-    """
-    Cập nhật node sau khi dùng (thành công hoặc thất bại).
-    Trả về score mới.
-
-    node: Nut object hoặc dict.
-    thanh_cong: True nếu task chạy thành công.
-    duong_dan_sai: mô tả vết sai (nếu thất bại).
-    """
+    """Cập nhật node sau khi dùng."""
     if node is None:
         return 0.0
 
@@ -293,7 +307,6 @@ def cap_nhat_score_sau_dung(node, thanh_cong=True, duong_dan_sai=None):
         thanh_cong_moi = thanh_cong_cu
         that_bai_moi = that_bai_cu + 1
 
-    # Cập nhật vào node
     if isinstance(node, dict):
         node["so_lan_thu"] = so_lan_thu
         node["thanh_cong"] = thanh_cong_moi
