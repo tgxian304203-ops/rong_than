@@ -2,15 +2,13 @@
    logs.js - Hiển thị + lọc + quản lý logs Rồng Thần
    ------------------------------------------------------------
    ĐÃ SỬA:
-     - Đảo ngược thứ tự log — MỚI NHẤT ở DƯỚI CÙNG.
+     - FIX 1: Dùng thoi_gian_hien_thi (đã format giờ VN) từ server.
+     - FIX 2: Đảo ngược thứ tự log — MỚI NHẤT ở DƯỚI CÙNG.
    ============================================================ */
 
 (function () {
     'use strict';
 
-    /* ------------------------------------------------------------
-       THAM CHIẾU DOM
-       ------------------------------------------------------------ */
     const trangLogs  = document.getElementById('trang-logs');
     const danhSach   = document.getElementById('danh-sach-log');
     const nutXoaLog  = document.getElementById('nut-xoa-log');
@@ -21,18 +19,12 @@
         return;
     }
 
-    /* ------------------------------------------------------------
-       HẰNG SỐ
-       ------------------------------------------------------------ */
     const THOI_GIAN_CAP_NHAT = 3 * 1000;
     const SO_LOG_TOI_DA = 500;
 
     let idHen = null;
     let boLocHienTai = 'tat-ca';
 
-    /* ------------------------------------------------------------
-       BẢNG NHÃN LOẠI LOG
-       ------------------------------------------------------------ */
     const NHAN_LOAI = {
         'dai-nao':  'Đại não',
         'tieu-nao': 'Tiểu não',
@@ -41,9 +33,6 @@
         'loi':      'Lỗi',
     };
 
-    /* ------------------------------------------------------------
-       CHUẨN HÓA LOẠI LOG
-       ------------------------------------------------------------ */
     function chuanHoaLoai(loai) {
         if (!loai) return 'khac';
         const t = String(loai).toLowerCase().trim();
@@ -57,16 +46,33 @@
         return 'khac';
     }
 
-    /* ------------------------------------------------------------
-       TẠO 1 DÒNG LOG
-       ------------------------------------------------------------ */
+    /* FIX 1: Dùng thoi_gian_hien_thi, fallback tự format */
+    function dinhDangThoiGian(log) {
+        if (log.thoi_gian_hien_thi) {
+            return log.thoi_gian_hien_thi;
+        }
+
+        const tg = log.thoi_gian;
+        if (!tg) return '';
+
+        try {
+            const d = new Date(tg * 1000);
+            const gio  = String(d.getHours()).padStart(2, '0');
+            const phut = String(d.getMinutes()).padStart(2, '0');
+            const giay = String(d.getSeconds()).padStart(2, '0');
+            return gio + ':' + phut + ':' + giay;
+        } catch (e) {
+            return String(tg);
+        }
+    }
+
     function taoDongLog(log) {
         const dong = document.createElement('div');
         dong.classList.add('log-dong');
 
         const tg = document.createElement('span');
         tg.classList.add('log-thoi-gian');
-        tg.textContent = log.thoi_gian || '';
+        tg.textContent = dinhDangThoiGian(log);
         dong.appendChild(tg);
 
         const loai = document.createElement('span');
@@ -86,9 +92,7 @@
         return dong;
     }
 
-    /* ------------------------------------------------------------
-       VẼ DANH SÁCH LOG — ĐẢO NGƯỢC THỨ TỰ
-       ------------------------------------------------------------ */
+    /* FIX 2: Đảo ngược — mới nhất dưới cùng */
     function veDanhSach(danhSachLog) {
         danhSach.innerHTML = '';
 
@@ -106,9 +110,6 @@
         danhSach.scrollTop = danhSach.scrollHeight;
     }
 
-    /* ------------------------------------------------------------
-       LỌC LOG THEO LOẠI
-       ------------------------------------------------------------ */
     function locLog(danhSachLog, loai) {
         if (loai === 'tat-ca') return danhSachLog;
         return danhSachLog.filter(function (log) {
@@ -116,9 +117,6 @@
         });
     }
 
-    /* ------------------------------------------------------------
-       TẢI LOG TỪ SERVER
-       ------------------------------------------------------------ */
     async function taiLog() {
         try {
             const url = boLocHienTai === 'tat-ca'
@@ -143,9 +141,6 @@
         }
     }
 
-    /* ------------------------------------------------------------
-       CẬP NHẬT ĐỊNH KỲ
-       ------------------------------------------------------------ */
     function batDauCapNhat() {
         if (idHen) return;
         idHen = setInterval(function () {
@@ -162,9 +157,6 @@
         }
     }
 
-    /* ------------------------------------------------------------
-       GẮN SỰ KIỆN LỌC
-       ------------------------------------------------------------ */
     function ganSuKienLoc() {
         cacNutLoc.forEach(function (nut) {
             nut.addEventListener('click', function () {
@@ -179,9 +171,6 @@
         });
     }
 
-    /* ------------------------------------------------------------
-       XÓA LOG
-       ------------------------------------------------------------ */
     async function xoaLog() {
         const hamDongY = async function () {
             try {
@@ -207,9 +196,6 @@
         }
     }
 
-    /* ------------------------------------------------------------
-       TẢI LOG VỀ MÁY
-       ------------------------------------------------------------ */
     function taiLogVeMay() {
         const cacDong = danhSach.querySelectorAll('.log-dong');
         if (!cacDong.length) {
@@ -234,9 +220,6 @@
         URL.revokeObjectURL(url);
     }
 
-    /* ------------------------------------------------------------
-       SỰ KIỆN
-       ------------------------------------------------------------ */
     if (nutXoaLog) nutXoaLog.addEventListener('click', xoaLog);
     if (nutTaiLog) nutTaiLog.addEventListener('click', taiLogVeMay);
 
@@ -247,9 +230,6 @@
     });
     observer.observe(trangLogs, { attributes: true, attributeFilter: ['class'] });
 
-    /* ------------------------------------------------------------
-       KHỞI ĐỘNG
-       ------------------------------------------------------------ */
     function khoiDong() {
         ganSuKienLoc();
         batDauCapNhat();
