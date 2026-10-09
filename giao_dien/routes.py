@@ -2,12 +2,8 @@
 routes.py - Định nghĩa toàn bộ route API cho Rồng Thần.
 
 ĐÃ SỬA:
-    - L3: Route /api/logs và /api/logs/loc trả về object {thanh_cong, danh_sach}.
-    - L22: Route /api/sandbox/ket-qua nhận kết quả chạy code từ client.
-    - L34: Route /api/sandbox/ket-qua gọi ghi_that_bai_vao_cay khi có lỗi.
-    - L44: Route /api/sandbox/ket-qua gọi hoc_tu_loi_moi khi tự sửa thành công.
-    - GĐ 1.5: Route /api/danh-sach-key và /api/quota-key truyền loai_nao
-              từ query param vào hàm xử lý.
+    - Đọc SECRET_KEY từ env trước → không mất session khi Render rebuild.
+    - Nếu không có env → đọc file → nếu không có → tạo mới.
 """
 
 import os
@@ -25,6 +21,13 @@ FILE_CAU_HINH_KHO = os.path.join(THU_MUC_DU_LIEU, "cau_hinh_kho.json")
 
 
 def _doc_hoac_tao_secret_key():
+    """Đọc SECRET_KEY từ env → file → tạo mới."""
+    # 1. Ưu tiên env — không mất khi Render rebuild
+    secret_env = os.environ.get("SECRET_KEY")
+    if secret_env:
+        return secret_env
+
+    # 2. Fallback: đọc từ file
     os.makedirs(THU_MUC_DU_LIEU, exist_ok=True)
     du_lieu = {}
     if os.path.exists(FILE_CAU_HINH_KHO):
@@ -200,7 +203,6 @@ def dang_ky_routes(app):
         ham = _goi_an_toan("giao_dien.luu_key", "lay_danh_sach_key")
         if ham is None:
             return _chua_trien_khai("lấy danh sách key")
-        # GĐ 1.5: Truyền loai_nao từ query param
         loai_nao = request.args.get("loai_nao", "") or None
         du_lieu = {"loai_nao": loai_nao} if loai_nao else {}
         return jsonify(ham(du_lieu))
@@ -217,7 +219,6 @@ def dang_ky_routes(app):
         ham = _goi_an_toan("giao_dien.luu_key", "lay_quota_key")
         if ham is None:
             return _chua_trien_khai("lấy quota key")
-        # GĐ 1.5: Truyền loai_nao từ query param
         loai_nao = request.args.get("loai_nao", "") or None
         du_lieu = {"loai_nao": loai_nao} if loai_nao else {}
         return jsonify(ham(du_lieu))
@@ -271,7 +272,7 @@ def dang_ky_routes(app):
         return jsonify(ham())
 
     # ============================================================
-    # LOGS — L3
+    # LOGS
     # ============================================================
     @app.route("/api/logs", methods=["GET"])
     def api_logs():
@@ -496,7 +497,7 @@ def dang_ky_routes(app):
         return jsonify(ham(request.get_json(silent=True) or {}))
 
     # ============================================================
-    # SANDBOX — CHẠY CODE
+    # SANDBOX
     # ============================================================
     @app.route("/api/sandbox/chay", methods=["POST"])
     def api_sandbox_chay():
@@ -510,25 +511,8 @@ def dang_ky_routes(app):
             return _chua_trien_khai("chạy sandbox")
         return jsonify(ham(du_lieu))
 
-    # ============================================================
-    # SANDBOX — NHẬN KẾT QUẢ TỪ CLIENT (L22 + L34 + L44)
-    # ============================================================
     @app.route("/api/sandbox/ket-qua", methods=["POST"])
     def api_sandbox_ket_qua():
-        """
-        Nhận kết quả chạy code từ client (LiveCodes/Pyodide).
-
-        Body:
-            {
-                code: str,
-                stdout: str,
-                stderr: str,
-                ngon_ngu: "python" | "html" | "javascript",
-                id_chat: str?,
-                id_node: str?,        # id node đã dùng (nếu có)
-                la_lan_hai: bool?,    # nếu True → không tự sửa nữa
-            }
-        """
         du_lieu = request.get_json(silent=True) or {}
         code = du_lieu.get("code") or ""
         stdout = du_lieu.get("stdout") or ""
@@ -699,3 +683,33 @@ def dang_ky_routes(app):
         if ham is None:
             return _chua_trien_khai("đọc cây quyết định")
         return jsonify(ham())
+
+    # ============================================================
+    # GLOBAL ERROR HANDLER — Trả JSON thay vì HTML
+    # ============================================================
+    @app.errorhandler(Exception)
+    def _xu_ly_loi_chung(e):
+        import traceback
+        try:
+            from logs.ghi_log import ghi_log
+            ghi_log("loi", f"Flask exception: {e}\n{traceback.format_exc()}")
+        except Exception:
+            pass
+        return jsonify({
+            "thanh_cong": False,
+            "loi": f"Lỗi server: {e}",
+        }), 500
+
+    @app.errorhandler(404)
+    def _xu_ly_404(e):
+        return jsonify({
+            "thanh_cong": False,
+            "loi": "Không tìm thấy route.",
+        }), 404
+
+    @app.errorhandler(500)
+    def _xu_ly_500(e):
+        return jsonify({
+            "thanh_cong": False,
+            "loi": "Lỗi server nội bộ.",
+        }), 500
