@@ -2,10 +2,8 @@
 xu_ly_task.py - Trung tâm điều phối Đại não Rồng Thần.
 
 ĐÃ SỬA:
-    - BƯỚC 3.5: Boss viết trường + hợp đồng file → trả danh sách bước.
-    - BƯỚC 3.6: Nhận "Số N" → lấy bước N → gọi Tiểu não sinh code.
-    - BƯỚC 3.7: Kiểm tra code khớp hợp đồng → lưu tiến độ.
-    - Bỏ cây quyết định cũ (không dùng nữa).
+    - Hỗ trợ lệnh "Số N" (1 bước) và "Cả"/"Làm hết"/"Tiếp" (3 bước).
+    - Phản hồi code có hướng dẫn: đặt file ở đâu, mô tả, bước tiếp.
 """
 
 import time
@@ -23,6 +21,7 @@ TU_MO_HO = (
 )
 
 CHU_SO_HUU_KHACH = "khach"
+SO_BUOC_TOI_DA_MOI_LAN = 3
 
 
 def _ghi_log(loai, noi_dung):
@@ -60,6 +59,30 @@ def _la_mo_ho(noi_dung):
 
 
 # ----------------------------------------------------------------
+# HÀM PHỤ: NHẬN DIỆN LỆNH
+# ----------------------------------------------------------------
+def _la_lenh_lam_het(noi_dung):
+    """Kiểm tra có phải lệnh 'làm hết' / 'cả' / 'all' không."""
+    if not noi_dung:
+        return False
+    t = noi_dung.lower().strip()
+    ds = (
+        "cả", "làm hết", "all", "hết", "tất cả",
+        "làm tất cả", "làm cả", "chạy hết", "cả 4 bước",
+        "cả 5 bước", "cả 3 bước", "làm hết luôn",
+    )
+    return t in ds or t.startswith("cả ") or t.startswith("làm hết")
+
+
+def _la_lenh_tiep(noi_dung):
+    """Kiểm tra có phải lệnh 'tiếp' / 'tiếp tục' không."""
+    if not noi_dung:
+        return False
+    t = noi_dung.lower().strip()
+    return t in ("tiếp", "tiếp tục", "next", "làm tiếp", "tếp")
+
+
+# ----------------------------------------------------------------
 # HÀM PHỤ: LẤY NGỮ CẢNH
 # ----------------------------------------------------------------
 def _lay_ngu_canh(du_lieu):
@@ -74,10 +97,9 @@ def _lay_ngu_canh(du_lieu):
 
 
 # ----------------------------------------------------------------
-# HÀM PHỤ: LẤY DỰ ÁN GẦN NHẤT CỦA USER
+# HÀM PHỤ: LẤY DỰ ÁN GẦN NHẤT
 # ----------------------------------------------------------------
 def _lay_du_an_gan_nhat(chu_so_huu):
-    """Lấy id dự án gần nhất của user từ kho 1."""
     if not chu_so_huu or chu_so_huu == CHU_SO_HUU_KHACH:
         return None
 
@@ -87,7 +109,6 @@ def _lay_du_an_gan_nhat(chu_so_huu):
         if not danh_sach:
             return None
 
-        # Lấy dự án có boss_tao=True mới nhất
         ds_boss = [d for d in danh_sach if d.get("boss_tao")]
         if not ds_boss:
             return None
@@ -100,10 +121,9 @@ def _lay_du_an_gan_nhat(chu_so_huu):
 
 
 # ----------------------------------------------------------------
-# HÀM PHỤ: SINH CODE CHO 1 BƯỚC
+# HÀM PHỤ: SINH CODE 1 BƯỚC
 # ----------------------------------------------------------------
 def _sinh_code_buoc(id_du_an, so_buoc, chu_so_huu):
-    """Lấy bước N từ snapshot → gọi Tiểu não sinh code."""
     try:
         from dai_nao.snapshot import lay_snapshot, cap_nhat_task, cap_nhat_dang_viet
         snapshot = lay_snapshot(id_du_an)
@@ -127,10 +147,8 @@ def _sinh_code_buoc(id_du_an, so_buoc, chu_so_huu):
         ten_buoc = buoc.get("ten", "")
         mo_ta = buoc.get("mo_ta", "")
 
-        # Đánh dấu đang làm
         cap_nhat_task(id_du_an, so_buoc, "dang_lam")
 
-        # Gọi Tiểu não sinh code
         from dai_nao.su_dung_model import sinh_code_cho_file
         kq = sinh_code_cho_file(
             id_du_an=id_du_an,
@@ -147,7 +165,6 @@ def _sinh_code_buoc(id_du_an, so_buoc, chu_so_huu):
                 "tra_loi": f"🐉 Lỗi sinh code bước {so_buoc}: {kq.get('loi', '')}",
             }
 
-        # Lưu tiến độ
         cap_nhat_dang_viet(
             id_du_an,
             so_buoc,
@@ -157,7 +174,6 @@ def _sinh_code_buoc(id_du_an, so_buoc, chu_so_huu):
             kq.get("ham_con_lai", []),
         )
 
-        # Đánh dấu xong
         cap_nhat_task(id_du_an, so_buoc, "xong")
 
         return {
@@ -166,6 +182,8 @@ def _sinh_code_buoc(id_du_an, so_buoc, chu_so_huu):
             "ngon_ngu": kq.get("ngon_ngu", ""),
             "ten_file": ten_file,
             "ten_buoc": ten_buoc,
+            "mo_ta": mo_ta,
+            "so_buoc": so_buoc,
             "ham_da_viet": kq.get("ham_da_viet", []),
             "ham_con_lai": kq.get("ham_con_lai", []),
         }
@@ -176,7 +194,7 @@ def _sinh_code_buoc(id_du_an, so_buoc, chu_so_huu):
 
 
 # ----------------------------------------------------------------
-# HÀM PHỤ: TẠO PHẢN HỒI TỪ BOSS
+# HÀM PHỤ: PHẢN HỒI BOSS
 # ----------------------------------------------------------------
 def _tao_phan_hoi_boss(ket_qua_boss):
     if not ket_qua_boss:
@@ -189,7 +207,6 @@ def _tao_phan_hoi_boss(ket_qua_boss):
         from dai_nao.chi_huy import tao_phan_hoi
         return tao_phan_hoi(truong, id_du_an)
     except ImportError:
-        # Fallback
         ten = truong.get("ten", "")
         ds_buoc = truong.get("thuat_toan", {}).get("buoc", [])
         phan = [f"🔥 Boss đã phân tích dự án: **{ten}**"]
@@ -199,44 +216,134 @@ def _tao_phan_hoi_boss(ket_qua_boss):
         for i, b in enumerate(ds_buoc, 1):
             phan.append(f"  {i}. {b}")
         phan.append("")
-        phan.append("💡 Gõ **Số 1** để bắt đầu.")
+        phan.append("💡 Gõ **Số 1** hoặc **Cả** để bắt đầu.")
         return "\n".join(phan)
 
 
 # ----------------------------------------------------------------
-# HÀM PHỤ: TẠO PHẢN HỒI TỪ CODE
+# HÀM PHỤ: PHẢN HỒI CODE CÓ HƯỚNG DẪN
 # ----------------------------------------------------------------
-def _tao_phan_hoi_code(ket_qua_code, id_du_an):
-    if not ket_qua_code:
+def _tao_phan_hoi_code_1_buoc(kq, tong_so_buoc):
+    """Tạo phản hồi cho 1 bước — có hướng dẫn đầy đủ."""
+    if not kq:
         return ""
 
-    ten_file = ket_qua_code.get("ten_file", "")
-    ten_buoc = ket_qua_code.get("ten_buoc", "")
-    code = ket_qua_code.get("code", "")
-    ngon_ngu = ket_qua_code.get("ngon_ngu", "")
-    ham_da_viet = ket_qua_code.get("ham_da_viet", [])
-    ham_con_lai = ket_qua_code.get("ham_con_lai", [])
+    so_buoc = kq.get("so_buoc", 1)
+    ten_file = kq.get("ten_file", "")
+    ten_buoc = kq.get("ten_buoc", "")
+    mo_ta = kq.get("mo_ta", "")
 
     phan = []
-    phan.append(f"✅ Đã viết xong **{ten_file}**")
-    phan.append(f"📝 Bước: {ten_buoc}")
-
-    if ham_da_viet:
-        phan.append(f"✔️ Hàm đã viết: {', '.join(ham_da_viet)}")
-    if ham_con_lai:
-        phan.append(f"⏳ Hàm còn lại: {', '.join(ham_con_lai)}")
-
+    phan.append(f"✅ **BƯỚC {so_buoc}/{tong_so_buoc}** — {ten_buoc}")
     phan.append("")
-    phan.append(f"💡 Gõ **Số tiếp theo** để làm bước kế.")
+    phan.append(f"📁 **Đặt file tại:** `{ten_file or '(không có file)'}`")
+    if mo_ta:
+        phan.append(f"📝 **Mô tả:** {mo_ta}")
 
     return "\n".join(phan)
+
+
+def _tao_phan_hoi_code_nhieu_buoc(ds_kq, tong_so_buoc):
+    """Tạo phản hồi cho nhiều bước."""
+    if not ds_kq:
+        return ""
+
+    phan = []
+    phan.append(f"✅ Đã làm xong **{len(ds_kq)} bước**")
+    phan.append("")
+
+    for kq in ds_kq:
+        so_buoc = kq.get("so_buoc", "?")
+        ten_file = kq.get("ten_file", "")
+        ten_buoc = kq.get("ten_buoc", "")
+        phan.append(f"**Bước {so_buoc}/{tong_so_buoc}** — {ten_buoc}")
+        phan.append(f"📁 File: `{ten_file}`")
+        phan.append("")
+
+    con_lai = tong_so_buoc - len(ds_kq) - (ds_kq[0].get("so_buoc", 1) - 1)
+
+    if con_lai > 0:
+        phan.append(f"⏳ Còn **{con_lai}** bước. Gõ **Tiếp** để làm tiếp.")
+    else:
+        phan.append("🎉 Đã xong tất cả các bước!")
+
+    return "\n".join(phan)
+
+
+# ----------------------------------------------------------------
+# HÀM PHỤ: XỬ LÝ LÀM NHIỀU BƯỚC
+# ----------------------------------------------------------------
+def _xu_ly_lam_nhieu_buoc(id_du_an, chu_so_huu):
+    """Làm tối đa SO_BUOC_TOI_DA_MOI_LAN bước chưa xong."""
+    try:
+        from dai_nao.snapshot import lay_snapshot
+        snapshot = lay_snapshot(id_du_an)
+        if not snapshot:
+            return None
+
+        da_chia = snapshot.get("da_chia", [])
+        tong_so_buoc = len(da_chia)
+
+        # Lấy các bước chưa xong
+        ds_chua_lam = []
+        for task in da_chia:
+            if task.get("trang_thai") != "xong":
+                ds_chua_lam.append(task.get("so"))
+
+        if not ds_chua_lam:
+            return {
+                "thanh_cong": True,
+                "tra_loi": "🐉 Tất cả các bước đã xong.",
+            }
+
+        # Làm tối đa 3 bước
+        ds_lam = ds_chua_lam[:SO_BUOC_TOI_DA_MOI_LAN]
+
+        ds_kq = []
+        for so in ds_lam:
+            kq = _sinh_code_buoc(id_du_an, so, chu_so_huu)
+            if kq and kq.get("thanh_cong"):
+                ds_kq.append(kq)
+            else:
+                break
+
+        if not ds_kq:
+            return {
+                "thanh_cong": True,
+                "tra_loi": "🐉 Không sinh được code.",
+            }
+
+        tra_loi = _tao_phan_hoi_code_nhieu_buoc(ds_kq, tong_so_buoc)
+
+        # Lấy code đầu tiên để hiển thị
+        code_dau = ds_kq[0].get("code", "")
+        ngon_ngu_dau = ds_kq[0].get("ngon_ngu", "python")
+
+        return {
+            "thanh_cong": True,
+            "tra_loi": tra_loi,
+            "code": code_dau,
+            "ngon_ngu": ngon_ngu_dau,
+            "ds_code": [
+                {
+                    "code": kq.get("code", ""),
+                    "ngon_ngu": kq.get("ngon_ngu", ""),
+                    "ten_file": kq.get("ten_file", ""),
+                    "so_buoc": kq.get("so_buoc", 0),
+                }
+                for kq in ds_kq
+            ],
+        }
+
+    except Exception as e:
+        _ghi_log("loi", f"Xử lý nhiều bước lỗi: {e}")
+        return None
 
 
 # ----------------------------------------------------------------
 # HÀM CHÍNH
 # ----------------------------------------------------------------
 def xu_ly_task(du_lieu):
-    """Điều phối xử lý task."""
     try:
         return _xu_ly_task_that(du_lieu)
     except Exception as e:
@@ -280,15 +387,17 @@ def _xu_ly_task_that(du_lieu):
         _ghi_log("loi", f"Chuẩn hóa lỗi: {e}")
         noi_dung_chuan = noi_dung
 
-    # BƯỚC 2: KIỂM TRA MƠ HỒ (đơn giản)
+    # BƯỚC 2: KIỂM TRA MƠ HỒ
     mo_ho, ly_do_mo_ho = _la_mo_ho(noi_dung_chuan)
 
-    # Nếu là lệnh "Số N" → không kiểm tra mơ hồ
+    # Bỏ qua mơ hồ nếu là lệnh đặc biệt
     if chu_so_huu != CHU_SO_HUU_KHACH:
         try:
             from dai_nao.chi_huy import la_lenh_lam_task
             so_buoc = la_lenh_lam_task(noi_dung_chuan)
             if so_buoc:
+                mo_ho = False
+            if _la_lenh_lam_het(noi_dung_chuan) or _la_lenh_tiep(noi_dung_chuan):
                 mo_ho = False
         except ImportError:
             pass
@@ -303,13 +412,12 @@ def _xu_ly_task_that(du_lieu):
     # ============================================================
     if chu_so_huu and chu_so_huu != CHU_SO_HUU_KHACH:
         try:
-            from dai_nao.chi_huy import chi_huy, la_lenh_lam_task, lay_buoc_theo_so
+            from dai_nao.chi_huy import chi_huy, la_lenh_lam_task
 
-            # BƯỚC 3.5a: Kiểm tra có phải lệnh "Số N" không
+            # 3.5a: Lệnh "Số N"
             so_buoc = la_lenh_lam_task(noi_dung_chuan)
 
             if so_buoc:
-                # Đây là lệnh làm bước N
                 id_du_an = _lay_du_an_gan_nhat(chu_so_huu)
                 if not id_du_an:
                     return {
@@ -319,14 +427,28 @@ def _xu_ly_task_that(du_lieu):
 
                 _ghi_log("dai-nao", f"Lệnh làm bước {so_buoc} dự án {id_du_an}")
 
-                # BƯỚC 3.6: Sinh code cho bước N
+                # Lấy tổng số bước
+                try:
+                    from dai_nao.snapshot import lay_snapshot
+                    snapshot = lay_snapshot(id_du_an)
+                    tong_so_buoc = len(snapshot.get("da_chia", [])) if snapshot else 0
+                except Exception:
+                    tong_so_buoc = 0
+
                 kq_code = _sinh_code_buoc(id_du_an, so_buoc, chu_so_huu)
 
                 if kq_code and kq_code.get("thanh_cong"):
-                    tra_loi_code = _tao_phan_hoi_code(kq_code, id_du_an)
+                    phan_huong_dan = _tao_phan_hoi_code_1_buoc(kq_code, tong_so_buoc)
+
+                    # Hướng dẫn tiếp theo
+                    if so_buoc < tong_so_buoc:
+                        phan_huong_dan += f"\n\n💡 Tiếp theo: Gõ **Số {so_buoc + 1}** để làm bước {so_buoc + 1}."
+                    else:
+                        phan_huong_dan += "\n\n🎉 Đã xong tất cả các bước!"
+
                     return {
                         "thanh_cong": True,
-                        "tra_loi": tra_loi_code,
+                        "tra_loi": phan_huong_dan,
                         "code": kq_code.get("code", ""),
                         "ngon_ngu": kq_code.get("ngon_ngu", ""),
                     }
@@ -336,7 +458,22 @@ def _xu_ly_task_that(du_lieu):
                         "tra_loi": kq_code.get("tra_loi", "🐉 Lỗi sinh code."),
                     }
 
-            # BƯỚC 3.5b: Boss viết trường (yêu cầu mới)
+            # 3.5b: Lệnh "Cả" / "Làm hết" / "Tiếp"
+            if _la_lenh_lam_het(noi_dung_chuan) or _la_lenh_tiep(noi_dung_chuan):
+                id_du_an = _lay_du_an_gan_nhat(chu_so_huu)
+                if not id_du_an:
+                    return {
+                        "thanh_cong": True,
+                        "tra_loi": "🐉 Bạn chưa có dự án nào.",
+                    }
+
+                _ghi_log("dai-nao", f"Lệnh làm nhiều bước dự án {id_du_an}")
+
+                kq_nhieu = _xu_ly_lam_nhieu_buoc(id_du_an, chu_so_huu)
+                if kq_nhieu:
+                    return kq_nhieu
+
+            # 3.5c: Boss viết trường (yêu cầu mới)
             ket_qua_boss = chi_huy({
                 "noi_dung": noi_dung_chuan,
                 "chu_so_huu": chu_so_huu,
@@ -359,9 +496,8 @@ def _xu_ly_task_that(du_lieu):
             _ghi_log("loi", f"Boss lỗi: {e}")
 
     # ============================================================
-    # FALLBACK: KHÁCH hoặc Boss thất bại → dùng luồng cũ đơn giản
+    # FALLBACK
     # ============================================================
-    # Gọi Tiểu não sinh code đơn giản (không qua cây)
     try:
         from dai_nao.su_dung_model import sinh_code_cho_file
         kq = sinh_code_cho_file(
@@ -390,7 +526,7 @@ def _xu_ly_task_that(du_lieu):
 
 
 # ----------------------------------------------------------------
-# HÀM CÔNG KHAI (giữ để không phá code khác)
+# HÀM CÔNG KHAI
 # ----------------------------------------------------------------
 def ghi_that_bai_vao_cay(id_node, noi_dung, ly_do=""):
     return {}
