@@ -1,56 +1,14 @@
 """
 snapshot.py - Lưu + đọc trạng thái dự án Rồng Thần.
 
-Nhiệm vụ:
-    - tao_snapshot(id_du_an, du_lieu): tạo snapshot mới cho dự án.
-    - cap_nhat_snapshot(id_du_an, cap_nhat): cập nhật snapshot.
-    - lay_snapshot(id_du_an): đọc snapshot hiện tại.
-    - tom_tat_cho_model(id_du_an): tóm tắt snapshot cho model mới đọc.
-    - xoa_snapshot(id_du_an): xóa snapshot.
-
-Snapshot dùng để:
-    - Khi Boss A hết quota → Boss B đọc snapshot → hiểu ngữ cảnh.
-    - Khi Tiểu não B thay Tiểu não A → đọc snapshot → viết tiếp đúng.
-
-Schema snapshot:
-    {
-        id_du_an: str,
-        yeu_cau_goc: str,              # Yêu cầu ban đầu của user
-        loai_du_an: str,               # "web" | "python" | "văn" | ...
-        da_chia: [                     # Danh sách task đã chia
-            {
-                so: int,               # Số thứ tự
-                ten: str,              # Tên task
-                file: str,             # File liên quan (nếu có)
-                trang_thai: str,       # "chua_lam" | "dang_lam" | "xong" | "loi"
-                mo_ta: str,            # Mô tả task
-            }
-        ],
-        hop_dong_da_chot: {            # Hợp đồng đã chốt cho từng file
-            ten_file: { ...hop_dong... }
-        },
-        quy_uoc_chung: {               # Quy ước chung của dự án
-            ngon_ngu: str,
-            khong_dung: [str],
-            ten_bien: str,
-        },
-        model_da_dung: [str],          # Danh sách model đã dùng
-        model_hien_tai: str,           # Model đang dùng
-        buoc_hien_tai: int,            # Bước thứ mấy
-        lan_cap_nhat_cuoi: int,        # Timestamp
-        thoi_gian_tao: int,            # Timestamp
-    }
-
-Tầng dữ liệu: dai_nao/ghi_nho.py
+ĐÃ SỬA:
+    - Thêm trường "dang_viet" — lưu tiến độ viết dở.
 """
 
 import time
 import json
 
 
-# ================================================================
-# GHI LOG
-# ================================================================
 def _ghi_log(loai, noi_dung):
     try:
         from logs.ghi_log import ghi_log
@@ -68,6 +26,13 @@ SNAPSHOT_MAC_DINH = {
     "loai_du_an": "",
     "da_chia": [],
     "hop_dong_da_chot": {},
+    "dang_viet": {
+        "so_task": 0,
+        "ten_file": "",
+        "ham_dang_viet": "",
+        "da_viet_xong": [],
+        "con_lai": [],
+    },
     "quy_uoc_chung": {
         "ngon_ngu": "",
         "khong_dung": [],
@@ -88,14 +53,6 @@ TRANG_THAI_HOP_LE = ("chua_lam", "dang_lam", "xong", "loi")
 # TẠO SNAPSHOT MỚI
 # ================================================================
 def tao_snapshot(id_du_an, du_lieu=None):
-    """
-    Tạo snapshot mới cho dự án.
-
-    id_du_an: mã dự án (VD "web-pokemon").
-    du_lieu: dict các trường cần ghi đè.
-
-    Trả về: dict snapshot hoàn chỉnh hoặc None nếu lỗi.
-    """
     if not id_du_an:
         _ghi_log("loi", "tao_snapshot: thiếu id_du_an.")
         return None
@@ -105,14 +62,12 @@ def tao_snapshot(id_du_an, du_lieu=None):
     snapshot["thoi_gian_tao"] = int(time.time())
     snapshot["lan_cap_nhat_cuoi"] = int(time.time())
 
-    # Ghi đè các trường từ du_lieu
     if du_lieu and isinstance(du_lieu, dict):
         for khoa, gia_tri in du_lieu.items():
             if khoa in ("id_du_an", "thoi_gian_tao"):
                 continue
             snapshot[khoa] = gia_tri
 
-    # Lưu vào MongoDB
     try:
         from dai_nao.ghi_nho import luu_snapshot
         if not luu_snapshot(snapshot):
@@ -133,14 +88,8 @@ def tao_snapshot(id_du_an, du_lieu=None):
 # ĐỌC SNAPSHOT
 # ================================================================
 def lay_snapshot(id_du_an):
-    """
-    Đọc snapshot hiện tại.
-
-    Trả về dict snapshot hoặc None nếu không có.
-    """
     if not id_du_an:
         return None
-
     try:
         from dai_nao.ghi_nho import lay_snapshot as _lay
         return _lay(id_du_an)
@@ -156,17 +105,8 @@ def lay_snapshot(id_du_an):
 # CẬP NHẬT SNAPSHOT
 # ================================================================
 def cap_nhat_snapshot(id_du_an, cap_nhat):
-    """
-    Cập nhật 1 số trường trong snapshot.
-
-    id_du_an: mã dự án.
-    cap_nhat: dict các trường cần cập nhật.
-
-    Trả về True/False.
-    """
     if not id_du_an or not cap_nhat:
         return False
-
     try:
         from dai_nao.ghi_nho import cap_nhat_snapshot as _cap_nhat
         return _cap_nhat(id_du_an, cap_nhat)
@@ -182,7 +122,6 @@ def cap_nhat_snapshot(id_du_an, cap_nhat):
 # XÓA SNAPSHOT
 # ================================================================
 def xoa_snapshot(id_du_an):
-    """Xóa snapshot theo id_du_an."""
     if not id_du_an:
         return False
     try:
@@ -199,13 +138,6 @@ def xoa_snapshot(id_du_an):
 # CẬP NHẬT TASK CỤ THỂ
 # ================================================================
 def cap_nhat_task(id_du_an, so_task, trang_thai, ghi_chu=""):
-    """
-    Cập nhật trạng thái 1 task trong snapshot.
-
-    so_task: số thứ tự task (1-based).
-    trang_thai: "chua_lam" | "dang_lam" | "xong" | "loi".
-    ghi_chu: ghi chú thêm.
-    """
     if not id_du_an or not so_task:
         return False
 
@@ -222,7 +154,6 @@ def cap_nhat_task(id_du_an, so_task, trang_thai, ghi_chu=""):
     if not isinstance(da_chia, list):
         da_chia = []
 
-    # Tìm task theo số
     tim_thay = False
     for task in da_chia:
         if task.get("so") == so_task:
@@ -240,15 +171,37 @@ def cap_nhat_task(id_du_an, so_task, trang_thai, ghi_chu=""):
 
 
 # ================================================================
+# CẬP NHẬT TIẾN ĐỘ VIẾT
+# ================================================================
+def cap_nhat_dang_viet(id_du_an, so_task, ten_file, ham_dang_viet,
+                       da_viet_xong=None, con_lai=None):
+    """Cập nhật trường dang_viet — tiến độ viết dở."""
+    if not id_du_an:
+        return False
+
+    dang_viet = {
+        "so_task": so_task,
+        "ten_file": ten_file,
+        "ham_dang_viet": ham_dang_viet,
+        "da_viet_xong": da_viet_xong or [],
+        "con_lai": con_lai or [],
+    }
+
+    return cap_nhat_snapshot(id_du_an, {"dang_viet": dang_viet})
+
+
+def lay_dang_viet(id_du_an):
+    """Lấy tiến độ viết dở."""
+    snapshot = lay_snapshot(id_du_an)
+    if not snapshot:
+        return None
+    return snapshot.get("dang_viet", {})
+
+
+# ================================================================
 # ĐÁNH DẤU FILE XONG
 # ================================================================
 def danh_dau_file_xong(id_du_an, ten_file, model_tao=""):
-    """
-    Đánh dấu file đã hoàn thành + ghi model đã tạo.
-
-    ten_file: tên file (VD "index.html").
-    model_tao: model đã tạo file này (VD "gemini-3-flash").
-    """
     if not id_du_an or not ten_file:
         return False
 
@@ -256,7 +209,6 @@ def danh_dau_file_xong(id_du_an, ten_file, model_tao=""):
     if not snapshot:
         return False
 
-    # Cập nhật hợp đồng đã chốt
     hop_dong = snapshot.get("hop_dong_da_chot", {})
     if not isinstance(hop_dong, dict):
         hop_dong = {}
@@ -269,7 +221,6 @@ def danh_dau_file_xong(id_du_an, ten_file, model_tao=""):
     if model_tao:
         hop_dong[ten_file]["model_tao"] = model_tao
 
-    # Cập nhật model_da_dung
     model_da_dung = snapshot.get("model_da_dung", [])
     if not isinstance(model_da_dung, list):
         model_da_dung = []
@@ -286,7 +237,6 @@ def danh_dau_file_xong(id_du_an, ten_file, model_tao=""):
 # ĐỔI MODEL HIỆN TẠI
 # ================================================================
 def doi_model_hien_tai(id_du_an, model_moi):
-    """Ghi lại model hiện tại đang dùng."""
     if not id_du_an or not model_moi:
         return False
 
@@ -310,7 +260,6 @@ def doi_model_hien_tai(id_du_an, model_moi):
 # TĂNG BƯỚC HIỆN TẠI
 # ================================================================
 def tang_buoc(id_du_an):
-    """Tăng bước hiện tại lên 1."""
     if not id_du_an:
         return False
 
@@ -326,19 +275,6 @@ def tang_buoc(id_du_an):
 # TÓM TẮT CHO MODEL MỚI ĐỌC
 # ================================================================
 def tom_tat_cho_model(id_du_an, gioi_han_ky_tu=3000):
-    """
-    Tạo tóm tắt snapshot cho model mới đọc khi đổi Boss.
-
-    Trả về chuỗi text ngắn gọn — mô tả:
-        - Yêu cầu gốc.
-        - Đã làm gì.
-        - Đang làm gì.
-        - Còn gì chưa làm.
-        - Quy ước dự án.
-        - Hợp đồng đã chốt.
-
-    Model mới đọc text này → hiểu ngay ngữ cảnh → không ngáo.
-    """
     if not id_du_an:
         return ""
 
@@ -348,17 +284,14 @@ def tom_tat_cho_model(id_du_an, gioi_han_ky_tu=3000):
 
     phan = []
 
-    # 1. Yêu cầu gốc
     yeu_cau = snapshot.get("yeu_cau_goc", "")
     if yeu_cau:
         phan.append(f"📋 YÊU CẦU GỐC: {yeu_cau}")
 
-    # 2. Loại dự án
     loai_du_an = snapshot.get("loai_du_an", "")
     if loai_du_an:
         phan.append(f"📁 LOẠI DỰ ÁN: {loai_du_an}")
 
-    # 3. Quy ước chung
     quy_uoc = snapshot.get("quy_uoc_chung", {})
     if quy_uoc:
         phan.append("\n⚙️ QUY ƯỚC CHUNG:")
@@ -371,7 +304,6 @@ def tom_tat_cho_model(id_du_an, gioi_han_ky_tu=3000):
         if quy_uoc.get("css"):
             phan.append(f"  - CSS: {quy_uoc['css']}")
 
-    # 4. Danh sách task
     da_chia = snapshot.get("da_chia", [])
     if da_chia:
         phan.append("\n📝 DANH SÁCH TASK:")
@@ -393,7 +325,18 @@ def tom_tat_cho_model(id_du_an, gioi_han_ky_tu=3000):
                 dong += f" ({file})"
             phan.append(dong)
 
-    # 5. Hợp đồng đã chốt
+    dang_viet = snapshot.get("dang_viet", {})
+    if dang_viet and dang_viet.get("ten_file"):
+        phan.append("\n✍️ ĐANG VIẾT DỞ:")
+        phan.append(f"  - File: {dang_viet.get('ten_file')}")
+        phan.append(f"  - Hàm đang viết: {dang_viet.get('ham_dang_viet')}")
+        da_xong = dang_viet.get("da_viet_xong", [])
+        if da_xong:
+            phan.append(f"  - Đã xong: {', '.join(da_xong)}")
+        con_lai = dang_viet.get("con_lai", [])
+        if con_lai:
+            phan.append(f"  - Còn lại: {', '.join(con_lai)}")
+
     hop_dong = snapshot.get("hop_dong_da_chot", {})
     if hop_dong:
         phan.append("\n📜 HỢP ĐỒNG ĐÃ CHỐT:")
@@ -407,7 +350,6 @@ def tom_tat_cho_model(id_du_an, gioi_han_ky_tu=3000):
                 else:
                     phan.append(f"  - {ten_file}: {hd.get('trang_thai', '?')}")
 
-    # 6. Model đã dùng
     model_da_dung = snapshot.get("model_da_dung", [])
     if model_da_dung:
         phan.append(f"\n🤖 MODEL ĐÃ DÙNG: {', '.join(model_da_dung)}")
@@ -416,14 +358,12 @@ def tom_tat_cho_model(id_du_an, gioi_han_ky_tu=3000):
     if model_hien_tai:
         phan.append(f"🎯 MODEL HIỆN TẠI: {model_hien_tai}")
 
-    # 7. Bước hiện tại
     buoc = snapshot.get("buoc_hien_tai", 0)
     if buoc:
         phan.append(f"👣 BƯỚC HIỆN TẠI: {buoc}")
 
     tom_tat = "\n".join(phan)
 
-    # Cắt nếu quá dài
     if len(tom_tat) > gioi_han_ky_tu:
         tom_tat = tom_tat[:gioi_han_ky_tu] + "\n...[cắt bớt]"
 
@@ -434,12 +374,10 @@ def tom_tat_cho_model(id_du_an, gioi_han_ky_tu=3000):
 # HÀM PHỤ
 # ================================================================
 def co_snapshot(id_du_an):
-    """Kiểm tra có snapshot chưa."""
     return lay_snapshot(id_du_an) is not None
 
 
 def lay_trang_thai_task(id_du_an, so_task):
-    """Lấy trạng thái 1 task."""
     snapshot = lay_snapshot(id_du_an)
     if not snapshot:
         return None
@@ -451,7 +389,6 @@ def lay_trang_thai_task(id_du_an, so_task):
 
 
 def dem_task_theo_trang_thai(id_du_an):
-    """Đếm task theo trạng thái."""
     snapshot = lay_snapshot(id_du_an)
     if not snapshot:
         return {}
@@ -465,7 +402,6 @@ def dem_task_theo_trang_thai(id_du_an):
 
 
 def lay_task_tiep_theo(id_du_an):
-    """Lấy task tiếp theo chưa làm."""
     snapshot = lay_snapshot(id_du_an)
     if not snapshot:
         return None
