@@ -1,24 +1,21 @@
-# ============================================================
-# RỒNG THẦN - THƯ VIỆN CẦN CÀI
-# ============================================================
-
 # WEB FRAMEWORK
 Flask
 flask-cors
 gunicorn
+flask-jwt-extended
 
 # DATABASE
 pymongo
 dnspython
 
-# HTTP REQUESTS
+# HTTP
 requests
 
-# TOÁN HỌC
+# TOÁN
 sympy
 numpy
 
-# XỬ LÝ DỮ LIỆU
+# DỮ LIỆU
 pandas
 
 # ĐỌC FILE
@@ -32,3 +29,10 @@ PyYAML
 
 # BẢO MẬT
 bcrypt
+
+# ENV
+python-dotenv
+
+# NGÀY GIỜ
+python-dateutil
+pytz

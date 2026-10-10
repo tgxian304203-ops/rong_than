@@ -1,5 +1,9 @@
 """
 nhung_vao_chat.py - Nhúng LiveCodes vào chat Rồng Thần.
+
+Nhiệm vụ:
+    - Tạo HTML nhúng LiveCodes vào 1 tin nhắn chat.
+    - Hỗ trợ HTML, CSS, JS, TypeScript, Python, Markdown.
 """
 
 import re
@@ -141,6 +145,13 @@ def _tao_css_sandbox():
 
 
 def nhung_vao_chat(du_lieu):
+    """
+    Nhúng LiveCodes vào chat.
+
+    du_lieu: {
+        code, ngon_ngu, timeout?, headless?, view?
+    }
+    """
     ket_qua = {
         "thanh_cong": False,
         "html": "",
@@ -198,6 +209,7 @@ def nhung_vao_chat(du_lieu):
 
 
 def _tao_config(code, ngon_ngu):
+    """Tạo config cho LiveCodes."""
     config = {}
 
     if ngon_ngu == "html":
@@ -214,16 +226,24 @@ def _tao_config(code, ngon_ngu):
     elif ngon_ngu in ("javascript", "js"):
         config["script"] = {"language": "javascript", "content": code}
 
+    elif ngon_ngu == "typescript" or ngon_ngu == "ts":
+        config["script"] = {"language": "typescript", "content": code}
+
     elif ngon_ngu == "css":
         config["style"] = {"language": "css", "content": code}
 
+    elif ngon_ngu == "markdown" or ngon_ngu == "md":
+        config["markup"] = {"language": "markdown", "content": code}
+
     else:
+        # Mặc định: HTML
         config["markup"] = {"language": "html", "content": code}
 
     return config
 
 
 def _tach_html(code):
+    """Tách code HTML thành markup, style, script."""
     ket_qua = {"markup": "", "style": "", "script": ""}
 
     if not code:
@@ -245,6 +265,7 @@ def _tach_html(code):
 
 
 def tao_html_day_du(du_lieu):
+    """Tạo HTML hoàn chỉnh để nhúng vào chat."""
     if not du_lieu:
         return ""
 

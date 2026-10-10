@@ -1,8 +1,7 @@
 """
 gui_tin_nhan.py - Xử lý nút gửi tin nhắn.
 
-Sửa: dai_nao.ghi_nho → luu_tru.ghi_nho
-      dai_nao.nhan_task → dai_nao.nhan_yeu_cau.
+SỬA: thêm trường html_nhung vào kết quả trả về.
 """
 
 import time
@@ -83,11 +82,7 @@ def xu_ly_gui_tin_nhan(du_lieu):
     try:
         from dai_nao.nhan_yeu_cau import nhan_yeu_cau
     except ImportError:
-        _ghi_log("loi", "nhan_yeu_cau.py chưa có.")
-        return {
-            "thanh_cong": False,
-            "loi": "Đại não chưa sẵn sàng.",
-        }
+        return {"thanh_cong": False, "loi": "Đại não chưa sẵn sàng."}
 
     du_lieu_dai_nao = {
         "noi_dung": noi_dung,
@@ -102,23 +97,20 @@ def xu_ly_gui_tin_nhan(du_lieu):
     try:
         ket_qua = nhan_yeu_cau(du_lieu_dai_nao)
     except Exception as e:
-        _ghi_log("loi", f"Đại não lỗi: {e}")
         return {"thanh_cong": False, "loi": f"Đại não xử lý lỗi: {e}"}
 
     if not ket_qua or not isinstance(ket_qua, dict):
-        _ghi_log("loi", "Đại não không trả về kết quả hợp lệ.")
         return {"thanh_cong": False, "loi": "Đại não không trả về kết quả hợp lệ."}
 
     thanh_cong_dai_nao = bool(ket_qua.get("thanh_cong", False))
     tra_loi = ket_qua.get("tra_loi") or ""
     code = ket_qua.get("code")
     ngon_ngu = ket_qua.get("ngon_ngu")
-    sandbox = ket_qua.get("sandbox")
+    html_nhung = ket_qua.get("html_nhung")
     ket_qua_chay = ket_qua.get("ket_qua_chay")
     loi_dai_nao = ket_qua.get("loi") or ""
 
     if not thanh_cong_dai_nao:
-        _ghi_log("loi", f"Đại não thất bại: {loi_dai_nao or 'không rõ'}")
         return {
             "thanh_cong": False,
             "loi": loi_dai_nao or "Đại não không xử lý được task này.",
@@ -126,10 +118,9 @@ def xu_ly_gui_tin_nhan(du_lieu):
         }
 
     if not tra_loi and not code:
-        _ghi_log("loi", "Đại não thành công nhưng không có nội dung trả lời.")
         return {
             "thanh_cong": False,
-            "loi": "Đại não không tạo ra câu trả lời. Bạn thử lại giúp ta nhé.",
+            "loi": "Đại não không tạo ra câu trả lời.",
             "id_tin_nhan": id_tin_nhan,
         }
 
@@ -161,8 +152,8 @@ def xu_ly_gui_tin_nhan(du_lieu):
         ket_qua_tra["code"] = code
     if ngon_ngu:
         ket_qua_tra["ngon_ngu"] = ngon_ngu
-    if sandbox:
-        ket_qua_tra["sandbox"] = sandbox
+    if html_nhung:
+        ket_qua_tra["html_nhung"] = html_nhung
     if ket_qua_chay:
         ket_qua_tra["ket_qua_chay"] = ket_qua_chay
 

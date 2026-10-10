@@ -1,5 +1,9 @@
 """
 chay_python.py - Chạy code Python qua Sandbox Rồng Thần.
+
+SỬA:
+    - Tự cài thư viện khi gặp ModuleNotFoundError.
+    - Thêm DEBUG.
 """
 
 import os
@@ -18,13 +22,21 @@ def _ghi_log(loai, noi_dung):
         pass
 
 
+def _in_debug(noi_dung):
+    try:
+        print(f"[DEBUG-CHAY-PYTHON] {noi_dung}", flush=True)
+    except Exception:
+        pass
+
+
 TIMEOUT_MAC_DINH = 5
 DO_DAI_CODE_TOI_DA = 50000
 DO_DAI_OUTPUT_TOI_DA = 50000
+SO_LAN_CAI_TOI_DA = 3
 
+# Thư viện cấm
 IMPORT_CAM = [
     "os.system",
-    "subprocess",
     "shutil.rmtree",
     "shutil.move",
     "pathlib.Path.home",
@@ -33,6 +45,36 @@ IMPORT_CAM = [
     "open('/root",
     'open("/root',
 ]
+
+# Thư viện cho phép tự cài
+THU_VIEN_CHO_PHEP = {
+    "dotenv": "python-dotenv",
+    "flask": "Flask",
+    "flask_cors": "flask-cors",
+    "flask_jwt_extended": "flask-jwt-extended",
+    "jwt": "PyJWT",
+    "pymongo": "pymongo",
+    "bson": "pymongo",
+    "dnspython": "dnspython",
+    "requests": "requests",
+    "numpy": "numpy",
+    "pandas": "pandas",
+    "sympy": "sympy",
+    "openpyxl": "openpyxl",
+    "docx": "python-docx",
+    "PyPDF2": "PyPDF2",
+    "PIL": "Pillow",
+    "yaml": "PyYAML",
+    "bcrypt": "bcrypt",
+    "dateutil": "python-dateutil",
+    "pytz": "pytz",
+    "werkzeug": "Werkzeug",
+    "jinja2": "Jinja2",
+    "markupsafe": "MarkupSafe",
+    "itsdangerous": "itsdangerous",
+    "click": "click",
+    "blinker": "blinker",
+}
 
 
 def _kiem_tra_an_toan(code):
@@ -46,12 +88,94 @@ def _kiem_tra_an_toan(code):
             return False, f"Code chứa pattern nguy hiểm: '{mau}'."
 
     if "os.remove(" in code_lower or "os.rmdir(" in code_lower:
-        return False, "Code chứa lệnh xóa file: 'os.remove' / 'os.rmdir'."
+        return False, "Code chứa lệnh xóa file."
 
     if "os.unlink(" in code_lower:
-        return False, "Code chứa lệnh xóa file: 'os.unlink'."
+        return False, "Code chứa lệnh xóa file."
 
     return True, ""
+
+
+def _trich_module_thieu(stderr):
+    """Trích tên module thiếu từ stderr."""
+    if not stderr:
+        return None
+
+    mau = r"ModuleNotFoundError: No module named '([^']+)'"
+    khop = re.search(mau, stderr)
+    if khop:
+        return khop.group(1)
+
+    mau = r"ImportError: cannot import name '([^']+)'"
+    khop = re.search(mau, stderr)
+    if khop:
+        return khop.group(1)
+
+    return None
+
+
+def _cai_thu_vien(ten_module):
+    """Cài thư viện bằng pip."""
+    if not ten_module:
+        return False
+
+    ten_goc = ten_module.split(".")[0]
+
+    if ten_goc not in THU_VIEN_CHO_PHEP:
+        _in_debug(f"Thư viện '{ten_goc}' không được phép cài.")
+        return False
+
+    ten_pip = THU_VIEN_CHO_PHEP[ten_goc]
+
+    _in_debug(f"Đang cài '{ten_pip}'...")
+
+    try:
+        ket_qua = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "--quiet", ten_pip],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if ket_qua.returncode == 0:
+            _in_debug(f"✅ Cài '{ten_pip}' thành công.")
+            return True
+        _in_debug(f"❌ Cài '{ten_pip}' lỗi: {ket_qua.stderr[:200]}")
+        return False
+    except Exception as e:
+        _in_debug(f"❌ Cài '{ten_pip}' exception: {e}")
+        return False
+
+
+def _chay_mot_lan(code, timeout):
+    """Chạy code 1 lần."""
+    ten_file = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(code)
+            ten_file = f.name
+
+        ket_qua = subprocess.run(
+            [sys.executable, ten_file],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            encoding="utf-8",
+            errors="replace",
+        )
+
+        return {
+            "stdout": (ket_qua.stdout or "")[:DO_DAI_OUTPUT_TOI_DA],
+            "stderr": (ket_qua.stderr or "")[:DO_DAI_OUTPUT_TOI_DA],
+            "returncode": ket_qua.returncode,
+        }
+    finally:
+        if ten_file and os.path.exists(ten_file):
+            try:
+                os.unlink(ten_file)
+            except Exception:
+                pass
 
 
 def chay_python_backend(code, timeout=TIMEOUT_MAC_DINH):
@@ -62,6 +186,7 @@ def chay_python_backend(code, timeout=TIMEOUT_MAC_DINH):
         "returncode": -1,
         "thoi_gian": 0.0,
         "loi": "",
+        "so_lan_cai": 0,
     }
 
     if not code:
@@ -69,7 +194,7 @@ def chay_python_backend(code, timeout=TIMEOUT_MAC_DINH):
         return ket_qua
 
     if len(code) > DO_DAI_CODE_TOI_DA:
-        ket_qua["loi"] = f"Code quá dài (>{DO_DAI_CODE_TOI_DA} ký tự)."
+        ket_qua["loi"] = f"Code quá dài."
         return ket_qua
 
     an_toan, ly_do = _kiem_tra_an_toan(code)
@@ -84,44 +209,46 @@ def chay_python_backend(code, timeout=TIMEOUT_MAC_DINH):
         timeout = TIMEOUT_MAC_DINH
 
     thoi_gian_bat_dau = time.time()
-    ten_file = None
 
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            suffix=".py",
-            delete=False,
-            encoding="utf-8",
-        ) as f:
-            f.write(code)
-            ten_file = f.name
+    # Vòng lặp: chạy → nếu thiếu thư viện → cài → chạy lại
+    for lan_cai in range(SO_LAN_CAI_TOI_DA + 1):
+        try:
+            ket_qua_chay = _chay_mot_lan(code, timeout)
+        except subprocess.TimeoutExpired:
+            ket_qua["loi"] = f"Code chạy quá {timeout} giây — bị hủy."
+            ket_qua["stderr"] = f"Timeout sau {timeout}s."
+            break
+        except Exception as e:
+            ket_qua["loi"] = f"Lỗi chạy code: {e}"
+            ket_qua["stderr"] = str(e)
+            break
 
-        ket_qua_subprocess = subprocess.run(
-            [sys.executable, ten_file],
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            encoding="utf-8",
-            errors="replace",
-        )
+        ket_qua["stdout"] = ket_qua_chay["stdout"]
+        ket_qua["stderr"] = ket_qua_chay["stderr"]
+        ket_qua["returncode"] = ket_qua_chay["returncode"]
+        ket_qua["thanh_cong"] = (ket_qua_chay["returncode"] == 0)
 
-        ket_qua["stdout"] = (ket_qua_subprocess.stdout or "")[:DO_DAI_OUTPUT_TOI_DA]
-        ket_qua["stderr"] = (ket_qua_subprocess.stderr or "")[:DO_DAI_OUTPUT_TOI_DA]
-        ket_qua["returncode"] = ket_qua_subprocess.returncode
-        ket_qua["thanh_cong"] = (ket_qua_subprocess.returncode == 0)
+        # Nếu thành công → dừng
+        if ket_qua["thanh_cong"]:
+            break
 
-    except subprocess.TimeoutExpired:
-        ket_qua["loi"] = f"Code chạy quá {timeout} giây — bị hủy."
-        ket_qua["stderr"] = f"Timeout sau {timeout}s."
-    except Exception as e:
-        ket_qua["loi"] = f"Lỗi chạy code: {e}"
-        ket_qua["stderr"] = str(e)
-    finally:
-        if ten_file and os.path.exists(ten_file):
-            try:
-                os.unlink(ten_file)
-            except Exception:
-                pass
+        # Kiểm tra có thiếu thư viện không
+        module_thieu = _trich_module_thieu(ket_qua_chay["stderr"])
+
+        if not module_thieu:
+            # Lỗi khác, không phải thiếu thư viện → dừng
+            break
+
+        if lan_cai >= SO_LAN_CAI_TOI_DA:
+            _in_debug(f"Hết số lần cài thư viện.")
+            break
+
+        # Cài thư viện
+        cai_ok = _cai_thu_vien(module_thieu)
+        if not cai_ok:
+            break
+
+        ket_qua["so_lan_cai"] = lan_cai + 1
 
     ket_qua["thoi_gian"] = round(time.time() - thoi_gian_bat_dau, 3)
 
@@ -129,7 +256,8 @@ def chay_python_backend(code, timeout=TIMEOUT_MAC_DINH):
         "sandbox",
         f"Chạy backend: {len(code)} ký tự, "
         f"returncode={ket_qua['returncode']}, "
-        f"tg={ket_qua['thoi_gian']}s",
+        f"tg={ket_qua['thoi_gian']}s, "
+        f"cài={ket_qua['so_lan_cai']} lần",
     )
 
     return ket_qua
@@ -144,40 +272,6 @@ def _kiem_tra_code_rong(code):
     return not code_clean.strip()
 
 
-def _uoc_luong_thoi_gian(code):
-    if not code:
-        return 1
-    so_dong = len(code.split("\n"))
-    co_vong_lap = bool(re.search(r"\b(for|while)\b", code))
-
-    thoi_gian = 1
-    if so_dong > 100:
-        thoi_gian += 2
-    elif so_dong > 50:
-        thoi_gian += 1
-    if co_vong_lap:
-        thoi_gian += 2
-
-    return min(thoi_gian, TIMEOUT_MAC_DINH)
-
-
-def _trich_imports(code):
-    if not code:
-        return []
-    imports = set()
-    for khop in re.finditer(r"^\s*import\s+(\w+)", code, re.MULTILINE):
-        imports.add(khop.group(1))
-    for khop in re.finditer(r"^\s*from\s+(\w+)", code, re.MULTILINE):
-        imports.add(khop.group(1))
-
-    builtin = {
-        "sys", "os", "re", "json", "time", "datetime", "math",
-        "random", "collections", "itertools", "functools", "typing",
-        "pathlib", "ast", "difflib", "hashlib", "secrets",
-    }
-    return list(imports - builtin)
-
-
 def chay_python(du_lieu):
     ket_qua = {
         "thanh_cong": False,
@@ -188,7 +282,6 @@ def chay_python(du_lieu):
         "stdout": "",
         "stderr": "",
         "returncode": -1,
-        "huong_dan_client": {},
         "loi": "",
     }
 
@@ -208,7 +301,7 @@ def chay_python(du_lieu):
         return ket_qua
 
     if len(code) > DO_DAI_CODE_TOI_DA:
-        ket_qua["loi"] = f"Code quá dài (>{DO_DAI_CODE_TOI_DA} ký tự)."
+        ket_qua["loi"] = f"Code quá dài."
         return ket_qua
 
     ket_qua_backend = chay_python_backend(code, timeout)
@@ -253,11 +346,4 @@ def tom_tat(ket_qua):
 
 
 def danh_sach_package_ho_tro():
-    return [
-        "numpy", "pandas", "scipy", "matplotlib", "scikit-learn",
-        "sympy", "networkx", "statsmodels", "pillow", "requests",
-    ]
-
-
-def pyodide_ho_tro_package(ten_package):
-    return ten_package in danh_sach_package_ho_tro()
+    return list(THU_VIEN_CHO_PHEP.values())
