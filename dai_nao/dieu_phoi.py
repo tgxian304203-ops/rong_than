@@ -1,33 +1,44 @@
 """
 dieu_phoi.py - Điều phối toàn bộ luồng Đại não.
 
+BẢN CHẤT:
+    - Đại não = CODE LOGIC PYTHON.
+    - Boss = MODEL AI (Groq/OpenRouter/Gemini).
+    - Đại não gọi Boss để suy luận.
+
 Nhiệm vụ:
     - Nhận yêu cầu đã phân loại.
-    - Điều phối: phân loại → ghi hợp đồng → gọi Boss → verify → trả kết quả.
-    - Xử lý 2 luồng: ĐƠN GIẢN và DỰ ÁN.
-    - Xử lý sự kiện: Boss hết quota → chuyển Boss thế.
-    - Verify: Code → Sandbox; Toán/Văn/Khác → Boss tự verify.
-
-Nguyên tắc:
-    - Đây là trung tâm điều phối — code logic thuần.
-    - Gọi Boss để suy luận.
-    - Gọi Model để sinh code.
-    - Vòng lặp sửa lỗi tối đa 99s.
+    - Tra web nếu cần (ĐẠI NÃO trực tiếp gọi API).
+    - Ghép kết quả web vào prompt cho Boss.
+    - Ghi hợp đồng vào Cây.
+    - Gọi Boss suy luận.
+    - Verify (code → Sandbox, khác → Boss).
+    - Trả kết quả.
 """
 
 import time
 
 
-# ================================================================
-# HẰNG SỐ
-# ================================================================
-THOI_GIAN_VERIFY_TOI_DA = 99   # giây
+THOI_GIAN_VERIFY_TOI_DA = 99
 SO_LAN_SUA_TOI_DA = 5
 
 
-# ================================================================
-# GHI LOG
-# ================================================================
+TU_KHOA_TRA_WEB = [
+    "giá", "tỷ giá", "vàng", "bạc", "usd", "đô la", "euro",
+    "chứng khoán", "cổ phiếu", "bitcoin", "crypto", "tiền ảo",
+    "lãi suất", "lạm phát", "giá xăng", "giá điện", "giá nhà",
+    "giá đất", "giá vàng", "bảng giá", "niêm yết",
+    "hôm nay", "hôm qua", "ngày mai", "hiện tại", "bây giờ",
+    "mới nhất", "gần đây", "tuần này", "tháng này", "năm nay",
+    "thời tiết", "dự báo", "nhiệt độ", "mưa", "nắng",
+    "tin tức", "thời sự", "sự kiện", "diễn biến", "kết quả",
+    "bầu cử", "thể thao", "bóng đá", "world cup", "olympic",
+    "tra cứu", "tìm hiểu về", "thông tin về", "là ai", "ở đâu",
+    "khi nào", "bao giờ", "thế nào", "ra sao",
+    "so sánh", "đánh giá", "review", "top", "xếp hạng",
+]
+
+
 def _ghi_log(loai, noi_dung):
     try:
         from logs.ghi_log import ghi_log
@@ -36,22 +47,85 @@ def _ghi_log(loai, noi_dung):
         pass
 
 
-# ================================================================
-# ĐIỀU PHỐI CHÍNH
-# ================================================================
+def _can_tra_web(noi_dung):
+    """Kiểm tra câu hỏi có cần tra web không."""
+    if not noi_dung:
+        return False
+    t = noi_dung.lower()
+    for tu_khoa in TU_KHOA_TRA_WEB:
+        if tu_khoa in t:
+            return True
+    return False
+
+
+def _ghep_ket_qua_web(noi_dung, ket_qua_web):
+    """Ghép kết quả tra web vào prompt cho Boss."""
+    tong_hop = ket_qua_web.get("tong_hop", "")
+    nguon = ket_qua_web.get("nguon", [])
+
+    if not tong_hop:
+        return noi_dung
+
+    phan = [
+        f"Câu hỏi của user: {noi_dung}",
+        "",
+        "Thông tin tra web mới nhất:",
+        tong_hop,
+        "",
+    ]
+
+    if nguon:
+        phan.append(f"(Nguồn: {', '.join(nguon)})")
+        phan.append("")
+
+    phan.append(
+        "Hãy trả lời câu hỏi dựa trên thông tin tra web ở trên. "
+        "Nếu thông tin không đủ, hãy nói rõ."
+    )
+
+    return "\n".join(phan)
+
+
+def _tra_web_neu_can(noi_dung, chu_so_huu):
+    """
+    ĐẠI NÃO tra web nếu câu hỏi cần thông tin thời gian thực.
+
+    Lưu ý: Đây là ĐẠI NÃO (code) gọi API, KHÔNG phải Boss.
+    Boss chỉ nhận kết quả đã ghép vào prompt.
+    """
+    if not _can_tra_web(noi_dung):
+        return noi_dung
+
+    _ghi_log("dai-nao", f"Đại não tra web cho: {noi_dung[:80]}")
+
+    try:
+        from dai_nao.tra_web.dieu_phoi_tra_web import dieu_phoi_tra_web
+
+        ket_qua_web = dieu_phoi_tra_web(
+            noi_dung,
+            chu_so_huu,
+            so_ket_qua=5,
+            lay_noi_dung=False,
+        )
+
+        if ket_qua_web.get("thanh_cong"):
+            _ghi_log(
+                "dai-nao",
+                f"Đại não tra web OK: {ket_qua_web.get('so_ket_qua', 0)} kết quả",
+            )
+            return _ghep_ket_qua_web(noi_dung, ket_qua_web)
+
+        _ghi_log("dai-nao", f"Đại não tra web lỗi: {ket_qua_web.get('loi', '')}")
+
+    except Exception as e:
+        _ghi_log("loi", f"Tra web exception: {e}")
+
+    return noi_dung
+
+
 def dieu_phoi(du_lieu):
     """
-    Điều phối toàn bộ luồng xử lý.
-
-    du_lieu: {
-        noi_dung, anh, file, lich_su,
-        id_chat, id_du_an, chu_so_huu, thoi_gian,
-    }
-
-    Trả về: {
-        thanh_cong, tra_loi, code?, ngon_ngu?,
-        ket_qua_chay?, loi?,
-    }
+    Điều phối toàn bộ luồng xử lý (ĐẠI NÃO = CODE, không phải Boss).
     """
     if not du_lieu:
         return {"thanh_cong": False, "loi": "Thiếu dữ liệu."}
@@ -63,9 +137,8 @@ def dieu_phoi(du_lieu):
     if not noi_dung:
         return {"thanh_cong": False, "loi": "Không có nội dung."}
 
-    _ghi_log("dai-nao", f"Điều phối: {noi_dung[:80]}")
+    _ghi_log("dai-nao", f"Đại não điều phối: {noi_dung[:80]}")
 
-    # 1. Phân loại
     try:
         from dai_nao.phan_loai import phan_loai
         phan_loai_ket_qua = phan_loai(noi_dung)
@@ -75,28 +148,23 @@ def dieu_phoi(du_lieu):
 
     loai = phan_loai_ket_qua.get("loai", "don_gian")
 
-    # 2. Điều phối theo loại
     if loai == "du_an":
         return _dieu_phoi_du_an(du_lieu, phan_loai_ket_qua)
     return _dieu_phoi_don_gian(du_lieu, phan_loai_ket_qua)
 
 
-# ================================================================
-# ĐIỀU PHỐI ĐƠN GIẢN
-# ================================================================
 def _dieu_phoi_don_gian(du_lieu, phan_loai_ket_qua):
-    """
-    Luồng đơn giản:
-        - Ghi hợp đồng ngắn.
-        - Gọi Boss trả lời.
-        - Verify (nếu code → sandbox).
-        - Trả kết quả.
-    """
+    """Luồng đơn giản: Đại não tra web → Gọi Boss → Verify → Trả."""
     noi_dung = du_lieu.get("noi_dung", "")
     chu_so_huu = du_lieu.get("chu_so_huu", "khach")
     id_chat = du_lieu.get("id_chat", "")
 
-    # 1. Ghi hợp đồng ngắn
+    noi_dung_moi = _tra_web_neu_can(noi_dung, chu_so_huu)
+
+    if noi_dung_moi != noi_dung:
+        du_lieu = dict(du_lieu)
+        du_lieu["noi_dung"] = noi_dung_moi
+
     if chu_so_huu and id_chat:
         try:
             from dai_nao.ghi_hop_dong import ghi_hop_dong_moi
@@ -109,7 +177,6 @@ def _dieu_phoi_don_gian(du_lieu, phan_loai_ket_qua):
         except Exception:
             pass
 
-    # 2. Gọi Boss
     ket_qua_boss = _goi_boss(du_lieu, phan_loai_ket_qua)
 
     if not ket_qua_boss or not ket_qua_boss.get("thanh_cong"):
@@ -118,12 +185,10 @@ def _dieu_phoi_don_gian(du_lieu, phan_loai_ket_qua):
             "loi": (ket_qua_boss or {}).get("loi", "Boss không trả lời."),
         }
 
-    # 3. Nếu có code → verify qua sandbox
     ket_qua_cuoi = ket_qua_boss
     if ket_qua_boss.get("code"):
         ket_qua_cuoi = _verify_code(ket_qua_boss, chu_so_huu, id_chat)
 
-    # 4. Lưu kết quả vào cây
     if chu_so_huu and id_chat:
         try:
             from dai_nao.luu_ket_qua import luu_ket_qua
@@ -134,23 +199,18 @@ def _dieu_phoi_don_gian(du_lieu, phan_loai_ket_qua):
     return ket_qua_cuoi
 
 
-# ================================================================
-# ĐIỀU PHỐI DỰ ÁN
-# ================================================================
 def _dieu_phoi_du_an(du_lieu, phan_loai_ket_qua):
-    """
-    Luồng dự án:
-        - Boss lập kế hoạch + hợp đồng + hướng dẫn.
-        - Ghi vào cây.
-        - Chỉ huy Model từng bước.
-        - Verify + cập nhật hợp đồng.
-        - Trả kết quả.
-    """
+    """Luồng dự án: Đại não tra web → Boss lập kế hoạch → Chỉ huy Model → Verify."""
     noi_dung = du_lieu.get("noi_dung", "")
     chu_so_huu = du_lieu.get("chu_so_huu", "khach")
     id_chat = du_lieu.get("id_chat", "")
 
-    # 1. Kiểm tra cây đã có hợp đồng chưa
+    noi_dung_moi = _tra_web_neu_can(noi_dung, chu_so_huu)
+
+    if noi_dung_moi != noi_dung:
+        du_lieu = dict(du_lieu)
+        du_lieu["noi_dung"] = noi_dung_moi
+
     co_hop_dong = False
     if chu_so_huu and id_chat:
         try:
@@ -159,7 +219,6 @@ def _dieu_phoi_du_an(du_lieu, phan_loai_ket_qua):
         except Exception:
             co_hop_dong = False
 
-    # 2. Nếu chưa có → Boss lập kế hoạch
     if not co_hop_dong:
         ket_qua_ke_hoach = _goi_boss_lap_ke_hoach(du_lieu, phan_loai_ket_qua)
 
@@ -169,7 +228,6 @@ def _dieu_phoi_du_an(du_lieu, phan_loai_ket_qua):
                 "loi": (ket_qua_ke_hoach or {}).get("loi", "Boss lập kế hoạch lỗi."),
             }
 
-        # Ghi kế hoạch vào cây
         if chu_so_huu and id_chat:
             try:
                 from dai_nao.ghi_hop_dong import ghi_tu_ke_hoach
@@ -177,7 +235,6 @@ def _dieu_phoi_du_an(du_lieu, phan_loai_ket_qua):
             except Exception as e:
                 _ghi_log("loi", f"Ghi kế hoạch lỗi: {e}")
 
-    # 3. Chỉ huy Model thực hiện bước hiện tại
     ket_qua_buoc = _chi_huy_model(du_lieu)
 
     if not ket_qua_buoc or not ket_qua_buoc.get("thanh_cong"):
@@ -186,10 +243,8 @@ def _dieu_phoi_du_an(du_lieu, phan_loai_ket_qua):
             "loi": (ket_qua_buoc or {}).get("loi", "Model không thực hiện được."),
         }
 
-    # 4. Verify + cập nhật
     ket_qua_cuoi = _verify_va_cap_nhat(ket_qua_buoc, chu_so_huu, id_chat)
 
-    # 5. Lưu kết quả
     if chu_so_huu and id_chat:
         try:
             from dai_nao.luu_ket_qua import luu_ket_qua
@@ -200,15 +255,8 @@ def _dieu_phoi_du_an(du_lieu, phan_loai_ket_qua):
     return ket_qua_cuoi
 
 
-# ================================================================
-# GỌI BOSS
-# ================================================================
 def _goi_boss(du_lieu, phan_loai_ket_qua):
-    """
-    Gọi Boss trả lời (luồng đơn giản).
-
-    Trả về: dict.
-    """
+    """Đại não gọi Boss (model) trả lời."""
     try:
         from dai_nao.boss_model.goi_boss import goi_boss
         return goi_boss({
@@ -224,11 +272,8 @@ def _goi_boss(du_lieu, phan_loai_ket_qua):
         return {"thanh_cong": False, "loi": f"Boss lỗi: {e}"}
 
 
-# ================================================================
-# GỌI BOSS LẬP KẾ HOẠCH
-# ================================================================
 def _goi_boss_lap_ke_hoach(du_lieu, phan_loai_ket_qua):
-    """Gọi Boss lập kế hoạch cho dự án."""
+    """Đại não gọi Boss lập kế hoạch."""
     try:
         from dai_nao.boss_model.goi_boss import goi_boss_lap_ke_hoach
         return goi_boss_lap_ke_hoach({
@@ -248,11 +293,8 @@ def _goi_boss_lap_ke_hoach(du_lieu, phan_loai_ket_qua):
         return {"thanh_cong": False, "loi": f"Boss lập kế hoạch lỗi: {e}"}
 
 
-# ================================================================
-# CHỈ HUY MODEL
-# ================================================================
 def _chi_huy_model(du_lieu):
-    """Chỉ huy Model thực hiện bước hiện tại."""
+    """Đại não yêu cầu Tiểu não ép Model làm việc."""
     try:
         from tieu_nao.nhan_lenh import nhan_lenh
         return nhan_lenh(du_lieu)
@@ -263,14 +305,8 @@ def _chi_huy_model(du_lieu):
         return {"thanh_cong": False, "loi": f"Model lỗi: {e}"}
 
 
-# ================================================================
-# GỌI MODEL TRỰC TIẾP (FALLBACK)
-# ================================================================
 def _goi_model_truc_tiep(du_lieu):
-    """
-    Fallback khi chưa có boss_model hoặc tieu_nao.
-    Trả về câu trả lời mặc định.
-    """
+    """Fallback."""
     noi_dung = du_lieu.get("noi_dung", "")
     return {
         "thanh_cong": True,
@@ -280,17 +316,8 @@ def _goi_model_truc_tiep(du_lieu):
     }
 
 
-# ================================================================
-# VERIFY CODE QUA SANDBOX
-# ================================================================
 def _verify_code(ket_qua, chu_so_huu, id_chat):
-    """
-    Verify code qua Sandbox.
-
-    Vòng lặp sửa lỗi tối đa 99s.
-
-    Trả về: ket_qua đã verify.
-    """
+    """Đại não verify code qua Sandbox."""
     code = ket_qua.get("code")
     ngon_ngu = ket_qua.get("ngon_ngu", "python")
 
@@ -302,13 +329,11 @@ def _verify_code(ket_qua, chu_so_huu, id_chat):
     ket_qua_hien_tai = ket_qua
 
     while so_lan_sua < SO_LAN_SUA_TOI_DA:
-        # Kiểm tra timeout 99s
         if time.time() - bat_dau > THOI_GIAN_VERIFY_TOI_DA:
             _ghi_log("dai-nao", "Hết 99s verify — dừng.")
             ket_qua_hien_tai["het_thoi_gian"] = True
             return ket_qua_hien_tai
 
-        # Chạy sandbox
         try:
             if ngon_ngu == "html":
                 from tieu_nao.sanbox.chay_html import chay_html
@@ -324,13 +349,11 @@ def _verify_code(ket_qua, chu_so_huu, id_chat):
             }
             return ket_qua_hien_tai
 
-        # Kiểm tra lỗi
         if ket_qua_chay.get("thanh_cong"):
             ket_qua_hien_tai["ket_qua_chay"] = ket_qua_chay
             _ghi_log("dai-nao", f"Code OK sau {so_lan_sua} lần sửa.")
             return ket_qua_hien_tai
 
-        # Có lỗi → gọi Boss sửa
         so_lan_sua += 1
         _ghi_log("dai-nao", f"Code lỗi — sửa lần {so_lan_sua}")
 
@@ -363,22 +386,11 @@ def _verify_code(ket_qua, chu_so_huu, id_chat):
     return ket_qua_hien_tai
 
 
-# ================================================================
-# VERIFY + CẬP NHẬT
-# ================================================================
 def _verify_va_cap_nhat(ket_qua, chu_so_huu, id_chat):
-    """
-    Verify + cập nhật hợp đồng/tiến độ.
-
-    - Code → Sandbox.
-    - Toán/Văn/Khác → Boss tự verify.
-    """
-    loai_noi_dung = ket_qua.get("loai_noi_dung", "")
-
+    """Đại não verify + cập nhật hợp đồng."""
     if ket_qua.get("code"):
         ket_qua = _verify_code(ket_qua, chu_so_huu, id_chat)
 
-    # Cập nhật hợp đồng
     if chu_so_huu and id_chat:
         try:
             from dai_nao.ghi_hop_dong import cap_nhat_hop_dong
@@ -392,11 +404,7 @@ def _verify_va_cap_nhat(ket_qua, chu_so_huu, id_chat):
     return ket_qua
 
 
-# ================================================================
-# ĐẾM BƯỚC HIỆN TẠI
-# ================================================================
 def _dem_buoc_hien_tai(chu_so_huu, id_chat):
-    """Đếm bước hiện tại / tổng."""
     try:
         from cay_linh_hon.tien_do import doc_tien_do
         tien_do = doc_tien_do(chu_so_huu, id_chat)
@@ -407,20 +415,10 @@ def _dem_buoc_hien_tai(chu_so_huu, id_chat):
     return "0/0"
 
 
-# ================================================================
-# XỬ LÝ KHI BOSS HẾT QUOTA
-# ================================================================
 def xu_ly_boss_het_quota(chu_so_huu, id_chat, du_lieu):
-    """
-    Xử lý khi Boss đầu hết quota → chuyển Boss thế.
+    """Đại não xử lý khi Boss đầu hết quota → chuyển Boss thế."""
+    _ghi_log("dai-nao", f"Boss hết quota — Đại não chuyển Boss thế chat {id_chat}")
 
-    Boss thế bị CODE ÉP đọc hợp đồng trước khi làm.
-
-    Trả về: ket_qua.
-    """
-    _ghi_log("dai-nao", f"Boss hết quota — chuyển Boss thế chat {id_chat}")
-
-    # 1. ÉP Boss thế đọc hợp đồng
     try:
         from dai_nao.ep_boss_doc import ep_boss_doc
         from dai_nao.boss_model.goi_boss import goi_boss_the
@@ -437,21 +435,10 @@ def xu_ly_boss_het_quota(chu_so_huu, id_chat, du_lieu):
     except Exception as e:
         _ghi_log("loi", f"Ép Boss thế đọc lỗi: {e}")
 
-    # 2. Tiếp tục xử lý với Boss thế
     return dieu_phoi(du_lieu)
 
 
-# ================================================================
-# XỬ LÝ USER ĐỔI Ý
-# ================================================================
 def xu_ly_doi_y(chu_so_huu, id_chat, noi_dung, muc_do="nho"):
-    """
-    Xử lý khi user đổi ý.
-
-    muc_do: "nho" | "vua" | "lon".
-
-    Trả về: True/False.
-    """
     try:
         from cay_linh_hon.ket_noi import su_kien_doi_y
         return su_kien_doi_y(chu_so_huu, id_chat, muc_do, noi_dung)
@@ -460,11 +447,8 @@ def xu_ly_doi_y(chu_so_huu, id_chat, noi_dung, muc_do="nho"):
         return False
 
 
-# ================================================================
-# 3 TÌNH HUỐNG BOSS THẾ PHẢI XỬ LÝ
-# ================================================================
 def boss_the_gui_lai_code(chu_so_huu, id_chat, buoc=None):
-    """Tình huống 1: User bảo gửi lại code cũ."""
+    """Đại não lấy code cũ cho Boss thế gửi lại user."""
     try:
         from cay_linh_hon.doc_code import format_gui_user
         return format_gui_user(chu_so_huu, id_chat, buoc)
@@ -474,7 +458,7 @@ def boss_the_gui_lai_code(chu_so_huu, id_chat, buoc=None):
 
 
 def boss_the_tra_web_cap_nhat(chu_so_huu, id_chat, cau_hoi):
-    """Tình huống 2: User bảo tra web cập nhật thông tin."""
+    """Đại não tra web theo yêu cầu Boss thế."""
     try:
         from dai_nao.tra_web.tim_kiem import tim_kiem
         ket_qua = tim_kiem(cau_hoi, chu_so_huu)
@@ -493,12 +477,7 @@ def boss_the_tra_web_cap_nhat(chu_so_huu, id_chat, cau_hoi):
 
 
 def boss_the_kiem_tra_toan_bo_code(chu_so_huu, id_chat):
-    """
-    Tình huống 3: User bảo kiểm tra toàn bộ code.
-
-    Chia nhỏ từng bước, kiểm tra lần lượt.
-    Nếu bước N lỗi → dừng sửa ngay, rồi mới tiếp.
-    """
+    """Đại não chia nhỏ từng bước, kiểm tra code."""
     try:
         from cay_linh_hon.doc_code import doc_tat_ca
         tat_ca_code = doc_tat_ca(chu_so_huu, id_chat)
@@ -515,7 +494,6 @@ def boss_the_kiem_tra_toan_bo_code(chu_so_huu, id_chat):
         code = item.get("code", "")
         ngon_ngu = _doan_ngon_ngu(item.get("file", ""))
 
-        # Chạy sandbox
         try:
             if ngon_ngu == "html":
                 from tieu_nao.sanbox.chay_html import chay_html
@@ -545,11 +523,7 @@ def boss_the_kiem_tra_toan_bo_code(chu_so_huu, id_chat):
     }
 
 
-# ================================================================
-# ĐOÁN NGÔN NGỮ TỪ TÊN FILE
-# ================================================================
 def _doan_ngon_ngu(ten_file):
-    """Đoán ngôn ngữ từ tên file."""
     if not ten_file or "." not in ten_file:
         return "python"
 
