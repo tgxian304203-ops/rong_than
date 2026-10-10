@@ -2,6 +2,7 @@
 luu_key.py - Lưu + quản lý API Key model.
 
 Sửa: dai_nao.ghi_nho → luu_tru.ghi_nho.
+Thêm trường loai_nao: "boss" hoặc "tieu_boss".
 """
 
 import time
@@ -40,6 +41,14 @@ def _ghi_log(loai, noi_dung):
         pass
 
 
+def _in_debug(noi_dung):
+    """In ra console Render."""
+    try:
+        print(f"[DEBUG-LUU-KEY] {noi_dung}", flush=True)
+    except Exception:
+        pass
+
+
 def _lay_chu_so_huu():
     ten = phien_flask.get("ten_dang_nhap")
     if ten:
@@ -60,6 +69,7 @@ def _tao_id():
 
 
 def _chuan_hoa_loai_nao(gia_tri):
+    """Chuẩn hóa loai_nao — mặc định tieu_boss nếu sai."""
     if not gia_tri:
         return LOAI_NAO_MAC_DINH
     gt = str(gia_tri).strip().lower()
@@ -132,16 +142,29 @@ def _lay_quota(key, provider):
 
 
 def luu_key_model(du_lieu):
+    """
+    Lưu key model vào MongoDB.
+
+    du_lieu: { key, loai_nao }.
+    loai_nao: "boss" hoặc "tieu_boss".
+    """
     chu_so_huu = _lay_chu_so_huu()
 
     key = (du_lieu.get("key") or "").strip()
     if not key:
         return {"thanh_cong": False, "loi": "Thiếu key."}
 
+    # Lấy + chuẩn hóa loai_nao
     loai_nao = _chuan_hoa_loai_nao(du_lieu.get("loai_nao"))
+
+    _in_debug(f"=== LƯU KEY ===")
+    _in_debug(f"chu_so_huu = '{chu_so_huu}'")
+    _in_debug(f"loai_nao = '{loai_nao}'")
+    _in_debug(f"key (10 ký tự) = '{key[:10]}...'")
 
     provider = _nhan_dien_provider(key)
     if provider is None:
+        _in_debug(f"❌ Không nhận diện provider")
         return {
             "thanh_cong": False,
             "loi": "Không nhận diện được provider. Key phải bắt đầu bằng "
@@ -165,9 +188,13 @@ def luu_key_model(du_lieu):
         "lan_kiem_tra_cuoi": int(time.time()),
     }
 
+    _in_debug(f"key_moi = {key_moi}")
+
     if not luu_key_da_luu(key_moi):
+        _in_debug(f"❌ luu_key_da_luu thất bại")
         return {"thanh_cong": False, "loi": "Không lưu được key."}
 
+    _in_debug(f"✅ Lưu OK")
     _ghi_log("dai-nao",
              f"Lưu key model provider={provider} loai_nao={loai_nao} cho {chu_so_huu}")
 
