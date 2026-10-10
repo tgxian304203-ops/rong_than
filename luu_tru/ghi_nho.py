@@ -13,6 +13,10 @@ Nhiệm vụ:
 Nguyên tắc:
     - Mọi collection kho 2 đều gắn chu_so_huu + id_chat.
     - Cây linh hồn LÀ CỦA RIÊNG mỗi chat.
+
+ĐÃ SỬA:
+    - _doc_uri_tu_file() đọc ENV trước (URI_KHO_1, URI_KHO_2).
+    - Fallback: đọc file du_lieu/cau_hinh_kho.json.
 """
 
 import os
@@ -20,7 +24,6 @@ import json
 import time
 
 from pymongo import MongoClient
-from pymongo.errors import PyMongoError
 from gridfs import GridFS
 from bson import ObjectId
 
@@ -42,16 +45,26 @@ _db_2 = None
 
 
 # ================================================================
-# ĐỌC / GHI URI TỪ FILE
+# ĐỌC / GHI URI
 # ================================================================
 def _doc_uri_tu_file():
+    """Đọc URI 2 kho — ưu tiên ENV, fallback file."""
+    # 1. Ưu tiên ENV (Render)
+    uri_1_env = os.environ.get("URI_KHO_1", "")
+    uri_2_env = os.environ.get("URI_KHO_2", "")
+    if uri_1_env and uri_2_env:
+        return uri_1_env, uri_2_env
+
+    # 2. Fallback: đọc file local
     if not os.path.exists(FILE_CAU_HINH_KHO):
         return "", ""
     try:
         with open(FILE_CAU_HINH_KHO, "r", encoding="utf-8") as f:
             du_lieu = json.load(f)
-        return (du_lieu.get("uri_kho_1", "") or "",
-                du_lieu.get("uri_kho_2", "") or "")
+        return (
+            du_lieu.get("uri_kho_1", "") or "",
+            du_lieu.get("uri_kho_2", "") or "",
+        )
     except (json.JSONDecodeError, OSError):
         return "", ""
 
@@ -154,7 +167,7 @@ def dat_lai_ket_noi():
 
 
 # ================================================================
-# URI KHO — LƯU / LẤY
+# URI KHO
 # ================================================================
 def luu_uri_kho_cua(chu_so_huu, so_kho, uri):
     if so_kho not in (1, 2) or not uri:
@@ -178,7 +191,7 @@ def lay_uri_kho_cua(chu_so_huu, so_kho):
 
 
 # ================================================================
-# TÀI KHOẢN — KHO 1
+# TÀI KHOẢN
 # ================================================================
 def dem_tai_khoan():
     db, _ = _ket_noi_kho_1()
@@ -257,7 +270,7 @@ def xoa_tai_khoan_va_du_lieu(ten_dang_nhap):
 
 
 # ================================================================
-# PHIÊN ĐĂNG NHẬP — KHO 1
+# PHIÊN ĐĂNG NHẬP
 # ================================================================
 def luu_phien_dang_nhap(phien):
     db, _ = _ket_noi_kho_1()
@@ -306,7 +319,7 @@ def gia_han_phien_dang_nhap(token, thoi_gian_het_han_moi):
 
 
 # ================================================================
-# KEY ĐÃ LƯU — KHO 1
+# KEY
 # ================================================================
 def luu_key_da_luu(key):
     db, _ = _ket_noi_kho_1()
@@ -381,7 +394,7 @@ def cap_nhat_quota_key(id_key, phan_tram):
 
 
 # ================================================================
-# DỰ ÁN — KHO 1
+# DỰ ÁN
 # ================================================================
 def lay_danh_sach_du_an_cua(chu_so_huu):
     db, _ = _ket_noi_kho_1()
@@ -428,7 +441,7 @@ def xoa_du_an_theo_id(id_du_an):
 
 
 # ================================================================
-# CHAT NHANH — KHO 1
+# CHAT NHANH
 # ================================================================
 def lay_danh_sach_chat_nhanh_cua(chu_so_huu):
     db, _ = _ket_noi_kho_1()
@@ -519,7 +532,7 @@ def lay_lich_su_chat(chu_so_huu, id_chat, gioi_han=20):
 
 
 # ================================================================
-# TRÒ CHUYỆN — KHO 1
+# TRÒ CHUYỆN
 # ================================================================
 def luu_tro_chuyen(tro):
     db, _ = _ket_noi_kho_1()
@@ -571,7 +584,7 @@ def xoa_tro_chuyen_theo_id(id_tro, chu_so_huu=""):
 
 
 # ================================================================
-# TIN NHẮN TRÒ CHUYỆN — KHO 1
+# TIN NHẮN
 # ================================================================
 def luu_tin_nhan_tro_chuyen(tin):
     db, _ = _ket_noi_kho_1()
@@ -599,7 +612,7 @@ def lay_tin_nhan_tro_chuyen_cua(id_du_an, id_tro, chu_so_huu):
 
 
 # ================================================================
-# ẢNH / FILE — KHO 1
+# ẢNH / FILE
 # ================================================================
 def luu_file_gridfs(ten_file, noi_dung, metadata=None):
     db, _ = _ket_noi_kho_1()
@@ -700,10 +713,9 @@ def luu_lich_su_gui(du_lieu):
 
 
 # ================================================================
-# LOGS — KHO 1
+# LOGS
 # ================================================================
 def _collection_logs():
-    """Collection logs kho 1."""
     db, _ = _ket_noi_kho_1()
     if db is None:
         return None
@@ -734,7 +746,7 @@ def xoa_log_cu(ngay=30):
 
 
 # ================================================================
-# KHO 2 — CÂY LINH HỒN (HỢP ĐỒNG)
+# KHO 2 — CÂY LINH HỒN
 # ================================================================
 def _collection_kho_2(ten):
     db, _ = _ket_noi_kho_2()
@@ -743,6 +755,7 @@ def _collection_kho_2(ten):
     return db[ten]
 
 
+# ---------- HỢP ĐỒNG ----------
 def luu_hop_dong(hop_dong):
     col = _collection_kho_2("hop_dong")
     if col is None or not hop_dong:
@@ -794,9 +807,7 @@ def xoa_hop_dong(chu_so_huu, id_chat):
         return False
 
 
-# ================================================================
-# KHO 2 — HƯỚNG DẪN
-# ================================================================
+# ---------- HƯỚNG DẪN ----------
 def luu_huong_dan(huong_dan):
     col = _collection_kho_2("huong_dan")
     if col is None or not huong_dan:
@@ -842,7 +853,7 @@ def them_blacklist(chu_so_huu, id_chat, muc_moi):
     if col is None or not chu_so_huu or not id_chat:
         return False
     try:
-        kq = col.update_one(
+        col.update_one(
             {"chu_so_huu": chu_so_huu, "id_chat": id_chat},
             {"$addToSet": {"blacklist": muc_moi},
              "$set": {"thoi_gian_cap_nhat": int(time.time())}},
@@ -853,9 +864,7 @@ def them_blacklist(chu_so_huu, id_chat, muc_moi):
         return False
 
 
-# ================================================================
-# KHO 2 — NODE (CÂY LINH HỒN)
-# ================================================================
+# ---------- NODE ----------
 def luu_node(node):
     col = _collection_kho_2("node")
     if col is None or not node:
@@ -957,9 +966,7 @@ def cap_nhat_score_node(chu_so_huu, id_chat, id_node, score_moi):
         return False
 
 
-# ================================================================
-# KHO 2 — CODE ĐÃ VIẾT (GIỮ MÃI MÃI)
-# ================================================================
+# ---------- CODE ĐÃ VIẾT ----------
 def luu_code_da_viet(du_lieu):
     col = _collection_kho_2("code_da_viet")
     if col is None or not du_lieu:
@@ -1013,9 +1020,7 @@ def xoa_code_da_viet(chu_so_huu, id_chat):
         return False
 
 
-# ================================================================
-# KHO 2 — TIẾN ĐỘ
-# ================================================================
+# ---------- TIẾN ĐỘ ----------
 def luu_tien_do(tien_do):
     col = _collection_kho_2("tien_do")
     if col is None or not tien_do:
@@ -1070,14 +1075,8 @@ def xoa_tien_do(chu_so_huu, id_chat):
         return False
 
 
-# ================================================================
-# KHO 2 — XÓA TOÀN BỘ CÂY CỦA 1 CHAT
-# ================================================================
+# ---------- XÓA TOÀN BỘ CÂY ----------
 def xoa_toan_bo_cay_cua_chat(chu_so_huu, id_chat):
-    """
-    Xóa tất cả dữ liệu cây linh hồn của 1 chat.
-    Gọi khi user xóa chat.
-    """
     db, _ = _ket_noi_kho_2()
     if db is None or not chu_so_huu or not id_chat:
         return False
@@ -1091,10 +1090,6 @@ def xoa_toan_bo_cay_cua_chat(chu_so_huu, id_chat):
 
 
 def xoa_toan_bo_cay_cua_user(chu_so_huu):
-    """
-    Xóa tất cả dữ liệu cây linh hồn của 1 user.
-    Gọi khi user xóa tài khoản.
-    """
     db, _ = _ket_noi_kho_2()
     if db is None or not chu_so_huu:
         return False
