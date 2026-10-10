@@ -1,7 +1,10 @@
 """
 nhan_yeu_cau.py - Nhận yêu cầu từ giao diện.
 
-Sửa: log "Đại não thất bại" → "Luồng xử lý thất bại".
+SỬA: 
+    - Không xử lý logic — chỉ chuyển tiếp.
+    - Boss là bên nhận yêu cầu chính.
+    - Đại não là bên điều phối.
 """
 
 import time
@@ -24,7 +27,8 @@ def _in_debug(noi_dung):
 
 def nhan_yeu_cau(du_lieu):
     """
-    Nhận yêu cầu từ giao diện và chuyển cho dieu_phoi.
+    Nhận yêu cầu từ giao diện.
+    Chuyển thẳng cho dieu_phoi để Boss xử lý.
     """
     if not du_lieu or not isinstance(du_lieu, dict):
         return {
@@ -44,6 +48,11 @@ def nhan_yeu_cau(du_lieu):
             "loi": "Không có nội dung để xử lý.",
         }
 
+    _in_debug(f"=== NHẬN YÊU CẦU ===")
+    _in_debug(f"chu_so_huu = '{chu_so_huu}'")
+    _in_debug(f"noi_dung = {noi_dung[:80]}")
+    _in_debug(f"→ Chuyển thẳng cho dieu_phoi (Boss xử lý)")
+
     _ghi_log("dai-nao", f"Nhận yêu cầu: {noi_dung[:100]}")
 
     try:
@@ -59,15 +68,14 @@ def nhan_yeu_cau(du_lieu):
             "thoi_gian": int(time.time()),
         })
 
-        # Ghi log lỗi rõ nguồn
         if ket_qua and not ket_qua.get("thanh_cong"):
             nguon_loi = ket_qua.get("nguon_loi", "")
             loi = ket_qua.get("loi", "không rõ")
 
-            if nguon_loi == "tieu_nao":
+            if nguon_loi == "boss_model":
+                _ghi_log("loi", f"Boss thất bại: {loi}")
+            elif nguon_loi == "tieu_nao":
                 _ghi_log("loi", f"Tiểu não thất bại: {loi}")
-            elif nguon_loi == "boss_model":
-                _ghi_log("loi", f"Boss model thất bại: {loi}")
             elif nguon_loi == "sandbox":
                 _ghi_log("loi", f"Sandbox thất bại: {loi}")
             elif nguon_loi == "tra_web":
@@ -86,5 +94,4 @@ def nhan_yeu_cau(du_lieu):
 
 
 def nhan_task(du_lieu):
-    """Alias tương thích."""
     return nhan_yeu_cau(du_lieu)
