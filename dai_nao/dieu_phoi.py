@@ -1,7 +1,7 @@
 """
 dieu_phoi.py - Điều phối toàn bộ luồng Đại não.
 
-CÓ DEBUG để kiểm tra luồng.
+Sửa: set loai_task = "sinh_code" khi là dự án.
 """
 
 import time
@@ -36,7 +36,6 @@ def _ghi_log(loai, noi_dung):
 
 
 def _in_debug(noi_dung):
-    """In ra console Render."""
     try:
         print(f"[DEBUG-DIEU-PHOI] {noi_dung}", flush=True)
     except Exception:
@@ -171,6 +170,7 @@ def _dieu_phoi_don_gian(du_lieu, phan_loai_ket_qua):
         except Exception:
             pass
 
+    # LUỒNG ĐƠN GIẢN: chỉ gọi Boss, KHÔNG cần Model
     ket_qua_boss = _goi_boss(du_lieu, phan_loai_ket_qua)
 
     if not ket_qua_boss or not ket_qua_boss.get("thanh_cong"):
@@ -237,11 +237,14 @@ def _dieu_phoi_du_an(du_lieu, phan_loai_ket_qua):
                 _in_debug(f"Ghi kế hoạch lỗi: {e}")
                 _ghi_log("loi", f"Ghi kế hoạch lỗi: {e}")
 
-    # Gọi Tiểu não
-    _in_debug("→ Gọi Tiểu não: _chi_huy_model()")
-    _in_debug(f"   chu_so_huu truyền vào = '{chu_so_huu}'")
+    # GỌI TIỂU NÃO — set loai_task = "sinh_code"
+    du_lieu_moi = dict(du_lieu)
+    du_lieu_moi["loai_task"] = "sinh_code"
 
-    ket_qua_buoc = _chi_huy_model(du_lieu)
+    _in_debug("→ Gọi Tiểu não với loai_task='sinh_code'")
+    _in_debug(f"   chu_so_huu = '{chu_so_huu}'")
+
+    ket_qua_buoc = _chi_huy_model(du_lieu_moi)
 
     _in_debug(f"← Tiểu não trả về: thanh_cong={ket_qua_buoc.get('thanh_cong')}")
     _in_debug(f"← Tiểu não trả về: loi={ket_qua_buoc.get('loi', '')}")
@@ -302,15 +305,9 @@ def _goi_boss_lap_ke_hoach(du_lieu, phan_loai_ket_qua):
 
 
 def _chi_huy_model(du_lieu):
-    """
-    Đại não gọi Tiểu não để ép Model làm việc.
-
-    CÓ DEBUG để kiểm tra tham số truyền.
-    """
     _in_debug("=== ĐẠI NÃO GỌI TIỂU NÃO ===")
-    _in_debug(f"du_lieu keys: {list(du_lieu.keys())}")
     _in_debug(f"chu_so_huu = '{du_lieu.get('chu_so_huu')}'")
-    _in_debug(f"id_chat = '{du_lieu.get('id_chat')}'")
+    _in_debug(f"loai_task = '{du_lieu.get('loai_task')}'")
     _in_debug(f"noi_dung = {du_lieu.get('noi_dung', '')[:80]}")
 
     try:

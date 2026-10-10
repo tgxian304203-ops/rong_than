@@ -2,6 +2,7 @@
 do_model.py - Dò Model khả dụng.
 
 Sửa: dai_nao.ghi_nho → luu_tru.ghi_nho.
+Sửa: chấp nhận key cũ (không có loai_nao) + key mới (có loai_nao).
 Thêm DEBUG để kiểm tra key.
 """
 
@@ -15,7 +16,6 @@ def _ghi_log(loai, noi_dung):
 
 
 def _in_debug(noi_dung):
-    """In ra console Render."""
     try:
         print(f"[DEBUG-DO-MODEL] {noi_dung}", flush=True)
     except Exception:
@@ -30,11 +30,9 @@ def do_model(chu_so_huu):
     """
     Dò tìm Model khả dụng (còn quota).
 
-    Trả về: {
-        thanh_cong: bool,
-        key, key_id, provider,
-        loi?
-    }
+    Chấp nhận:
+        - Key có loai_nao = "tieu_boss" (key mới).
+        - Key KHÔNG có loai_nao (key cũ).
     """
     ket_qua = {
         "thanh_cong": False,
@@ -79,18 +77,28 @@ def do_model(chu_so_huu):
         if key.get("loai_key") == "tra_web":
             _in_debug(f"  Bỏ qua key tra_web: id={key.get('id')}")
             continue
-        if key.get("loai_nao") != LOAI_NAO_MODEL:
+
+        # Chuẩn hóa loai_nao
+        ln = key.get("loai_nao")
+        if ln is None:
+            ln_str = ""
+        else:
+            ln_str = str(ln).strip().lower()
+
+        # Chấp nhận: rỗng (key cũ) HOẶC tieu_boss (key mới)
+        if ln_str and ln_str != LOAI_NAO_MODEL:
             _in_debug(
-                f"  Bỏ qua key loai_nao={key.get('loai_nao')} "
-                f"(cần {LOAI_NAO_MODEL}): id={key.get('id')}"
+                f"  Bỏ qua key loai_nao='{ln_str}' "
+                f"(cần rỗng hoặc '{LOAI_NAO_MODEL}'): id={key.get('id')}"
             )
             continue
+
         danh_sach_loc.append(key)
 
-    _in_debug(f"Sau khi lọc loai_nao='{LOAI_NAO_MODEL}': {len(danh_sach_loc)} key")
+    _in_debug(f"Sau khi lọc: {len(danh_sach_loc)} key")
 
     if not danh_sach_loc:
-        _in_debug(f"❌ KHÔNG CÓ KEY MODEL (loai_nao='{LOAI_NAO_MODEL}')")
+        _in_debug(f"❌ KHÔNG CÓ KEY MODEL")
         ket_qua["loi"] = "Chưa có key Model."
         return ket_qua
 
@@ -135,7 +143,6 @@ def do_model(chu_so_huu):
 
 
 def _thu_tu_provider(provider):
-    """Trả thứ tự ưu tiên provider."""
     try:
         return THU_TU_PROVIDER.index(provider)
     except (ValueError, TypeError):
@@ -143,7 +150,6 @@ def _thu_tu_provider(provider):
 
 
 def dem_key_kha_dung(chu_so_huu):
-    """Đếm số key Model còn dùng được."""
     try:
         from luu_tru.ghi_nho import lay_danh_sach_key_cua
         danh_sach = lay_danh_sach_key_cua(chu_so_huu) or []
@@ -154,7 +160,12 @@ def dem_key_kha_dung(chu_so_huu):
     for key in danh_sach:
         if key.get("loai_key") == "tra_web":
             continue
-        if key.get("loai_nao") != LOAI_NAO_MODEL:
+        ln = key.get("loai_nao")
+        if ln is None:
+            ln_str = ""
+        else:
+            ln_str = str(ln).strip().lower()
+        if ln_str and ln_str != LOAI_NAO_MODEL:
             continue
         if key.get("phan_tram", 100) > 0:
             dem += 1
@@ -163,7 +174,6 @@ def dem_key_kha_dung(chu_so_huu):
 
 
 def tom_tat(ket_qua):
-    """Tạo chuỗi tóm tắt dò Model."""
     if not ket_qua:
         return ""
     if ket_qua.get("thanh_cong"):
