@@ -2,8 +2,9 @@
 sinh_code.py - Sinh code mới bằng Model.
 
 SỬA:
-    - Prompt yêu cầu Model dùng thư viện cho phép.
-    - Với dự án web → yêu cầu sinh cả backend + frontend.
+    - Bỏ gán ngon_ngu = "python" cho web.
+    - Để doan_ngon_ngu() tự đoán.
+    - Prompt yêu cầu Model dùng thư viện có sẵn.
 """
 
 import re
@@ -38,16 +39,12 @@ def sinh_code(du_lieu):
     if not noi_dung:
         return {"thanh_cong": False, "loi": "Thiếu yêu cầu."}
 
+    # Đoán ngôn ngữ từ yêu cầu
     ngon_ngu = doan_ngon_ngu(noi_dung)
     _in_debug(f"Ngôn ngữ đoán: {ngon_ngu}")
 
-    # Nếu là web → sinh cả backend + frontend
-    if la_du_an_web(noi_dung):
-        _in_debug("Dự án WEB → sinh backend + frontend")
-        ngon_ngu = "python"  # backend chính
-
     prompt = _tao_prompt_sinh_code(noi_dung, ngon_ngu)
-    _in_debug(f"Prompt: {prompt[:200]}")
+    _in_debug(f"Prompt (200 ký tự): {prompt[:200]}")
 
     du_lieu_prompt = dict(du_lieu)
     du_lieu_prompt["noi_dung"] = prompt
@@ -73,6 +70,7 @@ def sinh_code(du_lieu):
             "ngon_ngu": None,
         }
 
+    _in_debug(f"Code sinh OK: {len(code)} ký tự ({ngon_ngu})")
     _ghi_log("tieu-nao", f"Sinh code OK: {len(code)} ký tự ({ngon_ngu})")
 
     return {
@@ -103,12 +101,7 @@ def la_du_an_web(noi_dung):
 
 
 def _tao_prompt_sinh_code(noi_dung, ngon_ngu):
-    """
-    Tạo prompt yêu cầu Model sinh code.
-
-    - Yêu cầu dùng thư viện chuẩn + thư viện đã cài.
-    - Không dùng thư viện lạ.
-    """
+    """Tạo prompt cho Model sinh code."""
     phan = [
         f"Viết code {ngon_ngu} cho yêu cầu sau:",
         "",
@@ -116,7 +109,9 @@ def _tao_prompt_sinh_code(noi_dung, ngon_ngu):
         "",
         "YÊU CẦU:",
         "- Chỉ trả về code trong khối markdown có ghi ngôn ngữ.",
-        "- Không giải thích dài dòng.",
+        "- KHÔNG giải thích, KHÔNG viết văn bản ngoài code.",
+        "- KHÔNG dùng ngôn ngữ khác (tiếng Nga, tiếng Anh...) trong comment.",
+        "- Comment bằng tiếng Việt hoặc tiếng Anh.",
         "- Code phải chạy được.",
         "- Chỉ dùng thư viện có sẵn:",
         "  + Python: flask, flask-cors, flask-jwt-extended, pymongo,",
@@ -124,17 +119,20 @@ def _tao_prompt_sinh_code(noi_dung, ngon_ngu):
         "    python-docx, PyPDF2, Pillow, PyYAML, bcrypt, werkzeug,",
         "    jinja2, python-dateutil, pytz.",
         "  + KHÔNG dùng thư viện lạ chưa cài.",
-        "- Với dự án web: viết backend Python (Flask) trước,",
-        "  frontend HTML/CSS/JS viết riêng.",
     ]
     return "\n".join(phan)
 
 
 def doan_ngon_ngu(noi_dung):
+    """Đoán ngôn ngữ từ yêu cầu."""
     if not noi_dung:
-        return "python"
+        return "html"
 
     t = noi_dung.lower()
+
+    # Nếu là web → mặc định HTML
+    if la_du_an_web(t):
+        return "html"
 
     bang = {
         "python": ["python", "py ", ".py", "django", "flask", "pandas", "numpy"],
@@ -152,7 +150,7 @@ def doan_ngon_ngu(noi_dung):
             if tu in t:
                 return ngon_ngu
 
-    return "python"
+    return "html"
 
 
 def _trich_code(tra_loi, ngon_ngu):

@@ -2,8 +2,9 @@
 dieu_phoi.py - Điều phối toàn bộ luồng Đại não.
 
 SỬA:
-    - Boss nhận yêu cầu trực tiếp.
-    - Nếu code là web (HTML/CSS/JS) → nhúng LiveCodes vào chat.
+    - Kiểm tra ngon_ngu trước khi verify.
+    - HTML/CSS/JS → nhúng LiveCodes, KHÔNG chạy Sandbox Python.
+    - Python → verify qua Sandbox.
 """
 
 import time
@@ -60,7 +61,6 @@ def _can_tra_web(noi_dung):
 def _ghep_ket_qua_web(noi_dung, ket_qua_web):
     tong_hop = ket_qua_web.get("tong_hop", "")
     nguon = ket_qua_web.get("nguon", [])
-
     if not tong_hop:
         return noi_dung
 
@@ -71,11 +71,9 @@ def _ghep_ket_qua_web(noi_dung, ket_qua_web):
         tong_hop,
         "",
     ]
-
     if nguon:
         phan.append(f"(Nguồn: {', '.join(nguon)})")
         phan.append("")
-
     phan.append("Hãy trả lời câu hỏi dựa trên thông tin tra web ở trên.")
     return "\n".join(phan)
 
@@ -121,7 +119,6 @@ def dieu_phoi(du_lieu):
         du_lieu = dict(du_lieu)
         du_lieu["noi_dung"] = noi_dung_moi
 
-    # 1. Boss nhận yêu cầu
     _in_debug("→ Gọi Boss nhận yêu cầu + xử lý")
     ket_qua_boss = _goi_boss_nhan_yeu_cau(du_lieu)
 
@@ -214,20 +211,28 @@ def _xu_ly_du_an(du_lieu, ket_qua_boss, chu_so_huu, id_chat):
             "tieu_nao",
         )
 
-    # NẾU LÀ CODE WEB → NHÚNG LIVECODES
-    ngon_ngu = ket_qua_buoc.get("ngon_ngu", "")
+    ngon_ngu = (ket_qua_buoc.get("ngon_ngu") or "").lower().strip()
     code = ket_qua_buoc.get("code", "")
 
-    if ngon_ngu and ngon_ngu.lower() in NGON_NGU_WEB and code:
+    _in_debug(f"Ngôn ngữ Model sinh: {ngon_ngu}")
+    _in_debug(f"Code dài: {len(code) if code else 0} ký tự")
+
+    # NẾU LÀ CODE WEB → NHÚNG LIVECODES
+    if ngon_ngu in NGON_NGU_WEB and code:
         _in_debug(f"Code web ({ngon_ngu}) → nhúng LiveCodes")
         html_nhung = _nhung_livecodes(code, ngon_ngu)
         if html_nhung:
             ket_qua_buoc["html_nhung"] = html_nhung
+            _in_debug("✅ Đã nhúng LiveCodes")
+        else:
+            _in_debug("❌ Nhúng LiveCodes thất bại")
 
-    # Verify code Python
-    if ngon_ngu and ngon_ngu.lower() == "python":
+    # VERIFY CHỈ KHI LÀ PYTHON
+    if ngon_ngu == "python" and code:
+        _in_debug("Code Python → verify qua Sandbox")
         ket_qua_cuoi = _verify_va_cap_nhat(ket_qua_buoc, chu_so_huu, id_chat)
     else:
+        _in_debug(f"Code {ngon_ngu} → KHÔNG verify Sandbox")
         ket_qua_cuoi = ket_qua_buoc
 
     if chu_so_huu and id_chat:
@@ -271,6 +276,7 @@ def _tao_prompt_cho_model(noi_dung_goc, buoc, huong_dan):
     phan.append(
         "Hãy viết code cho bước này. "
         "Nếu là web → viết đầy đủ HTML + CSS + JS trong 1 file. "
+        "Comment bằng tiếng Việt hoặc tiếng Anh, KHÔNG dùng tiếng khác. "
         "Chỉ trả về code trong khối markdown."
     )
     return "\n".join(phan)
@@ -309,6 +315,10 @@ def _verify_code(ket_qua, chu_so_huu, id_chat):
     ngon_ngu = ket_qua.get("ngon_ngu", "python")
 
     if not code:
+        return ket_qua
+
+    # Chỉ verify Python
+    if ngon_ngu.lower() != "python":
         return ket_qua
 
     bat_dau = time.time()
