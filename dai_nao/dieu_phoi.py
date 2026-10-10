@@ -1,7 +1,10 @@
 """
 dieu_phoi.py - Điều phối toàn bộ luồng Đại não.
 
-Sửa: set loai_task = "sinh_code" khi là dự án.
+SỬA:
+    - Thêm nguồn lỗi (nguon_loi) để phân biệt lỗi từ đâu.
+    - Set loai_task = "sinh_code" khi là dự án.
+    - Đại não tra web trước khi gọi Boss (nếu cần).
 """
 
 import time
@@ -40,6 +43,15 @@ def _in_debug(noi_dung):
         print(f"[DEBUG-DIEU-PHOI] {noi_dung}", flush=True)
     except Exception:
         pass
+
+
+def _tao_loi(loi, nguon_loi):
+    """Tạo dict lỗi có nguồn."""
+    return {
+        "thanh_cong": False,
+        "loi": loi,
+        "nguon_loi": nguon_loi,
+    }
 
 
 def _can_tra_web(noi_dung):
@@ -112,14 +124,14 @@ def _tra_web_neu_can(noi_dung, chu_so_huu):
 
 def dieu_phoi(du_lieu):
     if not du_lieu:
-        return {"thanh_cong": False, "loi": "Thiếu dữ liệu."}
+        return _tao_loi("Thiếu dữ liệu.", "dai_nao")
 
     noi_dung = du_lieu.get("noi_dung", "")
     chu_so_huu = du_lieu.get("chu_so_huu", "khach")
     id_chat = du_lieu.get("id_chat", "")
 
     if not noi_dung:
-        return {"thanh_cong": False, "loi": "Không có nội dung."}
+        return _tao_loi("Không có nội dung.", "dai_nao")
 
     _in_debug("=== ĐẠI NÃO ĐIỀU PHỐI ===")
     _in_debug(f"noi_dung = {noi_dung[:80]}")
@@ -170,15 +182,14 @@ def _dieu_phoi_don_gian(du_lieu, phan_loai_ket_qua):
         except Exception:
             pass
 
-    # LUỒNG ĐƠN GIẢN: chỉ gọi Boss, KHÔNG cần Model
     ket_qua_boss = _goi_boss(du_lieu, phan_loai_ket_qua)
 
     if not ket_qua_boss or not ket_qua_boss.get("thanh_cong"):
         _in_debug(f"Boss lỗi: {(ket_qua_boss or {}).get('loi', '')}")
-        return {
-            "thanh_cong": False,
-            "loi": (ket_qua_boss or {}).get("loi", "Boss không trả lời."),
-        }
+        return _tao_loi(
+            (ket_qua_boss or {}).get("loi", "Boss không trả lời."),
+            "boss_model",
+        )
 
     ket_qua_cuoi = ket_qua_boss
     if ket_qua_boss.get("code"):
@@ -223,10 +234,10 @@ def _dieu_phoi_du_an(du_lieu, phan_loai_ket_qua):
 
         if not ket_qua_ke_hoach or not ket_qua_ke_hoach.get("thanh_cong"):
             _in_debug(f"Boss lập kế hoạch lỗi: {(ket_qua_ke_hoach or {}).get('loi', '')}")
-            return {
-                "thanh_cong": False,
-                "loi": (ket_qua_ke_hoach or {}).get("loi", "Boss lập kế hoạch lỗi."),
-            }
+            return _tao_loi(
+                (ket_qua_ke_hoach or {}).get("loi", "Boss lập kế hoạch lỗi."),
+                "boss_model",
+            )
 
         if chu_so_huu and id_chat:
             try:
@@ -251,10 +262,10 @@ def _dieu_phoi_du_an(du_lieu, phan_loai_ket_qua):
 
     if not ket_qua_buoc or not ket_qua_buoc.get("thanh_cong"):
         _in_debug(f"❌ Tiểu não thất bại: {ket_qua_buoc.get('loi', '')}")
-        return {
-            "thanh_cong": False,
-            "loi": (ket_qua_buoc or {}).get("loi", "Model không thực hiện được."),
-        }
+        return _tao_loi(
+            (ket_qua_buoc or {}).get("loi", "Model không thực hiện được."),
+            "tieu_nao",
+        )
 
     ket_qua_cuoi = _verify_va_cap_nhat(ket_qua_buoc, chu_so_huu, id_chat)
 
@@ -281,7 +292,7 @@ def _goi_boss(du_lieu, phan_loai_ket_qua):
         return _goi_model_truc_tiep(du_lieu)
     except Exception as e:
         _ghi_log("loi", f"Gọi Boss lỗi: {e}")
-        return {"thanh_cong": False, "loi": f"Boss lỗi: {e}"}
+        return _tao_loi(f"Boss lỗi: {e}", "boss_model")
 
 
 def _goi_boss_lap_ke_hoach(du_lieu, phan_loai_ket_qua):
@@ -301,7 +312,7 @@ def _goi_boss_lap_ke_hoach(du_lieu, phan_loai_ket_qua):
             "huong_dan": "Làm từng bước, kiểm tra kỹ.",
         }
     except Exception as e:
-        return {"thanh_cong": False, "loi": f"Boss lập kế hoạch lỗi: {e}"}
+        return _tao_loi(f"Boss lập kế hoạch lỗi: {e}", "boss_model")
 
 
 def _chi_huy_model(du_lieu):
@@ -322,7 +333,7 @@ def _chi_huy_model(du_lieu):
     except Exception as e:
         _in_debug(f"Exception nhan_lenh: {e}")
         _ghi_log("loi", f"Chỉ huy Model lỗi: {e}")
-        return {"thanh_cong": False, "loi": f"Model lỗi: {e}"}
+        return _tao_loi(f"Model lỗi: {e}", "tieu_nao")
 
 
 def _goi_model_truc_tiep(du_lieu):
@@ -442,10 +453,10 @@ def xu_ly_boss_het_quota(chu_so_huu, id_chat, du_lieu):
         ket_qua_doc = ep_boss_doc(chu_so_huu, id_chat, goi_boss_the)
 
         if not ket_qua_doc.get("thanh_cong"):
-            return {
-                "thanh_cong": False,
-                "loi": ket_qua_doc.get("loi", "Boss thế không đọc hợp đồng."),
-            }
+            return _tao_loi(
+                ket_qua_doc.get("loi", "Boss thế không đọc hợp đồng."),
+                "boss_model",
+            )
     except ImportError:
         pass
     except Exception as e:
@@ -487,7 +498,7 @@ def boss_the_tra_web_cap_nhat(chu_so_huu, id_chat, cau_hoi):
         return ket_qua
     except Exception as e:
         _ghi_log("loi", f"Tra web lỗi: {e}")
-        return {"thanh_cong": False, "loi": str(e)}
+        return _tao_loi(str(e), "tra_web")
 
 
 def boss_the_kiem_tra_toan_bo_code(chu_so_huu, id_chat):

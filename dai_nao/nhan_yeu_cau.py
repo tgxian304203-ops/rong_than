@@ -1,23 +1,12 @@
 """
 nhan_yeu_cau.py - Nhận yêu cầu từ giao diện.
 
-Nhiệm vụ:
-    - Nhận tin nhắn + metadata từ giao diện.
-    - Kiểm tra dữ liệu đầu vào.
-    - Chuyển cho dieu_phoi xử lý.
-    - Trả kết quả về giao diện.
-
-Nguyên tắc:
-    - Đây là entry point của Đại não.
-    - Không chứa logic — chỉ nhận + chuyển.
+Sửa: log "Đại não thất bại" → "Luồng xử lý thất bại".
 """
 
 import time
 
 
-# ================================================================
-# GHI LOG
-# ================================================================
 def _ghi_log(loai, noi_dung):
     try:
         from logs.ghi_log import ghi_log
@@ -26,31 +15,16 @@ def _ghi_log(loai, noi_dung):
         pass
 
 
-# ================================================================
-# NHẬN YÊU CẦU
-# ================================================================
+def _in_debug(noi_dung):
+    try:
+        print(f"[DEBUG-NHAN-YEU-CAU] {noi_dung}", flush=True)
+    except Exception:
+        pass
+
+
 def nhan_yeu_cau(du_lieu):
     """
     Nhận yêu cầu từ giao diện và chuyển cho dieu_phoi.
-
-    du_lieu: {
-        noi_dung: str,
-        anh: [str],
-        file: [str],
-        lich_su: [dict],
-        id_chat: str,
-        id_du_an: str,
-        chu_so_huu: str,
-    }
-
-    Trả về: {
-        thanh_cong: bool,
-        tra_loi: str,
-        code: str?,
-        ngon_ngu: str?,
-        ket_qua_chay: dict?,
-        loi: str?,
-    }
     """
     if not du_lieu or not isinstance(du_lieu, dict):
         return {
@@ -72,7 +46,6 @@ def nhan_yeu_cau(du_lieu):
 
     _ghi_log("dai-nao", f"Nhận yêu cầu: {noi_dung[:100]}")
 
-    # Chuyển cho điều phối
     try:
         from dai_nao.dieu_phoi import dieu_phoi
         ket_qua = dieu_phoi({
@@ -85,21 +58,33 @@ def nhan_yeu_cau(du_lieu):
             "chu_so_huu": chu_so_huu,
             "thoi_gian": int(time.time()),
         })
+
+        # Ghi log lỗi rõ nguồn
+        if ket_qua and not ket_qua.get("thanh_cong"):
+            nguon_loi = ket_qua.get("nguon_loi", "")
+            loi = ket_qua.get("loi", "không rõ")
+
+            if nguon_loi == "tieu_nao":
+                _ghi_log("loi", f"Tiểu não thất bại: {loi}")
+            elif nguon_loi == "boss_model":
+                _ghi_log("loi", f"Boss model thất bại: {loi}")
+            elif nguon_loi == "sandbox":
+                _ghi_log("loi", f"Sandbox thất bại: {loi}")
+            elif nguon_loi == "tra_web":
+                _ghi_log("loi", f"Tra web thất bại: {loi}")
+            else:
+                _ghi_log("loi", f"Luồng xử lý thất bại: {loi}")
+
         return ket_qua
     except Exception as e:
         _ghi_log("loi", f"Đại não xử lý lỗi: {e}")
         return {
             "thanh_cong": False,
             "loi": f"Đại não xử lý lỗi: {e}",
+            "nguon_loi": "dai_nao",
         }
 
 
-# ================================================================
-# HÀM TƯƠNG THÍCH (tên cũ)
-# ================================================================
 def nhan_task(du_lieu):
-    """
-    Alias tương thích với code cũ.
-    Gọi nhan_yeu_cau.
-    """
+    """Alias tương thích."""
     return nhan_yeu_cau(du_lieu)
