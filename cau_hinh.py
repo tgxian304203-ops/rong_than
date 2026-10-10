@@ -4,17 +4,14 @@ cau_hinh.py - Cấu hình trung tâm Rồng Thần.
 Nhiệm vụ:
     - Khai báo đường dẫn thư mục, file.
     - Khai báo hằng số dùng chung toàn dự án.
-    - Khai báo thông số giới hạn (max tài khoản, timeout, ...).
     - Khai báo tên 2 kho MongoDB, collection.
-    - Khai báo cấu hình sandbox, cây quyết định, quota.
+    - Khai báo cấu hình sandbox, cây linh hồn, quota.
 
-Quy tắc:
-    - Không chứa logic — chỉ khai báo hằng số.
-    - Mọi file khác import từ đây nếu cần.
-    - Đọc biến môi trường khi cần thiết.
-
-Dùng:
-    from cau_hinh import MAX_TAI_KHOAN, TEN_KHO_1
+ĐÃ SỬA:
+    - Bỏ 5 file cây cũ (cay_quyet_dinh, cay_toan, cay_code, cay_bug, cay_khac).
+    - Chỉ còn 1 file cây linh hồn (cay_linh_hon.json).
+    - Bỏ file lich_su_hoc.json.
+    - Thêm hằng số hợp đồng, quota Boss/Model.
 """
 
 import os
@@ -29,21 +26,16 @@ THU_MUC_ANH = os.path.join(THU_MUC_DU_LIEU, "anh")
 THU_MUC_FILE = os.path.join(THU_MUC_DU_LIEU, "file")
 THU_MUC_LOGS = os.path.join(THU_MUC_GOC, "logs")
 THU_MUC_GIAO_DIEN = os.path.join(THU_MUC_GOC, "giao_dien")
-THU_MUC_SANDBOX = os.path.join(THU_MUC_GOC, "sanbox")
+THU_MUC_SANDBOX = os.path.join(THU_MUC_GOC, "tieu_nao", "sanbox")
 
 
 # ================================================================
 # ĐƯỜNG DẪN FILE
 # ================================================================
 FILE_CAU_HINH_KHO = os.path.join(THU_MUC_DU_LIEU, "cau_hinh_kho.json")
-FILE_CAY_GOC = os.path.join(THU_MUC_DU_LIEU, "cay_quyet_dinh.json")
-FILE_CAY_TOAN = os.path.join(THU_MUC_DU_LIEU, "cay_toan.json")
-FILE_CAY_CODE = os.path.join(THU_MUC_DU_LIEU, "cay_code.json")
-FILE_CAY_BUG = os.path.join(THU_MUC_DU_LIEU, "cay_bug.json")
-FILE_CAY_KHAC = os.path.join(THU_MUC_DU_LIEU, "cay_khac.json")
+FILE_CAY_LINH_HON = os.path.join(THU_MUC_DU_LIEU, "cay_linh_hon.json")
 FILE_NHAT_KY = os.path.join(THU_MUC_DU_LIEU, "nhat_ky.log")
 FILE_TU_DIEN_LOI = os.path.join(THU_MUC_DU_LIEU, "tu_dien_loi.json")
-FILE_LICH_SU_HOC = os.path.join(THU_MUC_DU_LIEU, "lich_su_hoc.json")
 FILE_LICH_SU_CHAT = os.path.join(THU_MUC_DU_LIEU, "lich_su_chat.json")
 FILE_TAI_KHOAN = os.path.join(THU_MUC_DU_LIEU, "tai_khoan.json")
 FILE_TEN_DU_AN = os.path.join(THU_MUC_DU_LIEU, "ten_du_an.json")
@@ -67,59 +59,76 @@ C_CAU_HINH_KHO = "cau_hinh_kho"
 C_ANH_FILE = "anh_file"
 C_NOI_DUNG_TRICH_XUAT = "noi_dung_da_trich_xuat"
 C_LICH_SU_GUI = "lich_su_gui"
+C_CHAT_NHANH = "chat_nhanh"
+C_TRO_CHUYEN = "tro_chuyen"
+C_TIN_NHAN = "tin_nhan"
 
 # ----------------------------------------------------------------
-# Collection kho 2
+# Collection kho 2 (CÂY LINH HỒN)
 # ----------------------------------------------------------------
+C_HOP_DONG = "hop_dong"
+C_HUONG_DAN = "huong_dan"
 C_NODE = "node"
-C_LICH_SU_HOC = "lich_su_hoc"
-C_TU_DIEN_LOI = "tu_dien_loi"
-C_FAILED_PATHS = "failed_paths"
-C_TU_KHOA_PHAN_LOAI = "tu_khoa_phan_loai"
+C_CODE_DA_VIET = "code_da_viet"
+C_TIEN_DO = "tien_do"
+
+KHOA_CHU_SO_HUU = "chu_so_huu"
+KHOA_ID_CHAT = "id_chat"
 
 
 # ================================================================
 # GIỚI HẠN TÀI KHOẢN
 # ================================================================
 MAX_TAI_KHOAN = 50
-THOI_GIAN_PHIEN = 7 * 24 * 60 * 60  # 7 ngày (giây)
+THOI_GIAN_PHIEN = 7 * 24 * 60 * 60
 
 
 # ================================================================
-# CÂY QUYẾT ĐỊNH
+# PHÂN LOẠI
 # ================================================================
-SO_LAN_FAIL_BLACKLIST = 3
-TY_LE_FAIL_GIAM_SCORE = 0.5
-MUC_GIAM_SCORE = 0.2
-NGUONG_SCORE_MUON = 0.5
-NGUONG_DUNG = 0.7
-NGUONG_TIN_CAY_CAO = 0.95
-TY_LE_GIONG_FAILED_PATH = 0.8
-SO_NODE_TOI_DA_XET = 200
+LOAI_DON_GIAN = "don_gian"
+LOAI_DU_AN = "du_an"
+
+LINH_VUC_HOP_LE = [
+    "toán", "văn", "code", "bug", "khoa học", "đời sống",
+    "kinh doanh", "sáng tạo", "học tập", "tra cứu",
+    "kỹ thuật", "luật - hành chính",
+]
 
 
 # ================================================================
-# CHUẨN HÓA INPUT
+# HỢP ĐỒNG
 # ================================================================
-NGUONG_GIONG_CHINH_TA = 0.9  # giống > 90% mới sửa
+HOP_DONG_CAP_NHAT_MOI_SU_KIEN = True
+SO_BUOC_TOI_DA = 50
 
 
 # ================================================================
-# TIỂU NÃO - API MODEL
+# TIỂU NÃO / MODEL — API
 # ================================================================
 SO_LAN_THU_TOI_DA = 3
 SO_LAN_RETRY = 3
 TIMEOUT_API = 30
-TIMEOUT_GROQ = 30
-TIMEOUT_OPENROUTER = 30
-TIMEOUT_GEMINI = 30
 
-# Thứ tự ưu tiên provider
 THU_TU_PROVIDER = ["Groq", "OpenRouter", "Gemini"]
+
+# 3 loại key
+LOAI_KEY_BOSS = "boss"
+LOAI_KEY_TIEU_BOSS = "tieu_boss"
+LOAI_KEY_TRA_WEB = "tra_web"
+LOAI_KEY_HOP_LE = [LOAI_KEY_BOSS, LOAI_KEY_TIEU_BOSS, LOAI_KEY_TRA_WEB]
 
 
 # ================================================================
-# TRA WEB - API
+# BOSS — QUOTA
+# ================================================================
+SO_LAN_THU_BOSS = 3
+THOI_GIAN_VERIFY_TOI_DA = 99
+SO_BUOC_KIEM_TRA_TOI_DA = 20
+
+
+# ================================================================
+# TRA WEB — API
 # ================================================================
 THU_TU_API_TRA_WEB = ["SERPJET", "Tavily", "Bright Data"]
 TIMEOUT_TRA_WEB = 30
@@ -127,7 +136,6 @@ SO_KET_QUA_TRA_WEB = 5
 DO_DAI_MO_TA_TOI_DA = 300
 DO_DAI_TONG_HOP_TOI_DA = 3000
 
-# Quota mặc định mỗi API (reset ngày 1 hàng tháng)
 QUOTA_MAC_DINH = {
     "SERPJET": 1000,
     "Tavily": 1000,
@@ -140,7 +148,7 @@ QUOTA_MAC_DINH = {
 # ================================================================
 TIMEOUT_SANDBOX = 10
 DO_DAI_CODE_TOI_DA = 50000
-PYODIDE_VERSION = "v0.29.0"
+DO_DAI_OUTPUT_TOI_DA = 50000
 LIVECODES_VERSION = "0.14.1"
 LIVECODES_CDN = "https://cdn.jsdelivr.net/npm/livecodes@0.14.1"
 
@@ -157,8 +165,8 @@ NGAY_XOA_LOG_CU = 30
 # ================================================================
 # KEEP-ALIVE
 # ================================================================
-THOI_GIAN_KEEP_ALIVE = 12 * 3600  # 12 giờ
-THOI_GIAN_KEEP_ALIVE_DAU = 60      # đợi 60 giây trước lần ping đầu
+THOI_GIAN_KEEP_ALIVE = 12 * 3600
+THOI_GIAN_KEEP_ALIVE_DAU = 60
 
 
 # ================================================================
@@ -174,14 +182,14 @@ SECRET_KEY_FILE = "secret_key"
 # GIAO DIỆN
 # ================================================================
 SO_DONG_INPUT_TOI_DA = 6
-CHIEU_CAO_DONG_INPUT = 24  # px
-CHIEU_CAO_INPUT_TOI_DA = SO_DONG_INPUT_TOI_DA * CHIEU_CAO_DONG_INPUT  # 144px
+CHIEU_CAO_DONG_INPUT = 24
+CHIEU_CAO_INPUT_TOI_DA = SO_DONG_INPUT_TOI_DA * CHIEU_CAO_DONG_INPUT
 
 
 # ================================================================
 # UPLOAD
 # ================================================================
-DO_DAI_FILE_TOI_DA = 20 * 1024 * 1024  # 20MB
+DO_DAI_FILE_TOI_DA = 20 * 1024 * 1024
 DUOI_ANH_HOP_LE = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"]
 DUOI_TAI_LIEU_HOP_LE = [
     "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
@@ -191,37 +199,10 @@ DUOI_TAI_LIEU_HOP_LE = [
 
 
 # ================================================================
-# PHÂN LOẠI - 12 LĨNH VỰC
-# ================================================================
-LINH_VUC_HOP_LE = [
-    "toán", "văn", "code", "bug", "khoa học", "đời sống",
-    "kinh doanh", "sáng tạo", "học tập", "tra cứu",
-    "kỹ thuật", "luật - hành chính",
-]
-
-
-# ================================================================
-# 5 YẾU TỐ TRÍCH XUẤT
-# ================================================================
-CAN_5_YEU_TO = (
-    "hanh_dong", "doi_tuong", "thuoc_tinh", "rang_buoc", "ngu_canh",
-)
-
-
-# ================================================================
-# 10 LOẠI NGỮ CẢNH
-# ================================================================
-LOAI_NGU_CANH = [
-    "hoi_thoai", "du_an", "file", "task_truoc", "linh_vuc",
-    "ngon_ngu", "moi_truong", "rang_buoc", "thoi_gian", "cam_xuc",
-]
-
-
-# ================================================================
 # HÀM TIỆN ÍCH
 # ================================================================
 def tao_thu_muc_can_thiet():
-    """Tạo các thư mục cần thiết nếu chưa có."""
+    """Tạo các thư mục cần thiết."""
     cac_thu_muc = [
         THU_MUC_DU_LIEU,
         THU_MUC_ANH,
@@ -236,49 +217,40 @@ def tao_thu_muc_can_thiet():
 
 
 def lay_port():
-    """Lấy PORT từ biến môi trường (Render set tự động)."""
+    """Lấy PORT từ biến môi trường."""
     return int(os.environ.get("PORT", PORT_MAC_DINH))
 
 
 def lay_thu_muc_goc():
-    """Trả đường dẫn thư mục gốc."""
     return THU_MUC_GOC
 
 
-def lay_danh_sach_cay():
-    """Trả danh sách 5 file cây."""
-    return [
-        FILE_CAY_GOC,
-        FILE_CAY_TOAN,
-        FILE_CAY_CODE,
-        FILE_CAY_BUG,
-        FILE_CAY_KHAC,
-    ]
-
-
 def lay_danh_sach_linh_vuc():
-    """Trả danh sách 12 lĩnh vực."""
     return list(LINH_VUC_HOP_LE)
 
 
 def lay_danh_sach_loai_log():
-    """Trả danh sách 5 loại log."""
     return list(LOAI_LOG_HOP_LE)
 
 
+def lay_danh_sach_loai_key():
+    return list(LOAI_KEY_HOP_LE)
+
+
 def la_linh_vuc_hop_le(linh_vuc):
-    """Kiểm tra lĩnh vực có hợp lệ không."""
     return linh_vuc in LINH_VUC_HOP_LE
 
 
 def la_duoi_anh_hop_le(duoi):
-    """Kiểm tra đuôi ảnh có hợp lệ không."""
     return duoi.lower() in DUOI_ANH_HOP_LE
 
 
 def la_duoi_tai_lieu_hop_le(duoi):
-    """Kiểm tra đuôi tài liệu có hợp lệ không."""
     return duoi.lower() in DUOI_TAI_LIEU_HOP_LE
+
+
+def la_loai_key_hop_le(loai):
+    return loai in LOAI_KEY_HOP_LE
 
 
 # ================================================================

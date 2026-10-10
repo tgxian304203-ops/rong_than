@@ -5,22 +5,10 @@
 # ------------------------------------------------------------
 # BẢO MẬT - KEY VÀ URI KHO
 # ------------------------------------------------------------
-# Chứa URI 2 kho MongoDB + secret key + key API
 du_lieu/cau_hinh_kho.json
-
-# Chứa tài khoản dự phòng
 du_lieu/tai_khoan.json
-
-# Chứa lịch sử chat
 du_lieu/lich_su_chat.json
-
-# Chứa lịch sử học
-du_lieu/lich_su_hoc.json
-
-# Chứa từ điển lỗi (sẽ học dần, không cần đẩy)
 du_lieu/tu_dien_loi.json
-
-# Chứa tên dự án của người dùng
 du_lieu/ten_du_an.json
 
 # ------------------------------------------------------------
@@ -39,15 +27,9 @@ du_lieu/nhat_ky.log
 logs/*.log
 
 # ------------------------------------------------------------
-# CÂY QUYẾT ĐỊNH - SINH TỰ ĐỘNG, KHÔNG CẦN ĐẨY
-# (Render sẽ tự sinh khi khởi động)
+# CÂY LINH HỒN - SINH TỰ ĐỘNG
 # ------------------------------------------------------------
-# Bỏ comment 5 dòng dưới nếu muốn Render tự sinh cây
-# du_lieu/cay_quyet_dinh.json
-# du_lieu/cay_toan.json
-# du_lieu/cay_code.json
-# du_lieu/cay_bug.json
-# du_lieu/cay_khac.json
+du_lieu/cay_linh_hon.json
 
 # ------------------------------------------------------------
 # PYTHON
@@ -113,7 +95,7 @@ htmlcov/
 *.log
 
 # ------------------------------------------------------------
-# FILE TẠM CỦA HỆ ĐIỀU HÀNH
+# FILE TẠM HỆ ĐIỀU HÀNH
 # ------------------------------------------------------------
 Thumbs.db
 ehthumbs.db
@@ -122,7 +104,7 @@ $RECYCLE.BIN/
 *.lnk
 
 # ------------------------------------------------------------
-# NODE MODULES (nếu có dùng tool JS)
+# NODE MODULES
 # ------------------------------------------------------------
 node_modules/
 package-lock.json

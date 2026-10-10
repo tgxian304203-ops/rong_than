@@ -3,22 +3,13 @@ khoi_dong.py - File khởi động chính Rồng Thần.
 
 Nhiệm vụ:
     - Chạy Flask server (từ giao_dien/app.py).
-    - Nạp cây quyết định từ MongoDB + 5 file JSON local.
-    - Tự sinh cây nếu chưa có (gọi du_lieu/sinh_cay.py).
+    - Sinh file cây linh hồn nếu chưa có.
     - Chạy keep-alive ping 2 kho MongoDB mỗi 12 giờ.
     - Log khởi động rõ ràng.
 
-Quy tắc:
-    - Render sẽ chạy file này đầu tiên.
-    - Đọc PORT từ biến môi trường (Render set tự động).
-    - Không tự sập nếu MongoDB chưa kết nối được.
-    - Chạy keep-alive trong thread riêng.
-
-Cách chạy:
-    - Local: python khoi_dong.py
-    - Render: Start Command = gunicorn khoi_dong:ung_dung
-
-Tầng dữ liệu: dai_nao/ghi_nho.py
+ĐÃ SỬA:
+    - Bỏ 5 file cây cũ (cay_quyet_dinh, cay_toan, cay_code, cay_bug, cay_khac).
+    - Chỉ còn 1 file cây linh hồn (cay_linh_hon.json).
 """
 
 import os
@@ -36,7 +27,7 @@ if THU_MUC_GOC not in sys.path:
 
 
 # ================================================================
-# GHI LOG ĐƠN GIẢN (không phụ thuộc logs/)
+# GHI LOG ĐƠN GIẢN
 # ================================================================
 def _in(msg):
     """In ra console với timestamp."""
@@ -45,49 +36,25 @@ def _in(msg):
 
 
 # ================================================================
-# KIỂM TRA FILE CÂY LOCAL
+# SINH CÂY LINH HỒN
 # ================================================================
-def _kiem_tra_cay_local():
-    """Kiểm tra 5 file cây JSON đã có chưa."""
-    thu_muc = os.path.join(THU_MUC_GOC, "du_lieu")
-    can_co = [
-        "cay_quyet_dinh.json",
-        "cay_toan.json",
-        "cay_code.json",
-        "cay_bug.json",
-        "cay_khac.json",
-    ]
-
-    thieu = []
-    for ten in can_co:
-        duong_dan = os.path.join(thu_muc, ten)
-        if not os.path.exists(duong_dan):
-            thieu.append(ten)
-
-    return thieu
-
-
-# ================================================================
-# TỰ SINH CÂY NẾU CHƯA CÓ
-# ================================================================
-def _tu_sinh_cay():
-    """Gọi sinh_cay.py nếu thiếu file cây."""
-    thieu = _kiem_tra_cay_local()
-
-    if not thieu:
-        _in(f"✓ Đã có đủ 5 file cây local.")
-        return True
-
-    _in(f"⚠ Thiếu {len(thieu)} file cây: {', '.join(thieu)}")
-    _in("→ Đang tự sinh cây từ template...")
-
+def _sinh_cay():
+    """Sinh file cây linh hồn nếu chưa có."""
     try:
-        from du_lieu.sinh_cay import sinh_cay
-        sinh_cay()
-        _in("✓ Sinh cây thành công.")
-        return True
-    except ImportError:
-        _in("✗ Không import được du_lieu/sinh_cay.py.")
+        from du_lieu.sinh_cay_linh_hon import sinh_cay, cay_ton_tai
+
+        if cay_ton_tai():
+            _in("✓ Cây linh hồn đã có sẵn.")
+            return True
+
+        _in("→ Đang sinh cây linh hồn...")
+        if sinh_cay():
+            _in("✓ Sinh cây linh hồn thành công.")
+            return True
+        _in("✗ Sinh cây linh hồn lỗi.")
+        return False
+    except ImportError as e:
+        _in(f"✗ Không import được sinh_cay_linh_hon: {e}")
         return False
     except Exception as e:
         _in(f"✗ Sinh cây lỗi: {e}")
@@ -95,53 +62,15 @@ def _tu_sinh_cay():
 
 
 # ================================================================
-# NẠP CÂY QUYẾT ĐỊNH
-# ================================================================
-def _nap_cay():
-    """Nạp cây quyết định từ MongoDB + 5 file local."""
-    _in("→ Đang nạp cây quyết định...")
-
-    try:
-        from dai_nao.ghi_nho import doc_cay, thong_ke_cay
-
-        cay = doc_cay()
-        if not cay:
-            _in("✗ Không nạp được cây.")
-            return False
-
-        # Thống kê
-        try:
-            thong_ke = thong_ke_cay(cay)
-            _in(f"✓ Nạp cây thành công: {thong_ke.get('tong_node', 0)} node, "
-                f"độ sâu max: {thong_ke.get('do_sau_max', 0)}")
-        except Exception:
-            _in("✓ Nạp cây thành công.")
-
-        return True
-
-    except ImportError:
-        _in("✗ Không import được dai_nao/ghi_nho.py.")
-        return False
-    except Exception as e:
-        _in(f"✗ Nạp cây lỗi: {e}")
-        return False
-
-
-# ================================================================
 # KEEP-ALIVE PING 2 KHO
 # ================================================================
 def _keep_alive_loop(thoi_gian_cho=12 * 3600):
-    """
-    Ping 2 kho MongoDB mỗi 12 giờ để tránh bị tạm dừng.
-
-    thoi_gian_cho: số giây giữa các lần ping (mặc định 12 giờ).
-    """
-    # Đợi 60 giây trước lần ping đầu để server khởi động xong
+    """Ping 2 kho MongoDB mỗi 12 giờ."""
     time.sleep(60)
 
     while True:
         try:
-            from dai_nao.ghi_nho import ping_ca_2_kho
+            from luu_tru.ghi_nho import ping_ca_2_kho
             ket_qua = ping_ca_2_kho()
             kho_1 = "OK" if ket_qua.get("kho_1") else "LỖI"
             kho_2 = "OK" if ket_qua.get("kho_2") else "LỖI"
@@ -153,7 +82,7 @@ def _keep_alive_loop(thoi_gian_cho=12 * 3600):
 
 
 def _bat_keep_alive():
-    """Chạy keep-alive trong thread riêng (daemon)."""
+    """Chạy keep-alive trong thread riêng."""
     try:
         t = threading.Thread(target=_keep_alive_loop, daemon=True)
         t.start()
@@ -196,9 +125,11 @@ def _in_banner():
 ║                                                          ║
 ║  • Đại não    : Xử lý chính, chạy local                 ║
 ║  • Tiểu não   : Sinh nhánh khi bí, dùng API free        ║
+║  • Boss       : Trí tuệ của Đại não                     ║
+║  • Model      : Công cụ của Tiểu não                    ║
 ║  • Tra web    : SERPJET / Tavily / Bright Data          ║
-║  • Sandbox    : LiveCodes + Pyodide                     ║
-║  • Cây quyết định: Bộ nhớ dài hạn                       ║
+║  • Sandbox    : LiveCodes                               ║
+║  • Cây linh hồn: Bộ nhớ dài hạn (của riêng mỗi chat)   ║
 ║                                                          ║
 ╚══════════════════════════════════════════════════════════╝
 """
@@ -209,35 +140,23 @@ def _in_banner():
 # KHỞI ĐỘNG CHÍNH
 # ================================================================
 def _khoi_dong():
-    """
-    Hàm khởi động chính, chạy 1 lần khi server bật.
-    """
+    """Hàm khởi động chính."""
     _in_banner()
 
-    # 1. Tự sinh cây nếu chưa có
     _in("=" * 60)
-    _in("BƯỚC 1: Kiểm tra và sinh cây quyết định")
+    _in("BƯỚC 1: Sinh cây linh hồn")
     _in("=" * 60)
-    _tu_sinh_cay()
+    _sinh_cay()
 
-    # 2. Nạp cây quyết định
     _in("")
     _in("=" * 60)
-    _in("BƯỚC 2: Nạp cây quyết định")
-    _in("=" * 60)
-    _nap_cay()
-
-    # 3. Bật keep-alive
-    _in("")
-    _in("=" * 60)
-    _in("BƯỚC 3: Bật keep-alive ping 2 kho")
+    _in("BƯỚC 2: Bật keep-alive ping 2 kho")
     _in("=" * 60)
     _bat_keep_alive()
 
-    # 4. Khởi tạo Flask
     _in("")
     _in("=" * 60)
-    _in("BƯỚC 4: Khởi tạo Flask app")
+    _in("BƯỚC 3: Khởi tạo Flask app")
     _in("=" * 60)
 
     _in("")
@@ -247,8 +166,7 @@ def _khoi_dong():
 
 
 # ================================================================
-# GỌI KHỞI ĐỘNG NGAY KHI IMPORT
-# (chạy 1 lần khi Render hoặc local load file này)
+# GỌI KHỞI ĐỘNG KHI IMPORT
 # ================================================================
 _khoi_dong()
 
@@ -260,7 +178,7 @@ ung_dung = _tao_ung_dung()
 
 
 # ================================================================
-# CHẠY LOCAL (nếu chạy trực tiếp)
+# CHẠY LOCAL
 # ================================================================
 if __name__ == "__main__":
     if ung_dung is None:

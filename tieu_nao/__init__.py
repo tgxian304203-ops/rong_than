@@ -1,36 +1,28 @@
 """
 tieu_nao - Package Tiểu não Rồng Thần.
 
-Tiểu não sinh nhánh mới cho cây quyết định khi Đại não bí.
-Dùng API free: Groq, OpenRouter, Gemini.
+Tiểu não là CẦU NỐI giữa Cây linh hồn và Model.
+Tiểu não ÉP Model làm việc, KHÔNG tự suy luận.
 
-Đặc điểm:
-    - Chăm chỉ, tò mò.
-    - Chấp nhận chậm hơn để học được cái mới.
-    - Không học, chỉ sinh nhánh — Đại não mới là bên học.
-    - Dùng API free, xoay key khi hết quota.
+Nhiệm vụ:
+    - Nhận lệnh từ Cây linh hồn.
+    - ÉP Model làm đúng hợp đồng.
+    - Chuyển kết quả Model về Cây.
 
-Gồm 15 file:
+Gồm 6 file chính:
     - __init__.py: đánh dấu package.
-    - kiem_ke_key.py: bước 1 — đếm key, liệt kê model.
-    - lay_danh_sach_model.py: lấy danh sách model từ API.
-    - do_model.py: bước 2 — dò model, xoay quota.
-    - xoay_key.py: quản lý xoay vòng key, quota hồi.
-    - quan_ly_quota.py: theo dõi quota từng key.
-    - quan_ly_loi.py: blacklist model lỗi 3 lần.
-    - het_quota.py: xử lý khi hết quota.
-    - ep_viet_truong.py: bước 3 — ép model viết JSON.
-    - schema_node.py: schema các trường bắt buộc.
-    - tao_nhanh.py: sinh nhánh mới.
-    - api_groq.py: kết nối Groq.
-    - api_openrouter.py: kết nối OpenRouter.
-    - api_gemini.py: kết nối Gemini.
-    - api_chung.py: interface chung.
+    - nhan_lenh.py: nhận lệnh từ Cây linh hồn.
+    - ep_model.py: ÉP Model làm việc.
+    - sinh_code.py: sinh code mới.
+    - sua_code.py: sửa code lỗi.
+    - kiem_tra_cung.py: kiểm tra cứng (syntax, format).
 
-3 bước chính (theo Phần 4):
-    Bước 1 — Kiểm kê key: đếm key, liệt kê model.
-    Bước 2 — Dò model: gọi lần lượt theo thứ tự, xoay quota.
-    Bước 3 — Ép model viết trường: sinh node theo JSON schema.
+Thư mục con:
+    - model/: bộ dò + gọi Model (12 file).
+    - sanbox/: sandbox (6 file + giao_dien/).
 
-Tầng dữ liệu: dai_nao/ghi_nho.py (dùng chung).
+Nguyên tắc:
+    - Tiểu não KHÔNG suy luận — chỉ điều phối.
+    - Mọi suy luận → giao cho Model.
+    - Model = công cụ thuần, không giữ ngữ cảnh.
 """
