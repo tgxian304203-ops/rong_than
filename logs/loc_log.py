@@ -1,49 +1,20 @@
 """
 loc_log.py - Lọc log theo loại Rồng Thần.
 
-Nhiệm vụ:
-    - loc_log(loai, so_luong): lọc log theo loại.
-    - loc_nhieu_loai(danh_sach_loai, so_luong): lọc theo nhiều loại.
-    - loc_theo_tu_khoa(tu_khoa, so_luong): lọc theo từ khóa trong nội dung.
-    - loc_theo_thoi_gian(tu, den, loai): lọc theo thời gian.
-    - loc_ket_hop(loai, tu_khoa, tu_thoi_gian, den_thoi_gian): lọc kết hợp.
-    - thong_ke_loc(loai): thống kê theo bộ lọc.
-
-Quy tắc (theo Phần 4):
-    - 5 loại log: dai-nao, tieu-nao, tra-web, sandbox, loi.
-    - Bộ lọc "Tất cả" → không lọc.
-    - Sắp xếp mới nhất trước.
-    - Giới hạn 1-1000 log.
-    - Có hỗ trợ lọc theo từ khóa.
-
-Trả về:
-    - list log đã lọc.
-
-Tầng dữ liệu: dai_nao/ghi_nho.py (kho 1).
+ĐÃ SỬA: dai_nao.ghi_nho → luu_tru.ghi_nho.
 """
 
 import re
 import time
 
 
-# ================================================================
-# HẰNG SỐ
-# ================================================================
 SO_LOG_MAC_DINH = 100
 SO_LOG_TOI_DA = 1000
 LOAI_HOP_LE = ["dai-nao", "tieu-nao", "tra-web", "sandbox", "loi"]
 LOAI_TAT_CA = ["tat-ca", "all", "", None]
 
 
-# ================================================================
-# CHUẨN HÓA LOẠI
-# ================================================================
 def _chuan_hoa_loai(loai):
-    """
-    Chuẩn hóa loại log.
-
-    Trả về: tên loại hoặc None (nếu lọc tất cả).
-    """
     if loai in LOAI_TAT_CA:
         return None
 
@@ -62,25 +33,13 @@ def _chuan_hoa_loai(loai):
 
 
 def _chuan_hoa_so_luong(so_luong):
-    """Chuẩn hóa số lượng log."""
     try:
         return max(1, min(SO_LOG_TOI_DA, int(so_luong)))
     except (ValueError, TypeError):
         return SO_LOG_MAC_DINH
 
 
-# ================================================================
-# LỌC LOG THEO LOẠI
-# ================================================================
 def loc_log(loai="tat-ca", so_luong=SO_LOG_MAC_DINH):
-    """
-    Lọc log theo loại.
-
-    loai: "tat-ca" | "dai-nao" | "tieu-nao" | "tra-web" | "sandbox" | "loi".
-    so_luong: số log tối đa.
-
-    Trả về: list log.
-    """
     try:
         from logs.doc_log import doc_log
     except ImportError:
@@ -92,31 +51,23 @@ def loc_log(loai="tat-ca", so_luong=SO_LOG_MAC_DINH):
     return doc_log(so_luong, loai=loai_chuan, moi_nhat_truoc=True)
 
 
-# ================================================================
-# LỌC NHIỀU LOẠI
-# ================================================================
 def loc_nhieu_loai(danh_sach_loai, so_luong=SO_LOG_MAC_DINH):
-    """
-    Lọc log theo nhiều loại cùng lúc.
-
-    danh_sach_loai: list tên loại.
-
-    Trả về: list log.
-    """
     if not danh_sach_loai:
         return loc_log("tat-ca", so_luong)
 
-    # Chuẩn hóa danh sách
     loai_hop_le = [l for l in danh_sach_loai if l in LOAI_HOP_LE]
     if not loai_hop_le:
         return loc_log("tat-ca", so_luong)
 
     try:
-        from dai_nao.ghi_nho import _ket_noi_kho_1
+        from luu_tru.ghi_nho import _ket_noi_kho_1
         db, _ = _ket_noi_kho_1()
     except ImportError:
         return []
     except Exception:
+        return []
+
+    if db is None:
         return []
 
     so_luong = _chuan_hoa_so_luong(so_luong)
@@ -138,19 +89,10 @@ def loc_nhieu_loai(danh_sach_loai, so_luong=SO_LOG_MAC_DINH):
         return []
 
 
-# ================================================================
-# LỌC THEO TỪ KHÓA
-# ================================================================
 def loc_theo_tu_khoa(tu_khoa, loai="tat-ca", so_luong=SO_LOG_MAC_DINH):
-    """
-    Lọc log có chứa từ khóa trong nội dung.
-
-    tu_khoa: chuỗi cần tìm (không phân biệt hoa/thường).
-    """
     if not tu_khoa:
         return loc_log(loai, so_luong)
 
-    # Lấy nhiều log hơn để lọc
     so_luong_lay = min(SO_LOG_TOI_DA, _chuan_hoa_so_luong(so_luong) * 5)
     danh_sach = loc_log(loai, so_luong_lay)
 
@@ -173,16 +115,8 @@ def loc_theo_tu_khoa(tu_khoa, loai="tat-ca", so_luong=SO_LOG_MAC_DINH):
     return ket_qua
 
 
-# ================================================================
-# LỌC THEO THỜI GIAN
-# ================================================================
 def loc_theo_thoi_gian(tu_thoi_gian, den_thoi_gian, loai="tat-ca",
                        so_luong=SO_LOG_MAC_DINH):
-    """
-    Lọc log trong khoảng thời gian.
-
-    tu_thoi_gian, den_thoi_gian: timestamp (int).
-    """
     try:
         from logs.doc_log import doc_log_theo_thoi_gian
     except ImportError:
@@ -197,22 +131,10 @@ def loc_theo_thoi_gian(tu_thoi_gian, den_thoi_gian, loai="tat-ca",
     )
 
 
-# ================================================================
-# LỌC KẾT HỢP
-# ================================================================
 def loc_ket_hop(loai="tat-ca", tu_khoa="", tu_thoi_gian=None,
                 den_thoi_gian=None, so_luong=SO_LOG_MAC_DINH):
-    """
-    Lọc log kết hợp nhiều điều kiện.
-
-    loai: loại log.
-    tu_khoa: từ khóa trong nội dung.
-    tu_thoi_gian, den_thoi_gian: khoảng thời gian.
-    so_luong: số log tối đa.
-    """
     so_luong = _chuan_hoa_so_luong(so_luong)
 
-    # Lọc theo thời gian trước (nếu có)
     if tu_thoi_gian and den_thoi_gian:
         danh_sach = loc_theo_thoi_gian(
             tu_thoi_gian, den_thoi_gian, loai,
@@ -224,7 +146,6 @@ def loc_ket_hop(loai="tat-ca", tu_khoa="", tu_thoi_gian=None,
     if not danh_sach:
         return []
 
-    # Lọc theo từ khóa (nếu có)
     if tu_khoa:
         try:
             regex = re.compile(re.escape(tu_khoa.strip()), re.IGNORECASE)
@@ -232,19 +153,10 @@ def loc_ket_hop(loai="tat-ca", tu_khoa="", tu_thoi_gian=None,
         except re.error:
             pass
 
-    # Giới hạn số lượng
     return danh_sach[:so_luong]
 
 
-# ================================================================
-# THỐNG KÊ THEO BỘ LỌC
-# ================================================================
 def thong_ke_loc(loai="tat-ca"):
-    """
-    Thống kê số log theo bộ lọc.
-
-    Trả về: dict { loai, so_luong, moi_nhat }.
-    """
     loai_chuan = _chuan_hoa_loai(loai)
 
     try:
@@ -262,48 +174,31 @@ def thong_ke_loc(loai="tat-ca"):
     }
 
 
-# ================================================================
-# LỌC NHANH THEO 5 LOẠI
-# ================================================================
 def loc_dai_nao(so_luong=SO_LOG_MAC_DINH):
-    """Lọc log Đại não."""
     return loc_log("dai-nao", so_luong)
 
 
 def loc_tieu_nao(so_luong=SO_LOG_MAC_DINH):
-    """Lọc log Tiểu não."""
     return loc_log("tieu-nao", so_luong)
 
 
 def loc_tra_web(so_luong=SO_LOG_MAC_DINH):
-    """Lọc log Tra web."""
     return loc_log("tra-web", so_luong)
 
 
 def loc_sandbox(so_luong=SO_LOG_MAC_DINH):
-    """Lọc log Sandbox."""
     return loc_log("sandbox", so_luong)
 
 
 def loc_loi(so_luong=SO_LOG_MAC_DINH):
-    """Lọc log Lỗi."""
     return loc_log("loi", so_luong)
 
 
-# ================================================================
-# LỌC THEO NHIỀU TỪ KHÓA
-# ================================================================
 def loc_theo_nhieu_tu_khoa(danh_sach_tu_khoa, loai="tat-ca",
                            so_luong=SO_LOG_MAC_DINH):
-    """
-    Lọc log khớp BẤT KỲ từ khóa nào trong danh sách.
-
-    danh_sach_tu_khoa: list từ khóa.
-    """
     if not danh_sach_tu_khoa:
         return loc_log(loai, so_luong)
 
-    # Tạo regex
     try:
         mau = "|".join(re.escape(tk.strip()) for tk in danh_sach_tu_khoa if tk)
         if not mau:
@@ -312,7 +207,6 @@ def loc_theo_nhieu_tu_khoa(danh_sach_tu_khoa, loai="tat-ca",
     except re.error:
         return loc_log(loai, so_luong)
 
-    # Lấy nhiều log hơn để lọc
     so_luong_lay = min(SO_LOG_TOI_DA, _chuan_hoa_so_luong(so_luong) * 5)
     danh_sach = loc_log(loai, so_luong_lay)
 
@@ -326,14 +220,8 @@ def loc_theo_nhieu_tu_khoa(danh_sach_tu_khoa, loai="tat-ca",
     return ket_qua
 
 
-# ================================================================
-# LỌC LOG CÓ ĐỘ DÀI NỘI DUNG
-# ================================================================
 def loc_theo_do_dai(do_dai_toi_thieu=100, loai="tat-ca",
                     so_luong=SO_LOG_MAC_DINH):
-    """
-    Lọc log có nội dung dài hơn N ký tự.
-    """
     so_luong_lay = min(SO_LOG_TOI_DA, _chuan_hoa_so_luong(so_luong) * 3)
     danh_sach = loc_log(loai, so_luong_lay)
 
@@ -347,11 +235,7 @@ def loc_theo_do_dai(do_dai_toi_thieu=100, loai="tat-ca",
     return ket_qua
 
 
-# ================================================================
-# LỌC LOG HÔM NAY
-# ================================================================
 def loc_hom_nay(loai="tat-ca", so_luong=SO_LOG_MAC_DINH):
-    """Lọc log của ngày hôm nay."""
     try:
         now = time.localtime()
         bat_dau_ngay = int(time.mktime((
@@ -366,7 +250,6 @@ def loc_hom_nay(loai="tat-ca", so_luong=SO_LOG_MAC_DINH):
 
 
 def loc_gan_day(so_gio=24, loai="tat-ca", so_luong=SO_LOG_MAC_DINH):
-    """Lọc log trong N giờ gần nhất."""
     try:
         ket_thuc = int(time.time())
         bat_dau = ket_thuc - so_gio * 3600
@@ -376,11 +259,7 @@ def loc_gan_day(so_gio=24, loai="tat-ca", so_luong=SO_LOG_MAC_DINH):
         return []
 
 
-# ================================================================
-# HÀM PHỤ: DANH SÁCH BỘ LỌC
-# ================================================================
 def danh_sach_bo_loc():
-    """Trả danh sách bộ lọc cho giao diện."""
     return [
         {"ma": "tat-ca", "ten": "Tất cả"},
         {"ma": "dai-nao", "ten": "Đại não"},
@@ -391,23 +270,11 @@ def danh_sach_bo_loc():
     ]
 
 
-# ================================================================
-# HÀM PHỤ: LẤY NHANH THEO BỘ LỌC
-# ================================================================
 def lay_theo_bo_loc(ma_bo_loc, so_luong=SO_LOG_MAC_DINH):
-    """
-    Lấy log theo mã bộ lọc.
-
-    ma_bo_loc: "tat-ca" | "dai-nao" | "tieu-nao" | "tra-web" | "sandbox" | "loi".
-    """
     return loc_log(ma_bo_loc, so_luong)
 
 
-# ================================================================
-# HÀM PHỤ: ĐẾM THEO BỘ LỌC
-# ================================================================
 def dem_theo_bo_loc(ma_bo_loc):
-    """Đếm số log theo bộ lọc."""
     try:
         from logs.doc_log import dem_log
         loai_chuan = _chuan_hoa_loai(ma_bo_loc)

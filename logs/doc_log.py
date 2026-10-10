@@ -1,34 +1,20 @@
 """
 doc_log.py - Đọc log cho giao diện Rồng Thần.
 
-ĐÃ SỬA:
-    - FIX: Format thời gian theo giờ VIỆT NAM (UTC+7) cố định,
-           không phụ thuộc server.
+ĐÃ SỬA: dai_nao.ghi_nho → luu_tru.ghi_nho.
 """
 
 import time
 
 
-# ================================================================
-# HẰNG SỐ
-# ================================================================
 SO_LOG_MAC_DINH = 100
 SO_LOG_TOI_DA = 1000
 LOAI_HOP_LE = ["dai-nao", "tieu-nao", "tra-web", "sandbox", "loi"]
 
-# Múi giờ Việt Nam = UTC+7
 TZ_VIET_NAM = 7 * 3600
 
 
-# ================================================================
-# ĐỊNH DẠNG THỜI GIAN — THEO GIỜ VIỆT NAM (UTC+7)
-# ================================================================
 def _dinh_dang_thoi_gian(timestamp):
-    """
-    Định dạng timestamp thành chuỗi đọc được — LUÔN THEO UTC+7.
-
-    Trả về: "HH:MM:SS" hoặc "YYYY-MM-DD HH:MM:SS" nếu khác ngày.
-    """
     if not timestamp:
         return ""
 
@@ -36,19 +22,16 @@ def _dinh_dang_thoi_gian(timestamp):
         now_vn = time.gmtime(time.time() + TZ_VIET_NAM)
         tg_vn = time.gmtime(int(timestamp) + TZ_VIET_NAM)
 
-        # Cùng ngày (theo giờ VN) → chỉ hiện giờ
         if (tg_vn.tm_year, tg_vn.tm_mon, tg_vn.tm_mday) == \
            (now_vn.tm_year, now_vn.tm_mon, now_vn.tm_mday):
             return time.strftime("%H:%M:%S", tg_vn)
 
-        # Khác ngày → hiện đầy đủ
         return time.strftime("%Y-%m-%d %H:%M:%S", tg_vn)
     except (ValueError, OSError):
         return ""
 
 
 def _chuan_hoa_log(log):
-    """Chuẩn hóa 1 log về dict đúng format."""
     if not log or not isinstance(log, dict):
         return {}
 
@@ -70,17 +53,16 @@ def _chuan_hoa_log(log):
     }
 
 
-# ================================================================
-# HÀM CHÍNH: ĐỌC LOG
-# ================================================================
 def doc_log(so_luong=SO_LOG_MAC_DINH, loai=None, moi_nhat_truoc=True):
-    """Đọc log từ kho 1."""
     try:
-        from dai_nao.ghi_nho import _ket_noi_kho_1
+        from luu_tru.ghi_nho import _ket_noi_kho_1
         db, _ = _ket_noi_kho_1()
     except ImportError:
         return []
     except Exception:
+        return []
+
+    if db is None:
         return []
 
     try:
@@ -101,31 +83,25 @@ def doc_log(so_luong=SO_LOG_MAC_DINH, loai=None, moi_nhat_truoc=True):
         return []
 
 
-# ================================================================
-# ĐỌC LOG MỚI NHẤT
-# ================================================================
 def doc_log_moi_nhat(so_luong=SO_LOG_MAC_DINH):
     return doc_log(so_luong, loai=None, moi_nhat_truoc=True)
 
 
-# ================================================================
-# ĐỌC LOG THEO LOẠI
-# ================================================================
 def doc_log_theo_loai(loai, so_luong=SO_LOG_MAC_DINH):
     return doc_log(so_luong, loai=loai, moi_nhat_truoc=True)
 
 
-# ================================================================
-# ĐỌC LOG THEO THỜI GIAN
-# ================================================================
 def doc_log_theo_thoi_gian(tu_thoi_gian, den_thoi_gian, loai=None,
                           so_luong=SO_LOG_MAC_DINH):
     try:
-        from dai_nao.ghi_nho import _ket_noi_kho_1
+        from luu_tru.ghi_nho import _ket_noi_kho_1
         db, _ = _ket_noi_kho_1()
     except ImportError:
         return []
     except Exception:
+        return []
+
+    if db is None:
         return []
 
     try:
@@ -150,23 +126,20 @@ def doc_log_theo_thoi_gian(tu_thoi_gian, den_thoi_gian, loai=None,
         return []
 
 
-# ================================================================
-# ĐỌC TOÀN BỘ LOG
-# ================================================================
 def doc_log_tat_ca(loai=None):
     return doc_log(SO_LOG_TOI_DA, loai=loai, moi_nhat_truoc=True)
 
 
-# ================================================================
-# XÓA LOG
-# ================================================================
 def xoa_log(loai=None):
     try:
-        from dai_nao.ghi_nho import _ket_noi_kho_1
+        from luu_tru.ghi_nho import _ket_noi_kho_1
         db, _ = _ket_noi_kho_1()
     except ImportError:
         return 0
     except Exception:
+        return 0
+
+    if db is None:
         return 0
 
     dieu_kien = {}
@@ -187,8 +160,10 @@ def xoa_log_cu(ngay=30):
     nguong = int(time.time()) - ngay * 24 * 3600
 
     try:
-        from dai_nao.ghi_nho import _ket_noi_kho_1
+        from luu_tru.ghi_nho import _ket_noi_kho_1
         db, _ = _ket_noi_kho_1()
+        if db is None:
+            return 0
         ket_qua = db["logs"].delete_many({
             "thoi_gian": {"$lt": nguong},
         })
@@ -197,13 +172,12 @@ def xoa_log_cu(ngay=30):
         return 0
 
 
-# ================================================================
-# ĐẾM LOG
-# ================================================================
 def dem_log(loai=None):
     try:
-        from dai_nao.ghi_nho import _ket_noi_kho_1
+        from luu_tru.ghi_nho import _ket_noi_kho_1
         db, _ = _ket_noi_kho_1()
+        if db is None:
+            return 0
 
         dieu_kien = {}
         if loai and loai in LOAI_HOP_LE:
@@ -218,8 +192,11 @@ def dem_log_theo_loai():
     ket_qua = {loai: 0 for loai in LOAI_HOP_LE}
 
     try:
-        from dai_nao.ghi_nho import _ket_noi_kho_1
+        from luu_tru.ghi_nho import _ket_noi_kho_1
         db, _ = _ket_noi_kho_1()
+        if db is None:
+            ket_qua["tong"] = 0
+            return ket_qua
 
         for loai in LOAI_HOP_LE:
             ket_qua[loai] = db["logs"].count_documents({"loai": loai})
@@ -231,9 +208,6 @@ def dem_log_theo_loai():
     return ket_qua
 
 
-# ================================================================
-# TẢI LOG VỀ MÁY
-# ================================================================
 def xuat_log_thanh_chuoi(loai=None, so_luong=SO_LOG_TOI_DA):
     danh_sach = doc_log(so_luong, loai=loai, moi_nhat_truoc=False)
 
@@ -250,9 +224,6 @@ def xuat_log_thanh_chuoi(loai=None, so_luong=SO_LOG_TOI_DA):
     return "\n".join(phan)
 
 
-# ================================================================
-# HÀM PHỤ
-# ================================================================
 def lay_5_log_gan_nhat():
     return doc_log_moi_nhat(5)
 
