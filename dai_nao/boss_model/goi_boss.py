@@ -2,9 +2,8 @@
 goi_boss.py - Gọi Boss suy luận.
 
 SỬA:
-    - Thêm hàm goi_boss_nhan_yeu_cau() — Boss nhận yêu cầu trực tiếp.
-    - Boss phân loại: đơn giản / dự án.
-    - Nếu dự án → lập kế hoạch + hợp đồng + hướng dẫn.
+    - Thêm hàm _la_code_that() kiểm tra code hợp lệ.
+    - goi_boss_sua_code() không trả câu tiếng Việt làm code.
 """
 
 import json
@@ -54,14 +53,53 @@ def _lay_boss_kha_dung(chu_so_huu):
     return boss_info
 
 
+def _la_code_that(code, ngon_ngu):
+    """
+    Kiểm tra code có phải code thật không.
+
+    - Python → phải parse được bằng ast.
+    - HTML → phải có thẻ HTML.
+    - CSS → phải có { }.
+    - JS → phải có function/const/let/var.
+    """
+    if not code:
+        return False
+
+    code = code.strip()
+    if not code:
+        return False
+
+    ngon_ngu = (ngon_ngu or "").lower().strip()
+
+    # Python
+    if ngon_ngu == "python":
+        try:
+            import ast
+            ast.parse(code)
+            return True
+        except SyntaxError:
+            return False
+        except Exception:
+            return False
+
+    # HTML
+    if ngon_ngu == "html":
+        return bool(re.search(r"<[a-z]", code, re.I))
+
+    # CSS
+    if ngon_ngu == "css":
+        return "{" in code and "}" in code
+
+    # JavaScript / TypeScript
+    if ngon_ngu in ("javascript", "js", "typescript", "ts"):
+        return bool(re.search(r"\b(function|const|let|var|=>|class|import|export)\b", code))
+
+    # Khác → chấp nhận
+    return True
+
+
 def goi_boss_nhan_yeu_cau(du_lieu):
-    """
-    BOSS NHẬN YÊU CẦU:
-        - Đọc yêu cầu.
-        - Phân loại: đơn giản / dự án.
-        - Nếu dự án → lập kế hoạch + hợp đồng + hướng dẫn.
-        - Nếu đơn giản → trả lời.
-    """
+    """BOSS NHẬN YÊU CẦU: phân loại + lập kế hoạch."""
     if not du_lieu:
         return {"thanh_cong": False, "loi": "Thiếu dữ liệu."}
 
@@ -73,9 +111,7 @@ def goi_boss_nhan_yeu_cau(du_lieu):
 
     _in_debug(f"=== BOSS NHẬN YÊU CẦU ===")
     _in_debug(f"chu_so_huu = '{chu_so_huu}'")
-    _in_debug(f"noi_dung = {noi_dung[:80]}")
 
-    # 1. Dò Boss
     boss_info = _lay_boss_kha_dung(chu_so_huu)
 
     if not boss_info.get("thanh_cong"):
@@ -87,7 +123,6 @@ def goi_boss_nhan_yeu_cau(du_lieu):
     provider = boss_info.get("provider", "")
     key = boss_info.get("key", "")
 
-    # 2. Gọi Boss phân loại + xử lý
     prompt = _tao_prompt_nhan_yeu_cau(noi_dung)
 
     du_lieu_prompt = {
@@ -95,8 +130,6 @@ def goi_boss_nhan_yeu_cau(du_lieu):
         "chu_so_huu": chu_so_huu,
         "lich_su": du_lieu.get("lich_su", []),
     }
-
-    _in_debug(f"→ Gọi API {provider}")
 
     if provider == "Groq":
         from dai_nao.boss_model.api.groq_boss import goi_groq_boss
@@ -113,17 +146,13 @@ def goi_boss_nhan_yeu_cau(du_lieu):
     if not ket_qua.get("thanh_cong"):
         return ket_qua
 
-    # 3. Parse kết quả Boss
     tra_loi = ket_qua.get("tra_loi", "")
-    _in_debug(f"Boss trả lời: {tra_loi[:200]}")
-
     ket_qua_parse = _parse_ket_qua_boss(tra_loi)
     ket_qua_parse["thanh_cong"] = True
     return ket_qua_parse
 
 
 def _tao_prompt_nhan_yeu_cau(noi_dung):
-    """Tạo prompt cho Boss nhận yêu cầu."""
     return f"""Bạn là Boss Rồng Thần — bộ não suy luận.
 
 Yêu cầu user: {noi_dung}
@@ -147,7 +176,6 @@ Chỉ trả về JSON, không giải thích."""
 
 
 def _parse_ket_qua_boss(tra_loi):
-    """Parse kết quả Boss."""
     ket_qua = {
         "loai": "don_gian",
         "tra_loi": "",
@@ -169,24 +197,25 @@ def _parse_ket_qua_boss(tra_loi):
                 if k in du_lieu:
                     ket_qua[k] = du_lieu[k]
     except (json.JSONDecodeError, ValueError):
-        # Nếu không phải JSON → coi như trả lời đơn giản
         ket_qua["tra_loi"] = tra_loi
 
     return ket_qua
 
 
 def goi_boss(du_lieu):
-    """Gọi Boss trả lời đơn giản."""
     return goi_boss_nhan_yeu_cau(du_lieu)
 
 
 def goi_boss_lap_ke_hoach(du_lieu):
-    """Gọi Boss lập kế hoạch."""
     return goi_boss_nhan_yeu_cau(du_lieu)
 
 
 def goi_boss_sua_code(du_lieu):
-    """Gọi Boss sửa code."""
+    """
+    Gọi Boss sửa code.
+
+    SỬA: kiểm tra code_moi có phải code thật không.
+    """
     if not du_lieu:
         return {"thanh_cong": False, "loi": "Thiếu dữ liệu."}
 
@@ -197,13 +226,18 @@ def goi_boss_sua_code(du_lieu):
     if not code_cu:
         return {"thanh_cong": False, "loi": "Thiếu code."}
 
+    _in_debug(f"=== SỬA CODE ({ngon_ngu}) ===")
+
     prompt = f"""Code {ngon_ngu} sau bị lỗi:
 
+```{ngon_ngu}
 {code_cu}
+```
 
 Lỗi: {loi}
 
-Hãy sửa code và trả về CHỈ code đã sửa, không giải thích."""
+Hãy sửa code và trả về CHỈ code đã sửa trong khối markdown ```{ngon_ngu} ... ```.
+KHÔNG giải thích, KHÔNG trả lời bằng văn bản."""
 
     ket_qua = goi_boss_nhan_yeu_cau({
         "noi_dung": prompt,
@@ -214,24 +248,69 @@ Hãy sửa code và trả về CHỈ code đã sửa, không giải thích."""
         return ket_qua
 
     tra_loi = ket_qua.get("tra_loi", "")
+    code_moi = _trich_code(tra_loi, ngon_ngu)
+
+    _in_debug(f"code_moi (100 ký tự) = {code_moi[:100] if code_moi else 'RỖNG'}")
+
+    # Kiểm tra code_moi có phải code thật không
+    if not code_moi:
+        _in_debug("❌ code_moi RỖNG")
+        return {
+            "thanh_cong": False,
+            "loi": "Boss không trả về code.",
+            "tra_loi": tra_loi,
+        }
+
+    if not _la_code_that(code_moi, ngon_ngu):
+        _in_debug(f"❌ code_moi KHÔNG phải code hợp lệ")
+        return {
+            "thanh_cong": False,
+            "loi": "Boss trả về nội dung không phải code.",
+            "tra_loi": tra_loi,
+        }
+
+    _in_debug(f"✅ code_moi OK ({len(code_moi)} ký tự)")
+
     return {
         "thanh_cong": True,
-        "code_moi": _trich_code(tra_loi, ngon_ngu),
+        "code_moi": code_moi,
         "cach_sua": tra_loi[:200],
     }
 
 
 def _trich_code(tra_loi, ngon_ngu):
+    """
+    Trích code từ câu trả lời Boss.
+
+    SỬA: kiểm tra code tìm được có hợp lệ không.
+    """
     if not tra_loi:
         return ""
 
     bt = chr(96) * 3
-    mau = bt + r"(?:" + ngon_ngu + r")?\s*([\s\S]*?)" + bt
+
+    # Thử tìm code có ghi ngôn ngữ
+    mau = bt + ngon_ngu + r"\s*([\s\S]*?)" + bt
+    khop = re.search(mau, tra_loi, re.IGNORECASE)
+    if khop:
+        code = khop.group(1).strip()
+        if _la_code_that(code, ngon_ngu):
+            return code
+
+    # Thử tìm code không ghi ngôn ngữ
+    mau = bt + r"(?:\w+)?\s*([\s\S]*?)" + bt
     khop = re.search(mau, tra_loi)
     if khop:
-        return khop.group(1).strip()
+        code = khop.group(1).strip()
+        if _la_code_that(code, ngon_ngu):
+            return code
 
-    return tra_loi.strip()
+    # Không có code block → kiểm tra toàn bộ tra_loi
+    # (chỉ khi toàn bộ là code hợp lệ)
+    if _la_code_that(tra_loi, ngon_ngu):
+        return tra_loi.strip()
+
+    return ""
 
 
 def goi_boss_the(cau_lenh):
