@@ -195,12 +195,9 @@ def lay_danh_sach_key(du_lieu=None):
     for k in danh_sach:
         if k.get("loai_key") == "tra_web":
             continue
-
         ln = _chuan_hoa_loai_nao(k.get("loai_nao"))
-
         if loc_loai_nao and ln != loc_loai_nao:
             continue
-
         ket_qua.append({
             "id": k.get("id"),
             "provider": k.get("provider"),
@@ -243,13 +240,10 @@ def lay_quota_key(du_lieu=None):
         loc_loai_nao = _chuan_hoa_loai_nao(loc_loai_nao)
 
     ket_qua = []
-
     for k in danh_sach:
         if k.get("loai_key") == "tra_web":
             continue
-
         ln = _chuan_hoa_loai_nao(k.get("loai_nao"))
-
         if loc_loai_nao and ln != loc_loai_nao:
             continue
 

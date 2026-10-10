@@ -1,5 +1,7 @@
 """
 quan_ly_quota.py - Theo dõi quota API Tra web Rồng Thần.
+
+Sửa: dai_nao.ghi_nho → luu_tru.ghi_nho.
 """
 
 import time

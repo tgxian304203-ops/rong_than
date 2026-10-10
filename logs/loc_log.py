@@ -1,7 +1,7 @@
 """
 loc_log.py - Lọc log theo loại Rồng Thần.
 
-ĐÃ SỬA: dai_nao.ghi_nho → luu_tru.ghi_nho.
+Sửa: dai_nao.ghi_nho → luu_tru.ghi_nho.
 """
 
 import re
@@ -17,18 +17,13 @@ LOAI_TAT_CA = ["tat-ca", "all", "", None]
 def _chuan_hoa_loai(loai):
     if loai in LOAI_TAT_CA:
         return None
-
     if not loai:
         return None
-
     loai = str(loai).strip().lower()
-
     if loai in LOAI_TAT_CA:
         return None
-
     if loai in LOAI_HOP_LE:
         return loai
-
     return None
 
 

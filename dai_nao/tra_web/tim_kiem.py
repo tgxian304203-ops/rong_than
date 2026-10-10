@@ -1,5 +1,7 @@
 """
 tim_kiem.py - Gọi API tìm kiếm Tra web Rồng Thần.
+
+Sửa: dai_nao.ghi_nho → luu_tru.ghi_nho.
 """
 
 
@@ -239,10 +241,8 @@ def tim_kiem_provider(provider, cau_hoi, key, so_ket_qua=SO_KET_QUA_MAC_DINH):
 def tom_tat(ket_qua):
     if not ket_qua:
         return ""
-
     if not ket_qua.get("thanh_cong"):
         return f"❌ Tra web thất bại: {ket_qua.get('loi', '')}"
-
     nguon = ", ".join(ket_qua.get("nguon", []))
     so = ket_qua.get("so_ket_qua", 0)
     return f"✅ {so} kết quả từ {nguon}"

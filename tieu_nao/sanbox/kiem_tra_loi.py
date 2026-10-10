@@ -21,7 +21,6 @@ SO_LAN_RETRY_COMPILER = 3
 
 
 def kiem_tra_loi(ket_qua_client):
-    """Kiểm tra kết quả client trả về có lỗi không."""
     ket_qua = {
         "thanh_cong": True,
         "co_loi": False,
@@ -52,16 +51,13 @@ def kiem_tra_loi(ket_qua_client):
             if method == "error":
                 args = item.get("args", [])
                 thong_diep = " ".join(str(a) for a in args)[:500]
-
                 ket_qua["thanh_cong"] = False
                 ket_qua["co_loi"] = True
                 ket_qua["loai_loi"] = "console"
                 ket_qua["thong_diep"] = thong_diep
-
                 dong = _trich_so_dong(thong_diep)
                 if dong:
                     ket_qua["dong"] = dong
-
                 ket_qua["goi_y"] = _goi_y_theo_loi(thong_diep)
                 return ket_qua
 
@@ -92,11 +88,6 @@ def kiem_tra_loi(ket_qua_client):
 
 
 def phan_tich_loi_sandbox(stderr):
-    """
-    Phân tích lỗi từ sandbox.
-
-    ĐÃ SỬA: dùng dai_nao.kiem_tra_loi thay vì dai_nao.doc_loi.
-    """
     ket_qua = {
         "loai_loi": "",
         "thong_diep": "",
@@ -107,14 +98,12 @@ def phan_tich_loi_sandbox(stderr):
     if not stderr:
         return ket_qua
 
-    # Thử dùng dai_nao.kiem_tra_loi
     try:
         from dai_nao.kiem_tra_loi import (
             _doan_loai_loi,
             _trich_so_dong as _trich_dong_dai_nao,
             _goi_y_theo_loai,
         )
-
         ket_qua["loai_loi"] = _doan_loai_loi(stderr)
         ket_qua["thong_diep"] = stderr[:500]
         ket_qua["dong"] = _trich_dong_dai_nao(stderr)
@@ -125,7 +114,6 @@ def phan_tich_loi_sandbox(stderr):
     except Exception:
         pass
 
-    # Fallback: phân tích thô
     ket_qua["thong_diep"] = stderr[:500]
     ket_qua["dong"] = _trich_so_dong(stderr)
     ket_qua["loai_loi"] = _doan_loai_loi(stderr)
@@ -135,12 +123,9 @@ def phan_tich_loi_sandbox(stderr):
 
 
 def _doan_loai_loi(stderr):
-    """Đoán loại lỗi từ chuỗi."""
     if not stderr:
         return "khac"
-
     t = stderr.lower()
-
     if "timeout" in t or "timed out" in t:
         return "timeout"
     if "syntaxerror" in t or "syntax error" in t:
@@ -151,15 +136,12 @@ def _doan_loai_loi(stderr):
         return "type"
     if "compile" in t or "compilation" in t:
         return "compile"
-
     return "khac"
 
 
 def _trich_so_dong(stderr):
-    """Trích số dòng từ stderr."""
     if not stderr:
         return None
-
     mau = [
         r"line\s+(\d+)",
         r":(\d+):\d+",
@@ -176,12 +158,9 @@ def _trich_so_dong(stderr):
 
 
 def _goi_y_theo_loi(stderr):
-    """Trả gợi ý theo loại lỗi."""
     if not stderr:
         return []
-
     t = stderr.lower()
-
     if "timeout" in t:
         return ["Tăng timeout.", "Kiểm tra code có vòng lặp vô hạn không."]
     if "syntax" in t:
@@ -192,14 +171,11 @@ def _goi_y_theo_loi(stderr):
         return ["Kiểm tra kiểu dữ liệu."]
     if "compile" in t:
         return ["Kiểm tra compiler có sẵn không."]
-
     return ["Xem console để biết chi tiết."]
 
 
 def _tao_timeout_js(timeout=TIMEOUT_MAC_DINH):
-    """Tạo JS timeout cho client."""
     timeout_ms = timeout * 1000
-
     return f"""// Timeout cho SDK call
 function voiTimeout(promise, ms = {timeout_ms}) {{
     return Promise.race([
@@ -212,7 +188,6 @@ function voiTimeout(promise, ms = {timeout_ms}) {{
 
 
 def _tao_watcher_loi_js():
-    """Tạo JS bắt lỗi console."""
     return """// Bắt console output
 let consoleOutput = [];
 let consoleErrors = [];
@@ -220,11 +195,9 @@ let consoleErrors = [];
 playground.watch('console', ({ method, args }) => {
     const item = { method, args, thoi_gian: Date.now() };
     consoleOutput.push(item);
-
     if (method === 'error') {
         consoleErrors.push(item);
     }
-
     const out = document.getElementById('sandbox-console');
     if (out) {
         out.textContent += `[${method}] ${args.join(' ')}\\n`;
@@ -233,7 +206,6 @@ playground.watch('console', ({ method, args }) => {
 
 
 def _tao_watcher_test_js():
-    """Tạo JS bắt test results."""
     return """// Bắt test results
 let testResults = [];
 
@@ -242,9 +214,7 @@ playground.watch('tests', ({ results, error }) => {
         consoleErrors.push({ method: 'test-error', args: [error] });
         return;
     }
-
     testResults = results;
-
     const out = document.getElementById('sandbox-tests');
     if (out) {
         out.textContent = results.map(r =>
@@ -255,7 +225,6 @@ playground.watch('tests', ({ results, error }) => {
 
 
 def _tao_retry_js(so_lan=SO_LAN_RETRY_COMPILER):
-    """Tạo JS retry cho compiler."""
     return f"""// Retry compile {so_lan} lần nếu lỗi
 async function chayVoiRetry(playground, soLan = {so_lan}) {{
     for (let i = 1; i <= soLan; i++) {{
@@ -273,7 +242,6 @@ async function chayVoiRetry(playground, soLan = {so_lan}) {{
 
 
 def _tao_destroy_js():
-    """Tạo JS dọn playground."""
     return """// Dọn playground khi thoát
 async function donPlayground() {
     if (window.__livecodes_playground) {
@@ -290,7 +258,6 @@ window.addEventListener('beforeunload', donPlayground);"""
 
 
 def tao_js_bo_sung(timeout=TIMEOUT_MAC_DINH):
-    """Tạo toàn bộ JS bổ sung cho sandbox client."""
     phan = [
         "// === JS bổ sung cho Sandbox Rồng Thần ===",
         "",
@@ -306,24 +273,19 @@ def tao_js_bo_sung(timeout=TIMEOUT_MAC_DINH):
         "",
         "// === Hết JS bổ sung ===",
     ]
-
     return "\n".join(phan)
 
 
 def kiem_tra_ket_qua_chay(ket_qua_client):
-    """Kiểm tra kết quả chạy có lỗi không."""
     kq = kiem_tra_loi(ket_qua_client)
     return kq["thanh_cong"], kq["thong_diep"]
 
 
 def tom_tat_loi(ket_qua):
-    """Tạo chuỗi tóm tắt lỗi sandbox."""
     if not ket_qua:
         return ""
-
     if not ket_qua.get("co_loi"):
         return "✅ Không có lỗi."
-
     dong = f" (dòng {ket_qua['dong']})" if ket_qua.get("dong") else ""
     return (
         f"❌ [{ket_qua.get('loai_loi', 'khac')}]{dong}: "
@@ -332,22 +294,13 @@ def tom_tat_loi(ket_qua):
 
 
 def danh_sach_loai_loi():
-    """Trả danh sách loại lỗi sandbox."""
     return [
-        "timeout",
-        "compile",
-        "syntax",
-        "reference",
-        "type",
-        "runtime",
-        "console",
-        "test",
-        "khac",
+        "timeout", "compile", "syntax", "reference",
+        "type", "runtime", "console", "test", "khac",
     ]
 
 
 def la_loi_timeout(thong_diep):
-    """Kiểm tra lỗi có phải timeout không."""
     if not thong_diep:
         return False
     t = thong_diep.lower()
@@ -355,7 +308,6 @@ def la_loi_timeout(thong_diep):
 
 
 def la_loi_compile(thong_diep):
-    """Kiểm tra lỗi có phải compile không."""
     if not thong_diep:
         return False
     t = thong_diep.lower()

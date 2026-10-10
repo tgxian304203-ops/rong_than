@@ -33,14 +33,6 @@ GIOI_HAN_CHAT_NHANH = 10
 CHU_SO_HUU_KHACH = "khach"
 
 
-def _ghi_log(loai, noi_dung):
-    try:
-        from logs.ghi_log import ghi_log
-        ghi_log(loai, noi_dung)
-    except Exception:
-        pass
-
-
 def _tao_id():
     return "id-" + secrets.token_hex(8)
 
@@ -53,14 +45,10 @@ def _lay_ten_dang_nhap():
     return phien_flask.get("ten_dang_nhap")
 
 
-# ================================================================
-# DỰ ÁN
-# ================================================================
 def lay_danh_sach_du_an():
     ten = _lay_ten_dang_nhap()
     if not ten:
         return {"thanh_cong": True, "danh_sach": []}
-
     danh_sach = lay_danh_sach_du_an_cua(ten) or []
     danh_sach.sort(key=lambda d: d.get("ngay_tao", 0), reverse=True)
     return {"thanh_cong": True, "danh_sach": danh_sach}
@@ -112,9 +100,6 @@ def xoa_du_an(du_lieu):
     return {"thanh_cong": True}
 
 
-# ================================================================
-# CHAT NHANH
-# ================================================================
 def lay_danh_sach_chat_nhanh():
     ten = _lay_ten_dang_nhap()
     if not ten:
@@ -196,9 +181,6 @@ def lay_tin_nhan_chat_nhanh_cua(id_chat):
     return {"thanh_cong": True, "danh_sach": danh_sach}
 
 
-# ================================================================
-# TRÒ CHUYỆN TRONG DỰ ÁN
-# ================================================================
 def _dam_bao_du_an_ton_tai(id_du_an, ten_tk):
     du_an = lay_du_an(id_du_an)
     if du_an:
@@ -281,9 +263,6 @@ def xoa_tro_chuyen(du_lieu):
     return {"thanh_cong": True}
 
 
-# ================================================================
-# TIN NHẮN TRONG TRÒ CHUYỆN
-# ================================================================
 def luu_tin_nhan(du_lieu):
     ten_tk = _lay_ten_dang_nhap()
     id_du_an = du_lieu.get("id_du_an")
@@ -338,8 +317,5 @@ def lay_tin_nhan():
     return {"thanh_cong": True, "danh_sach": danh_sach}
 
 
-# ================================================================
-# CHAT MỚI (alias)
-# ================================================================
 def tao_chat_moi(du_lieu):
     return tao_chat_nhanh(du_lieu)

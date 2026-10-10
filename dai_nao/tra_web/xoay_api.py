@@ -1,5 +1,7 @@
 """
 xoay_api.py - Quản lý xoay API Tra web Rồng Thần.
+
+Sửa: dai_nao.ghi_nho → luu_tru.ghi_nho.
 """
 
 import time

@@ -1,7 +1,7 @@
 """
 doc_log.py - Đọc log cho giao diện Rồng Thần.
 
-ĐÃ SỬA: dai_nao.ghi_nho → luu_tru.ghi_nho.
+Sửa: dai_nao.ghi_nho → luu_tru.ghi_nho.
 """
 
 import time

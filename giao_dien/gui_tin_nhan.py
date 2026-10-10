@@ -42,18 +42,12 @@ def _lay_danh_sach(du_lieu, ten_moi, ten_cu):
 
 
 def xu_ly_gui_tin_nhan(du_lieu):
-    """
-    Nhận tin nhắn từ client, chuyển cho Đại não, trả kết quả.
-    """
     noi_dung = (du_lieu.get("noi_dung") or "").strip()
     danh_sach_anh = _lay_danh_sach(du_lieu, "urls_anh", "anh")
     danh_sach_file = _lay_danh_sach(du_lieu, "urls_file", "file")
 
     if not noi_dung and not danh_sach_anh and not danh_sach_file:
-        return {
-            "thanh_cong": False,
-            "loi": "Không có nội dung để gửi.",
-        }
+        return {"thanh_cong": False, "loi": "Không có nội dung để gửi."}
 
     ten_tk = _lay_ten_dang_nhap()
     id_chat = du_lieu.get("id_chat") or ""
@@ -86,14 +80,13 @@ def xu_ly_gui_tin_nhan(du_lieu):
         except Exception:
             lich_su = []
 
-    # Chuyển cho Đại não
     try:
         from dai_nao.nhan_yeu_cau import nhan_yeu_cau
     except ImportError:
         _ghi_log("loi", "nhan_yeu_cau.py chưa có.")
         return {
             "thanh_cong": False,
-            "loi": "Đại não chưa sẵn sàng (dai_nao/nhan_yeu_cau.py chưa có).",
+            "loi": "Đại não chưa sẵn sàng.",
         }
 
     du_lieu_dai_nao = {
@@ -110,17 +103,11 @@ def xu_ly_gui_tin_nhan(du_lieu):
         ket_qua = nhan_yeu_cau(du_lieu_dai_nao)
     except Exception as e:
         _ghi_log("loi", f"Đại não lỗi: {e}")
-        return {
-            "thanh_cong": False,
-            "loi": f"Đại não xử lý lỗi: {e}",
-        }
+        return {"thanh_cong": False, "loi": f"Đại não xử lý lỗi: {e}"}
 
     if not ket_qua or not isinstance(ket_qua, dict):
         _ghi_log("loi", "Đại não không trả về kết quả hợp lệ.")
-        return {
-            "thanh_cong": False,
-            "loi": "Đại não không trả về kết quả hợp lệ.",
-        }
+        return {"thanh_cong": False, "loi": "Đại não không trả về kết quả hợp lệ."}
 
     thanh_cong_dai_nao = bool(ket_qua.get("thanh_cong", False))
     tra_loi = ket_qua.get("tra_loi") or ""

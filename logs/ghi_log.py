@@ -1,7 +1,7 @@
 """
 ghi_log.py - Ghi log hoạt động Rồng Thần.
 
-ĐÃ SỬA: dai_nao.ghi_nho → luu_tru.ghi_nho.
+Sửa: dai_nao.ghi_nho → luu_tru.ghi_nho.
 """
 
 import os
