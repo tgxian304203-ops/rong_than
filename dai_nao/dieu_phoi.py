@@ -1,19 +1,7 @@
 """
 dieu_phoi.py - Điều phối toàn bộ luồng Đại não.
 
-BẢN CHẤT:
-    - Đại não = CODE LOGIC PYTHON.
-    - Boss = MODEL AI (Groq/OpenRouter/Gemini).
-    - Đại não gọi Boss để suy luận.
-
-Nhiệm vụ:
-    - Nhận yêu cầu đã phân loại.
-    - Tra web nếu cần (ĐẠI NÃO trực tiếp gọi API).
-    - Ghép kết quả web vào prompt cho Boss.
-    - Ghi hợp đồng vào Cây.
-    - Gọi Boss suy luận.
-    - Verify (code → Sandbox, khác → Boss).
-    - Trả kết quả.
+CÓ DEBUG để kiểm tra luồng.
 """
 
 import time
@@ -47,8 +35,15 @@ def _ghi_log(loai, noi_dung):
         pass
 
 
+def _in_debug(noi_dung):
+    """In ra console Render."""
+    try:
+        print(f"[DEBUG-DIEU-PHOI] {noi_dung}", flush=True)
+    except Exception:
+        pass
+
+
 def _can_tra_web(noi_dung):
-    """Kiểm tra câu hỏi có cần tra web không."""
     if not noi_dung:
         return False
     t = noi_dung.lower()
@@ -59,7 +54,6 @@ def _can_tra_web(noi_dung):
 
 
 def _ghep_ket_qua_web(noi_dung, ket_qua_web):
-    """Ghép kết quả tra web vào prompt cho Boss."""
     tong_hop = ket_qua_web.get("tong_hop", "")
     nguon = ket_qua_web.get("nguon", [])
 
@@ -87,46 +81,37 @@ def _ghep_ket_qua_web(noi_dung, ket_qua_web):
 
 
 def _tra_web_neu_can(noi_dung, chu_so_huu):
-    """
-    ĐẠI NÃO tra web nếu câu hỏi cần thông tin thời gian thực.
-
-    Lưu ý: Đây là ĐẠI NÃO (code) gọi API, KHÔNG phải Boss.
-    Boss chỉ nhận kết quả đã ghép vào prompt.
-    """
     if not _can_tra_web(noi_dung):
         return noi_dung
 
+    _in_debug(f"Cần tra web: {noi_dung[:80]}")
     _ghi_log("dai-nao", f"Đại não tra web cho: {noi_dung[:80]}")
 
     try:
         from dai_nao.tra_web.dieu_phoi_tra_web import dieu_phoi_tra_web
 
         ket_qua_web = dieu_phoi_tra_web(
-            noi_dung,
-            chu_so_huu,
+            noi_dung, chu_so_huu,
             so_ket_qua=5,
             lay_noi_dung=False,
         )
 
         if ket_qua_web.get("thanh_cong"):
-            _ghi_log(
-                "dai-nao",
-                f"Đại não tra web OK: {ket_qua_web.get('so_ket_qua', 0)} kết quả",
-            )
+            _in_debug(f"Tra web OK: {ket_qua_web.get('so_ket_qua', 0)} kết quả")
+            _ghi_log("dai-nao", f"Đại não tra web OK: {ket_qua_web.get('so_ket_qua', 0)} kết quả")
             return _ghep_ket_qua_web(noi_dung, ket_qua_web)
 
+        _in_debug(f"Tra web lỗi: {ket_qua_web.get('loi', '')}")
         _ghi_log("dai-nao", f"Đại não tra web lỗi: {ket_qua_web.get('loi', '')}")
 
     except Exception as e:
+        _in_debug(f"Tra web exception: {e}")
         _ghi_log("loi", f"Tra web exception: {e}")
 
     return noi_dung
 
 
 def dieu_phoi(du_lieu):
-    """
-    Điều phối toàn bộ luồng xử lý (ĐẠI NÃO = CODE, không phải Boss).
-    """
     if not du_lieu:
         return {"thanh_cong": False, "loi": "Thiếu dữ liệu."}
 
@@ -137,16 +122,24 @@ def dieu_phoi(du_lieu):
     if not noi_dung:
         return {"thanh_cong": False, "loi": "Không có nội dung."}
 
+    _in_debug("=== ĐẠI NÃO ĐIỀU PHỐI ===")
+    _in_debug(f"noi_dung = {noi_dung[:80]}")
+    _in_debug(f"chu_so_huu = '{chu_so_huu}'")
+    _in_debug(f"id_chat = '{id_chat}'")
+
     _ghi_log("dai-nao", f"Đại não điều phối: {noi_dung[:80]}")
 
     try:
         from dai_nao.phan_loai import phan_loai
         phan_loai_ket_qua = phan_loai(noi_dung)
+        _in_debug(f"Phân loại: {phan_loai_ket_qua}")
     except Exception as e:
+        _in_debug(f"Phân loại lỗi: {e}")
         _ghi_log("loi", f"Phân loại lỗi: {e}")
         phan_loai_ket_qua = {"loai": "don_gian", "loai_noi_dung": "khac"}
 
     loai = phan_loai_ket_qua.get("loai", "don_gian")
+    _in_debug(f"→ Loại: {loai}")
 
     if loai == "du_an":
         return _dieu_phoi_du_an(du_lieu, phan_loai_ket_qua)
@@ -154,10 +147,11 @@ def dieu_phoi(du_lieu):
 
 
 def _dieu_phoi_don_gian(du_lieu, phan_loai_ket_qua):
-    """Luồng đơn giản: Đại não tra web → Gọi Boss → Verify → Trả."""
     noi_dung = du_lieu.get("noi_dung", "")
     chu_so_huu = du_lieu.get("chu_so_huu", "khach")
     id_chat = du_lieu.get("id_chat", "")
+
+    _in_debug("--- LUỒNG ĐƠN GIẢN ---")
 
     noi_dung_moi = _tra_web_neu_can(noi_dung, chu_so_huu)
 
@@ -180,6 +174,7 @@ def _dieu_phoi_don_gian(du_lieu, phan_loai_ket_qua):
     ket_qua_boss = _goi_boss(du_lieu, phan_loai_ket_qua)
 
     if not ket_qua_boss or not ket_qua_boss.get("thanh_cong"):
+        _in_debug(f"Boss lỗi: {(ket_qua_boss or {}).get('loi', '')}")
         return {
             "thanh_cong": False,
             "loi": (ket_qua_boss or {}).get("loi", "Boss không trả lời."),
@@ -200,10 +195,11 @@ def _dieu_phoi_don_gian(du_lieu, phan_loai_ket_qua):
 
 
 def _dieu_phoi_du_an(du_lieu, phan_loai_ket_qua):
-    """Luồng dự án: Đại não tra web → Boss lập kế hoạch → Chỉ huy Model → Verify."""
     noi_dung = du_lieu.get("noi_dung", "")
     chu_so_huu = du_lieu.get("chu_so_huu", "khach")
     id_chat = du_lieu.get("id_chat", "")
+
+    _in_debug("--- LUỒNG DỰ ÁN ---")
 
     noi_dung_moi = _tra_web_neu_can(noi_dung, chu_so_huu)
 
@@ -219,10 +215,14 @@ def _dieu_phoi_du_an(du_lieu, phan_loai_ket_qua):
         except Exception:
             co_hop_dong = False
 
+    _in_debug(f"Có hợp đồng chưa: {co_hop_dong}")
+
     if not co_hop_dong:
+        _in_debug("Chưa có hợp đồng → gọi Boss lập kế hoạch")
         ket_qua_ke_hoach = _goi_boss_lap_ke_hoach(du_lieu, phan_loai_ket_qua)
 
         if not ket_qua_ke_hoach or not ket_qua_ke_hoach.get("thanh_cong"):
+            _in_debug(f"Boss lập kế hoạch lỗi: {(ket_qua_ke_hoach or {}).get('loi', '')}")
             return {
                 "thanh_cong": False,
                 "loi": (ket_qua_ke_hoach or {}).get("loi", "Boss lập kế hoạch lỗi."),
@@ -232,12 +232,22 @@ def _dieu_phoi_du_an(du_lieu, phan_loai_ket_qua):
             try:
                 from dai_nao.ghi_hop_dong import ghi_tu_ke_hoach
                 ghi_tu_ke_hoach(chu_so_huu, id_chat, ket_qua_ke_hoach)
+                _in_debug("Đã ghi kế hoạch vào cây")
             except Exception as e:
+                _in_debug(f"Ghi kế hoạch lỗi: {e}")
                 _ghi_log("loi", f"Ghi kế hoạch lỗi: {e}")
+
+    # Gọi Tiểu não
+    _in_debug("→ Gọi Tiểu não: _chi_huy_model()")
+    _in_debug(f"   chu_so_huu truyền vào = '{chu_so_huu}'")
 
     ket_qua_buoc = _chi_huy_model(du_lieu)
 
+    _in_debug(f"← Tiểu não trả về: thanh_cong={ket_qua_buoc.get('thanh_cong')}")
+    _in_debug(f"← Tiểu não trả về: loi={ket_qua_buoc.get('loi', '')}")
+
     if not ket_qua_buoc or not ket_qua_buoc.get("thanh_cong"):
+        _in_debug(f"❌ Tiểu não thất bại: {ket_qua_buoc.get('loi', '')}")
         return {
             "thanh_cong": False,
             "loi": (ket_qua_buoc or {}).get("loi", "Model không thực hiện được."),
@@ -256,7 +266,6 @@ def _dieu_phoi_du_an(du_lieu, phan_loai_ket_qua):
 
 
 def _goi_boss(du_lieu, phan_loai_ket_qua):
-    """Đại não gọi Boss (model) trả lời."""
     try:
         from dai_nao.boss_model.goi_boss import goi_boss
         return goi_boss({
@@ -273,7 +282,6 @@ def _goi_boss(du_lieu, phan_loai_ket_qua):
 
 
 def _goi_boss_lap_ke_hoach(du_lieu, phan_loai_ket_qua):
-    """Đại não gọi Boss lập kế hoạch."""
     try:
         from dai_nao.boss_model.goi_boss import goi_boss_lap_ke_hoach
         return goi_boss_lap_ke_hoach({
@@ -294,19 +302,33 @@ def _goi_boss_lap_ke_hoach(du_lieu, phan_loai_ket_qua):
 
 
 def _chi_huy_model(du_lieu):
-    """Đại não yêu cầu Tiểu não ép Model làm việc."""
+    """
+    Đại não gọi Tiểu não để ép Model làm việc.
+
+    CÓ DEBUG để kiểm tra tham số truyền.
+    """
+    _in_debug("=== ĐẠI NÃO GỌI TIỂU NÃO ===")
+    _in_debug(f"du_lieu keys: {list(du_lieu.keys())}")
+    _in_debug(f"chu_so_huu = '{du_lieu.get('chu_so_huu')}'")
+    _in_debug(f"id_chat = '{du_lieu.get('id_chat')}'")
+    _in_debug(f"noi_dung = {du_lieu.get('noi_dung', '')[:80]}")
+
     try:
         from tieu_nao.nhan_lenh import nhan_lenh
-        return nhan_lenh(du_lieu)
-    except ImportError:
+        _in_debug("→ Đã import nhan_lenh, đang gọi...")
+        ket_qua = nhan_lenh(du_lieu)
+        _in_debug(f"← nhan_lenh trả về: {ket_qua}")
+        return ket_qua
+    except ImportError as e:
+        _in_debug(f"ImportError nhan_lenh: {e}")
         return _goi_model_truc_tiep(du_lieu)
     except Exception as e:
+        _in_debug(f"Exception nhan_lenh: {e}")
         _ghi_log("loi", f"Chỉ huy Model lỗi: {e}")
         return {"thanh_cong": False, "loi": f"Model lỗi: {e}"}
 
 
 def _goi_model_truc_tiep(du_lieu):
-    """Fallback."""
     noi_dung = du_lieu.get("noi_dung", "")
     return {
         "thanh_cong": True,
@@ -317,7 +339,6 @@ def _goi_model_truc_tiep(du_lieu):
 
 
 def _verify_code(ket_qua, chu_so_huu, id_chat):
-    """Đại não verify code qua Sandbox."""
     code = ket_qua.get("code")
     ngon_ngu = ket_qua.get("ngon_ngu", "python")
 
@@ -387,7 +408,6 @@ def _verify_code(ket_qua, chu_so_huu, id_chat):
 
 
 def _verify_va_cap_nhat(ket_qua, chu_so_huu, id_chat):
-    """Đại não verify + cập nhật hợp đồng."""
     if ket_qua.get("code"):
         ket_qua = _verify_code(ket_qua, chu_so_huu, id_chat)
 
@@ -416,7 +436,6 @@ def _dem_buoc_hien_tai(chu_so_huu, id_chat):
 
 
 def xu_ly_boss_het_quota(chu_so_huu, id_chat, du_lieu):
-    """Đại não xử lý khi Boss đầu hết quota → chuyển Boss thế."""
     _ghi_log("dai-nao", f"Boss hết quota — Đại não chuyển Boss thế chat {id_chat}")
 
     try:
@@ -448,7 +467,6 @@ def xu_ly_doi_y(chu_so_huu, id_chat, noi_dung, muc_do="nho"):
 
 
 def boss_the_gui_lai_code(chu_so_huu, id_chat, buoc=None):
-    """Đại não lấy code cũ cho Boss thế gửi lại user."""
     try:
         from cay_linh_hon.doc_code import format_gui_user
         return format_gui_user(chu_so_huu, id_chat, buoc)
@@ -458,7 +476,6 @@ def boss_the_gui_lai_code(chu_so_huu, id_chat, buoc=None):
 
 
 def boss_the_tra_web_cap_nhat(chu_so_huu, id_chat, cau_hoi):
-    """Đại não tra web theo yêu cầu Boss thế."""
     try:
         from dai_nao.tra_web.tim_kiem import tim_kiem
         ket_qua = tim_kiem(cau_hoi, chu_so_huu)
@@ -477,7 +494,6 @@ def boss_the_tra_web_cap_nhat(chu_so_huu, id_chat, cau_hoi):
 
 
 def boss_the_kiem_tra_toan_bo_code(chu_so_huu, id_chat):
-    """Đại não chia nhỏ từng bước, kiểm tra code."""
     try:
         from cay_linh_hon.doc_code import doc_tat_ca
         tat_ca_code = doc_tat_ca(chu_so_huu, id_chat)
@@ -529,10 +545,7 @@ def _doan_ngon_ngu(ten_file):
 
     duoi = ten_file.rsplit(".", 1)[-1].lower()
     bang = {
-        "py": "python",
-        "js": "javascript",
-        "ts": "typescript",
-        "html": "html",
-        "css": "css",
+        "py": "python", "js": "javascript", "ts": "typescript",
+        "html": "html", "css": "css",
     }
     return bang.get(duoi, "python")
