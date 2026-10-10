@@ -2,10 +2,8 @@
    chat.js - Gửi/nhận tin nhắn (chat chính + chat trong dự án)
    ------------------------------------------------------------
    ĐÃ SỬA:
-     - CÁCH 3: Backend chạy code → trả code + ket_qua_chay.
-     - THÊM: hiển thị code bằng hienThiKhungCode (chat chính).
-     - THÊM: hiển thị code bằng hienThiKhungCode (chat dự án).
-     - Giữ nguyên các hàm render tin nhắn.
+     - Tách code khỏi text bằng hienThiCodeTrongTinNhan.
+     - Fallback: nếu không có file tách → hiển thị text thường.
    ============================================================ */
 
 (function () {
@@ -28,9 +26,6 @@
     let dangGui = false;
     let dangGuiDuAn = false;
 
-    /* ============================================================
-       TIỆN ÍCH
-       ============================================================ */
     function cuonXuongCuoi(khung) {
         if (khung) khung.scrollTop = khung.scrollHeight;
     }
@@ -74,9 +69,6 @@
             svgDong;
     }
 
-    /* ============================================================
-       TẠO TIN NHẮN
-       ============================================================ */
     function taoTinNhan(noiDung, loai) {
         const div = document.createElement('div');
         div.classList.add('tin-nhan');
@@ -90,6 +82,22 @@
         if (noiDung) {
             div.textContent = noiDung;
         }
+        return div;
+    }
+
+    /* ============================================================
+       TẠO TIN NHẮN RỒNG CÓ TÁCH CODE
+       ============================================================ */
+    function taoTinNhanRongCoCode(noiDung) {
+        const div = document.createElement('div');
+        div.classList.add('tin-nhan', 'tin-nhan-rong');
+
+        if (typeof window.hienThiCodeTrongTinNhan === 'function') {
+            window.hienThiCodeTrongTinNhan(div, noiDung);
+        } else {
+            div.textContent = noiDung;
+        }
+
         return div;
     }
 
@@ -144,7 +152,7 @@
 
     function themTinNhanRong(noiDung) {
         if (!danhSach) return;
-        danhSach.appendChild(taoTinNhan(noiDung, 'rong'));
+        danhSach.appendChild(taoTinNhanRongCoCode(noiDung));
         cuonXuongCuoi(khungChat);
     }
 
@@ -188,9 +196,6 @@
         return dem;
     }
 
-    /* ============================================================
-       LẤY URL ĐÃ UPLOAD SẴN
-       ============================================================ */
     function layDinhKemDaUpload() {
         let urls_anh = [];
         let urls_file = [];
@@ -214,9 +219,6 @@
         if (typeof window.xoaTatCaFile === 'function') window.xoaTatCaFile();
     }
 
-    /* ============================================================
-       HIỂN THỊ CODE TỪ BACKEND
-       ============================================================ */
     function hienThiCodeTuBackend(code, ngonNgu) {
         if (!code) return;
 
@@ -233,9 +235,6 @@
         }
     }
 
-    /* ============================================================
-       HIỂN THỊ KẾT QUẢ CODE TỪ BACKEND (CÁCH 3)
-       ============================================================ */
     function hienThiKetQuaChay(ketQuaChay) {
         if (!ketQuaChay) return;
 
@@ -287,9 +286,6 @@
         }
     }
 
-    /* ============================================================
-       GỬI TIN NHẮN — CHAT CHÍNH
-       ============================================================ */
     async function guiTinNhanChinh() {
         if (dangGui) return;
 
@@ -353,14 +349,13 @@
             xoaDangTraLoi('tin-nhan-dang-tra-loi');
 
             if (duLieu && duLieu.thanh_cong && duLieu.tra_loi) {
+                // TÁCH CODE KHỎI TEXT
                 themTinNhanRong(duLieu.tra_loi);
 
-                // HIỂN THỊ CODE (THÊM)
                 if (duLieu.code) {
                     hienThiCodeTuBackend(duLieu.code, duLieu.ngon_ngu);
                 }
 
-                // HIỂN THỊ KẾT QUẢ CHẠY (CÁCH 3)
                 if (duLieu.ket_qua_chay) {
                     hienThiKetQuaChay(duLieu.ket_qua_chay);
                 }
@@ -383,9 +378,6 @@
         }
     }
 
-    /* ============================================================
-       GỬI TIN NHẮN — CHAT TRONG DỰ ÁN
-       ============================================================ */
     async function guiTinNhanDuAn() {
         if (dangGuiDuAn) return;
 
@@ -460,10 +452,17 @@
                 traLoi = '⚠️ Không nhận được phản hồi.';
             }
 
-            danhSachDuAn.appendChild(taoTinNhan(traLoi, 'rong'));
+            // TÁCH CODE KHỎI TEXT
+            if (typeof window.hienThiCodeTrongTinNhan === 'function') {
+                const boc = document.createElement('div');
+                boc.classList.add('tin-nhan', 'tin-nhan-rong');
+                danhSachDuAn.appendChild(boc);
+                window.hienThiCodeTrongTinNhan(boc, traLoi);
+            } else {
+                danhSachDuAn.appendChild(taoTinNhan(traLoi, 'rong'));
+            }
             cuonXuongCuoi(khungChatDuAn);
 
-            // HIỂN THỊ CODE (THÊM) — chat dự án
             if (duLieu && duLieu.code) {
                 if (typeof window.taoKhungCode === 'function') {
                     const boc = document.createElement('div');
@@ -493,9 +492,6 @@
         }
     }
 
-    /* ============================================================
-       RENDER TIN NHẮN CŨ — CHAT NHANH
-       ============================================================ */
     function renderTinNhanChatNhanh(danh_sach) {
         if (!danhSach) return;
         danhSach.innerHTML = '';
@@ -511,7 +507,11 @@
                     taoTinNhanCoDinhKem(noiDung, vaiTro, urlsAnh, urlsFile)
                 );
             } else {
-                danhSach.appendChild(taoTinNhan(noiDung, vaiTro));
+                if (vaiTro === 'rong') {
+                    danhSach.appendChild(taoTinNhanRongCoCode(noiDung));
+                } else {
+                    danhSach.appendChild(taoTinNhan(noiDung, vaiTro));
+                }
             }
 
             if (vaiTro === 'rong' && tin.code) {
@@ -522,9 +522,6 @@
         cuonXuongCuoi(khungChat);
     }
 
-    /* ============================================================
-       RENDER TIN NHẮN CŨ — DỰ ÁN
-       ============================================================ */
     function renderTinNhanCu(danh_sach) {
         if (!danhSachDuAn) return;
         danhSachDuAn.innerHTML = '';
@@ -540,7 +537,11 @@
                     taoTinNhanCoDinhKem(noiDung, vaiTro, urlsAnh, urlsFile)
                 );
             } else {
-                danhSachDuAn.appendChild(taoTinNhan(noiDung, vaiTro));
+                if (vaiTro === 'rong') {
+                    danhSachDuAn.appendChild(taoTinNhanRongCoCode(noiDung));
+                } else {
+                    danhSachDuAn.appendChild(taoTinNhan(noiDung, vaiTro));
+                }
             }
 
             if (vaiTro === 'rong' && tin.code && typeof window.taoKhungCode === 'function') {
@@ -554,9 +555,6 @@
         cuonXuongCuoi(khungChatDuAn);
     }
 
-    /* ============================================================
-       GẮN SỰ KIỆN
-       ============================================================ */
     if (oNhap) {
         oNhap.addEventListener('input', function () { tuDongGian(oNhap); });
         oNhap.addEventListener('keydown', function (e) {
@@ -589,9 +587,6 @@
         });
     }
 
-    /* ============================================================
-       XUẤT RA TOÀN CỤC
-       ============================================================ */
     window.themTinNhanRong = themTinNhanRong;
     window.themTinNhanNguoi = themTinNhanNguoi;
     window.themTinNhanHeThong = themTinNhanHeThong;
@@ -602,9 +597,6 @@
     window.hienThiKetQuaChay = hienThiKetQuaChay;
     window.hienThiCodeTuBackend = hienThiCodeTuBackend;
 
-    /* ============================================================
-       LỜI CHÀO
-       ============================================================ */
     if (danhSach && !danhSach.children.length) {
         themTinNhanRong('Nói điều ước đi 🌕🐉');
     }
