@@ -1,34 +1,16 @@
 """
-upload.py - Upload ảnh + file tài liệu Rồng Thần.
+upload.py - Upload ảnh + file tài liệu.
 
-Nhiệm vụ:
-    - upload_anh(files, id_tro_chuyen, id_du_an): nhận file ảnh, lưu GridFS kho 1,
-      trích xuất nội dung (dùng Gemini Vision nếu có key).
-    - upload_file(files, id_tro_chuyen, id_du_an): nhận file tài liệu, lưu GridFS kho 1,
-      trích xuất nội dung (PDF, DOCX, XLSX, TXT).
-
-Quy tắc:
-    - File thật lưu GridFS kho 1 (collection fs.files, fs.chunks).
-    - Metadata lưu collection anh_file (có id_tro_chuyen, id_du_an để xóa theo chat).
-    - Nội dung trích xuất lưu collection noi_dung_da_trich_xuat.
-    - Lịch sử gửi lưu collection lich_su_gui.
-    - Khách (chưa đăng nhập) cũng upload được, chu_so_huu = "khach".
-
-Tầng dữ liệu: dai_nao/ghi_nho.py
+Sửa: dai_nao.ghi_nho → luu_tru.ghi_nho.
 """
 
 import io
-import os
 import time
 import secrets
 
 from flask import session as phien_flask
 
-
-# ----------------------------------------------------------------
-# IMPORT TẦNG DỮ LIỆU
-# ----------------------------------------------------------------
-from dai_nao.ghi_nho import (
+from luu_tru.ghi_nho import (
     luu_file_gridfs,
     luu_metadata_anh_file,
     luu_noi_dung_trich_xuat,
@@ -36,9 +18,6 @@ from dai_nao.ghi_nho import (
 )
 
 
-# ----------------------------------------------------------------
-# GHI LOG
-# ----------------------------------------------------------------
 def _ghi_log(loai, noi_dung):
     try:
         from logs.ghi_log import ghi_log
@@ -47,11 +26,7 @@ def _ghi_log(loai, noi_dung):
         pass
 
 
-# ----------------------------------------------------------------
-# TIỆN ÍCH
-# ----------------------------------------------------------------
 def _lay_chu_so_huu():
-    """Trả về tên tài khoản đang đăng nhập, hoặc 'khach' nếu chưa đăng nhập."""
     ten_tk = phien_flask.get("ten_dang_nhap")
     if ten_tk:
         return ten_tk
@@ -63,17 +38,12 @@ def _tao_id():
 
 
 def _lay_duoi_file(ten_file):
-    """Lấy phần mở rộng của file, viết thường, không có dấu chấm."""
     if not ten_file or "." not in ten_file:
         return ""
     return ten_file.rsplit(".", 1)[-1].lower()
 
 
-# ----------------------------------------------------------------
-# TRÍCH XUẤT NỘI DUNG
-# ----------------------------------------------------------------
 def _trich_xuat_txt(noi_dung_bytes):
-    """Trích xuất file text đơn giản."""
     try:
         return noi_dung_bytes.decode("utf-8", errors="replace")
     except Exception:
@@ -81,12 +51,11 @@ def _trich_xuat_txt(noi_dung_bytes):
 
 
 def _trich_xuat_pdf(noi_dung_bytes):
-    """Trích xuất nội dung PDF bằng PyPDF2."""
     try:
         from PyPDF2 import PdfReader
         reader = PdfReader(io.BytesIO(noi_dung_bytes))
         ket_qua = []
-        for trang in reader.pages[:50]:  # tối đa 50 trang
+        for trang in reader.pages[:50]:
             ket_qua.append(trang.extract_text() or "")
         return "\n".join(ket_qua).strip()
     except ImportError:
@@ -96,7 +65,6 @@ def _trich_xuat_pdf(noi_dung_bytes):
 
 
 def _trich_xuat_docx(noi_dung_bytes):
-    """Trích xuất nội dung DOCX bằng python-docx."""
     try:
         from docx import Document
         doc = Document(io.BytesIO(noi_dung_bytes))
@@ -108,7 +76,6 @@ def _trich_xuat_docx(noi_dung_bytes):
 
 
 def _trich_xuat_xlsx(noi_dung_bytes):
-    """Trích xuất nội dung XLSX bằng openpyxl."""
     try:
         from openpyxl import load_workbook
         wb = load_workbook(io.BytesIO(noi_dung_bytes), read_only=True, data_only=True)
@@ -125,18 +92,12 @@ def _trich_xuat_xlsx(noi_dung_bytes):
 
 
 def _trich_xuat_anh_gemini(noi_dung_bytes, duoi_file):
-    """
-    Trích xuất nội dung ảnh bằng Gemini Vision (nếu có Gemini key đã lưu).
-    Nếu không có key → trả về "".
-    """
     try:
         import base64
         import requests
-        from dai_nao.ghi_nho import lay_danh_sach_key_cua
+        from luu_tru.ghi_nho import lay_danh_sach_key_cua
 
         chu_so_huu = _lay_chu_so_huu()
-
-        # Tìm key Gemini đầu tiên
         danh_sach = lay_danh_sach_key_cua(chu_so_huu) or []
         gemini_key = None
         for k in danh_sach:
@@ -147,14 +108,13 @@ def _trich_xuat_anh_gemini(noi_dung_bytes, duoi_file):
         if not gemini_key:
             return ""
 
-        # Gọi Gemini Vision
         duoi = duoi_file or "png"
         mime = "image/" + ("jpeg" if duoi == "jpg" else duoi)
         du_lieu_base64 = base64.b64encode(noi_dung_bytes).decode("utf-8")
 
         url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/"
-            f"gemini-2.0-flash:generateContent?key={gemini_key}"
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"gemini-3.1-flash-lite:generateContent?key={gemini_key}"
         )
         body = {
             "contents": [{
@@ -181,10 +141,6 @@ def _trich_xuat_anh_gemini(noi_dung_bytes, duoi_file):
 
 
 def _trich_xuat_noi_dung(noi_dung_bytes, duoi_file):
-    """
-    Điều phối trích xuất theo loại file.
-    Trả về chuỗi nội dung đã trích xuất (rỗng nếu không trích được).
-    """
     if duoi_file == "txt":
         return _trich_xuat_txt(noi_dung_bytes)
     if duoi_file == "pdf":
@@ -198,21 +154,12 @@ def _trich_xuat_noi_dung(noi_dung_bytes, duoi_file):
     return ""
 
 
-# ----------------------------------------------------------------
-# UPLOAD 1 FILE
-# ----------------------------------------------------------------
 def _xu_ly_mot_file(file_storage, loai_file, id_tro_chuyen=None, id_du_an=None):
-    """
-    Xử lý 1 file: đọc nội dung, lưu GridFS, lưu metadata, trích xuất.
-    loai_file: "anh" hoặc "tai_lieu"
-    Trả về: { thanh_cong, url?, id?, ten_file?, co_noi_dung?, loi? }
-    """
     chu_so_huu = _lay_chu_so_huu()
 
     ten_file = file_storage.filename or "khong_ten"
     duoi_file = _lay_duoi_file(ten_file)
 
-    # Đọc nội dung file vào bộ nhớ
     try:
         file_storage.seek(0)
         noi_dung_bytes = file_storage.read()
@@ -222,14 +169,12 @@ def _xu_ly_mot_file(file_storage, loai_file, id_tro_chuyen=None, id_du_an=None):
     if not noi_dung_bytes:
         return {"thanh_cong": False, "loi": "File rỗng."}
 
-    # Giới hạn kích thước: 20MB
     if len(noi_dung_bytes) > 20 * 1024 * 1024:
         return {"thanh_cong": False, "loi": "File quá lớn (tối đa 20MB)."}
 
     id_file = _tao_id()
     thoi_gian = int(time.time())
 
-    # Metadata đính kèm vào GridFS
     meta_gridfs = {
         "id_file": id_file,
         "chu_so_huu": chu_so_huu,
@@ -242,7 +187,6 @@ def _xu_ly_mot_file(file_storage, loai_file, id_tro_chuyen=None, id_du_an=None):
     if id_du_an:
         meta_gridfs["id_du_an"] = id_du_an
 
-    # Lưu file thật vào GridFS kho 1
     try:
         id_gridfs = luu_file_gridfs(
             ten_file=ten_file,
@@ -252,10 +196,8 @@ def _xu_ly_mot_file(file_storage, loai_file, id_tro_chuyen=None, id_du_an=None):
     except Exception as e:
         return {"thanh_cong": False, "loi": f"Không lưu được file: {e}"}
 
-    # URL để client tải lại
     url = f"/api/file/{id_file}"
 
-    # Lưu metadata vào collection anh_file
     metadata = {
         "id_file": id_file,
         "id_gridfs": str(id_gridfs),
@@ -274,7 +216,6 @@ def _xu_ly_mot_file(file_storage, loai_file, id_tro_chuyen=None, id_du_an=None):
 
     luu_metadata_anh_file(metadata)
 
-    # Trích xuất nội dung
     noi_dung_trich_xuat = _trich_xuat_noi_dung(noi_dung_bytes, duoi_file)
     if noi_dung_trich_xuat:
         du_lieu_trich_xuat = {
@@ -289,7 +230,6 @@ def _xu_ly_mot_file(file_storage, loai_file, id_tro_chuyen=None, id_du_an=None):
             du_lieu_trich_xuat["id_du_an"] = id_du_an
         luu_noi_dung_trich_xuat(du_lieu_trich_xuat)
 
-    # Lưu lịch sử gửi
     du_lieu_lich_su = {
         "id_file": id_file,
         "chu_so_huu": chu_so_huu,
@@ -317,16 +257,7 @@ def _xu_ly_mot_file(file_storage, loai_file, id_tro_chuyen=None, id_du_an=None):
     }
 
 
-# ----------------------------------------------------------------
-# HÀM CHÍNH: UPLOAD ẢNH
-# ----------------------------------------------------------------
 def upload_anh(files, id_tro_chuyen=None, id_du_an=None):
-    """
-    Upload nhiều ảnh.
-    files: request.files.
-    id_tro_chuyen, id_du_an: nếu gửi trong chat dự án thì truyền vào.
-    Trả về: { thanh_cong, urls: [..], chi_tiet: [..], loi? }
-    """
     danh_sach_file = files.getlist("anh") if hasattr(files, "getlist") else []
     if not danh_sach_file:
         return {"thanh_cong": False, "loi": "Không có ảnh nào được gửi."}
@@ -346,16 +277,7 @@ def upload_anh(files, id_tro_chuyen=None, id_du_an=None):
     }
 
 
-# ----------------------------------------------------------------
-# HÀM CHÍNH: UPLOAD FILE TÀI LIỆU
-# ----------------------------------------------------------------
 def upload_file(files, id_tro_chuyen=None, id_du_an=None):
-    """
-    Upload nhiều file tài liệu.
-    files: request.files.
-    id_tro_chuyen, id_du_an: nếu gửi trong chat dự án thì truyền vào.
-    Trả về: { thanh_cong, urls: [..], chi_tiet: [..], loi? }
-    """
     danh_sach_file = files.getlist("file") if hasattr(files, "getlist") else []
     if not danh_sach_file:
         return {"thanh_cong": False, "loi": "Không có file nào được gửi."}

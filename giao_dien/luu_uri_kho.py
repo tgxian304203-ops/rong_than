@@ -1,15 +1,7 @@
 """
-luu_uri_kho.py - Lưu URI 2 kho MongoDB Rồng Thần.
-------------------------------------------------------------
-ĐÃ SỬA: Cho phép chế độ KHÁCH lưu URI kho.
-    - Khách  : chu_so_huu = "khach"
-    - Tài khoản: chu_so_huu = ten_dang_nhap
+luu_uri_kho.py - Lưu URI 2 kho MongoDB.
 
-Nhiệm vụ:
-    - luu_uri_kho(du_lieu): nhận { kho: 1|2, uri }, lưu vào kho 1.
-    - lay_uri_kho(): trả URI đã lưu (che mật khẩu).
-
-Tầng dữ liệu: dai_nao/ghi_nho.py
+Sửa: dai_nao.ghi_nho → luu_tru.ghi_nho.
 """
 
 import re
@@ -17,7 +9,7 @@ import time
 
 from flask import session as phien_flask
 
-from dai_nao.ghi_nho import (
+from luu_tru.ghi_nho import (
     luu_uri_kho_cua,
     lay_uri_kho_cua,
 )
@@ -26,9 +18,6 @@ from dai_nao.ghi_nho import (
 CHU_SO_HUU_KHACH = "khach"
 
 
-# ----------------------------------------------------------------
-# GHI LOG
-# ----------------------------------------------------------------
 def _ghi_log(loai, noi_dung):
     try:
         from logs.ghi_log import ghi_log
@@ -37,9 +26,6 @@ def _ghi_log(loai, noi_dung):
         pass
 
 
-# ----------------------------------------------------------------
-# TIỆN ÍCH
-# ----------------------------------------------------------------
 def _lay_chu_so_huu():
     ten = phien_flask.get("ten_dang_nhap")
     if ten:
@@ -63,15 +49,7 @@ def _che_mat_khau(uri):
     return uri
 
 
-# ----------------------------------------------------------------
-# LƯU URI KHO
-# ----------------------------------------------------------------
 def luu_uri_kho(du_lieu):
-    """
-    Lưu URI kho MongoDB.
-    KHÔNG yêu cầu đăng nhập — khách vẫn lưu được.
-    du_lieu: { kho: 1|2, uri: "..." }
-    """
     chu_so_huu = _lay_chu_so_huu()
 
     so_kho = du_lieu.get("kho")
@@ -103,13 +81,7 @@ def luu_uri_kho(du_lieu):
     }
 
 
-# ----------------------------------------------------------------
-# LẤY URI KHO
-# ----------------------------------------------------------------
 def lay_uri_kho():
-    """
-    Trả URI 2 kho đã lưu của chủ sở hữu hiện tại (đã che mật khẩu).
-    """
     chu_so_huu = _lay_chu_so_huu()
 
     uri_kho_1 = lay_uri_kho_cua(chu_so_huu, 1) or ""

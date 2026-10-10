@@ -1,12 +1,7 @@
 """
-session.py - Quản lý dự án + chat nhanh + trò chuyện trong dự án.
-------------------------------------------------------------
-ĐÃ SỬA:
-    - ngay_tao dùng mili giây để sort chính xác.
-    - Chat nhanh mới nhất lên đầu, vượt 10 xóa cũ nhất.
-    - Xóa trò chuyện → xóa luôn ảnh/file GridFS.
-    - Tạo trò chuyện: nếu không tìm thấy dự án trong DB → tự lưu lại.
-    - Thêm hàm lay_tin_nhan_chat_nhanh để load chat cũ.
+session.py - Quản lý dự án + chat nhanh + trò chuyện.
+
+Sửa: dai_nao.ghi_nho → luu_tru.ghi_nho.
 """
 
 import secrets
@@ -14,7 +9,7 @@ import time
 
 from flask import session as phien_flask
 
-from dai_nao.ghi_nho import (
+from luu_tru.ghi_nho import (
     lay_danh_sach_du_an_cua,
     luu_du_an,
     lay_du_an,
@@ -190,10 +185,6 @@ def doi_ten_chat_nhanh(du_lieu):
 
 
 def lay_tin_nhan_chat_nhanh_cua(id_chat):
-    """
-    Lấy tin nhắn cũ của 1 chat nhanh.
-    Trả về { thanh_cong, danh_sach }.
-    """
     if not id_chat:
         return {"thanh_cong": False, "loi": "Thiếu id chat."}
 
@@ -209,10 +200,6 @@ def lay_tin_nhan_chat_nhanh_cua(id_chat):
 # TRÒ CHUYỆN TRONG DỰ ÁN
 # ================================================================
 def _dam_bao_du_an_ton_tai(id_du_an, ten_tk):
-    """
-    Đảm bảo dự án có trong DB.
-    Nếu chưa có (do khách tạo trước khi đăng nhập) → lưu lại.
-    """
     du_an = lay_du_an(id_du_an)
     if du_an:
         return du_an

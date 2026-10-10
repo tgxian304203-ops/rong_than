@@ -1,21 +1,7 @@
 """
-luu_key_web.py - Lưu + quản lý API Key tra web Rồng Thần.
-------------------------------------------------------------
-Nhiệm vụ:
-    - luu_key_web(du_lieu): nhận key, nhận diện provider, lưu kho 1.
-    - lay_danh_sach_key_web(): trả danh sách key tra web của chủ sở hữu.
-    - xoa_key_web(du_lieu): xóa 1 key theo id.
-    - lay_quota_key_web(): lấy quota thật (nếu API hỗ trợ).
+luu_key_web.py - Lưu + quản lý API Key tra web.
 
-Provider hỗ trợ:
-    - SERPJET    : tiền tố 'sj_',   không có endpoint kiểm tra quota
-                   -> mặc định 100%.
-    - Tavily     : tiền tố 'tvly-', có endpoint /usage
-                   -> lấy quota thật.
-    - Bright Data: tiền tố 'brd-',  không có endpoint quota free-tier
-                   -> mặc định 100%.
-
-Tầng dữ liệu: dai_nao/ghi_nho.py
+Sửa: dai_nao.ghi_nho → luu_tru.ghi_nho.
 """
 
 import time
@@ -24,7 +10,7 @@ import secrets
 import requests
 from flask import session as phien_flask
 
-from dai_nao.ghi_nho import (
+from luu_tru.ghi_nho import (
     luu_key_da_luu,
     lay_danh_sach_key_web_cua,
     lay_key_da_luu,
@@ -33,17 +19,9 @@ from dai_nao.ghi_nho import (
 )
 
 
-# ----------------------------------------------------------------
-# HẰNG SỐ
-# ----------------------------------------------------------------
 CHU_SO_HUU_KHACH = "khach"
 LOAI_KEY_TRA_WEB = "tra_web"
 
-
-# ----------------------------------------------------------------
-# BẢNG ÁNH XẠ PROVIDER
-# ----------------------------------------------------------------
-# Khi nhà cung cấp đổi tiền tố key -> chỉ cần thêm 1 dòng vào bảng.
 BANG_PROVIDER = [
     {"tien_to": "sj_",   "provider": "SERPJET"},
     {"tien_to": "tvly-", "provider": "Tavily"},
@@ -51,9 +29,6 @@ BANG_PROVIDER = [
 ]
 
 
-# ----------------------------------------------------------------
-# GHI LOG
-# ----------------------------------------------------------------
 def _ghi_log(loai, noi_dung):
     try:
         from logs.ghi_log import ghi_log
@@ -62,15 +37,7 @@ def _ghi_log(loai, noi_dung):
         pass
 
 
-# ----------------------------------------------------------------
-# TIỆN ÍCH
-# ----------------------------------------------------------------
 def _lay_chu_so_huu():
-    """
-    Lấy chủ sở hữu key:
-        - Nếu đăng nhập -> tên đăng nhập.
-        - Nếu khách    -> "khach".
-    """
     ten = phien_flask.get("ten_dang_nhap")
     if ten:
         return ten
@@ -78,10 +45,6 @@ def _lay_chu_so_huu():
 
 
 def _nhan_dien_provider(key):
-    """
-    Nhận diện provider dựa vào BẢNG ÁNH XẠ.
-    Trả về: "SERPJET" | "Tavily" | "Bright Data" | None
-    """
     k = (key or "").strip()
     for muc in BANG_PROVIDER:
         if k.startswith(muc["tien_to"]):
@@ -93,14 +56,7 @@ def _tao_id():
     return "keyweb-" + secrets.token_hex(8)
 
 
-# ----------------------------------------------------------------
-# LẤY QUOTA THẬT TỪNG PROVIDER
-# ----------------------------------------------------------------
 def _lay_quota_tavily(key):
-    """
-    Tavily có endpoint /usage trả về { key: { limit, usage } }.
-    Trả về % còn lại (0-100) hoặc None nếu lỗi.
-    """
     try:
         r = requests.get(
             "https://api.tavily.com/usage",
@@ -124,27 +80,12 @@ def _lay_quota_tavily(key):
 
 
 def _lay_quota(key, provider):
-    """
-    Trả về % còn lại cho từng provider.
-        - Tavily     : gọi API /usage.
-        - SERPJET    : không có endpoint -> mặc định 100.
-        - Bright Data: không có endpoint -> mặc định 100.
-    """
     if provider == "Tavily":
         return _lay_quota_tavily(key)
     return 100
 
 
-# ----------------------------------------------------------------
-# LƯU KEY TRA WEB
-# ----------------------------------------------------------------
 def luu_key_web(du_lieu):
-    """
-    Lưu API Key tra web mới.
-    KHÔNG yêu cầu đăng nhập — khách vẫn lưu được.
-    du_lieu: { key }
-    Trả về: { thanh_cong, key? }
-    """
     chu_so_huu = _lay_chu_so_huu()
 
     key = (du_lieu.get("key") or "").strip()
@@ -190,14 +131,7 @@ def luu_key_web(du_lieu):
     }
 
 
-# ----------------------------------------------------------------
-# LẤY DANH SÁCH KEY TRA WEB
-# ----------------------------------------------------------------
 def lay_danh_sach_key_web():
-    """
-    Trả danh sách key tra web của chủ sở hữu hiện tại.
-    KHÔNG trả key gốc.
-    """
     chu_so_huu = _lay_chu_so_huu()
     danh_sach = lay_danh_sach_key_web_cua(chu_so_huu) or []
 
@@ -213,14 +147,7 @@ def lay_danh_sach_key_web():
     return {"thanh_cong": True, "danh_sach": ket_qua}
 
 
-# ----------------------------------------------------------------
-# XÓA KEY TRA WEB
-# ----------------------------------------------------------------
 def xoa_key_web(du_lieu):
-    """
-    Xóa key tra web theo id.
-    Chỉ cho phép xóa key thuộc chủ sở hữu hiện tại.
-    """
     chu_so_huu = _lay_chu_so_huu()
 
     id_xoa = du_lieu.get("id")
@@ -244,16 +171,7 @@ def xoa_key_web(du_lieu):
     return {"thanh_cong": True}
 
 
-# ----------------------------------------------------------------
-# LẤY QUOTA KEY TRA WEB
-# ----------------------------------------------------------------
 def lay_quota_key_web():
-    """
-    Lấy quota của từng key tra web:
-        - Tavily     : gọi API /usage.
-        - SERPJET    : mặc định 100.
-        - Bright Data: mặc định 100.
-    """
     chu_so_huu = _lay_chu_so_huu()
     danh_sach = lay_danh_sach_key_web_cua(chu_so_huu) or []
     ket_qua = []

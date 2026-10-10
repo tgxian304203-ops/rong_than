@@ -1,33 +1,16 @@
 """
-luu_key.py - Lưu + quản lý API Key model Rồng Thần.
-------------------------------------------------------------
-Nhiệm vụ:
-    - luu_key_model(du_lieu): nhận key, nhận diện provider, lưu kho 1.
-    - lay_danh_sach_key(du_lieu): trả danh sách key model (đã ẩn key gốc).
-    - xoa_key(du_lieu): xóa 1 key theo id.
-    - lay_quota_key(du_lieu): lấy quota thật từ API của từng provider.
+luu_key.py - Lưu + quản lý API Key model.
 
-ĐÃ SỬA (Giai đoạn 1.5 — tách bể key Boss / Tiểu Boss):
-    - FIX 1: luu_key_model nhận thêm trường "loai_nao" trong du_lieu.
-             Mặc định "tieu_boss" nếu không có.
-    - FIX 2: lay_danh_sach_key lọc theo tham số "loai_nao" (query param).
-    - FIX 3: Key cũ không có loai_nao → tự động gán "tieu_boss".
-    - FIX 4: lay_quota_key lọc theo loai_nao.
-
-Các fix cũ giữ nguyên:
-    - Nhận diện provider qua BẢNG ÁNH XẠ.
-    - Nhận diện Gemini định dạng mới 'AQ.Ab...'.
-
-Tầng dữ liệu: dai_nao/ghi_nho.py
+Sửa: dai_nao.ghi_nho → luu_tru.ghi_nho.
 """
 
 import time
 import secrets
 
 import requests
-from flask import session as phien_flask, request
+from flask import session as phien_flask
 
-from dai_nao.ghi_nho import (
+from luu_tru.ghi_nho import (
     luu_key_da_luu,
     lay_danh_sach_key_cua,
     lay_key_da_luu,
@@ -38,7 +21,6 @@ from dai_nao.ghi_nho import (
 
 CHU_SO_HUU_KHACH = "khach"
 
-
 BANG_PROVIDER = [
     {"tien_to": "gsk_",   "provider": "Groq"},
     {"tien_to": "sk-or-", "provider": "OpenRouter"},
@@ -46,8 +28,6 @@ BANG_PROVIDER = [
     {"tien_to": "AQ.Ab",  "provider": "Gemini"},
 ]
 
-
-# FIX 1: Loại não hợp lệ
 LOAI_NAO_HOP_LE = ("boss", "tieu_boss")
 LOAI_NAO_MAC_DINH = "tieu_boss"
 
@@ -80,7 +60,6 @@ def _tao_id():
 
 
 def _chuan_hoa_loai_nao(gia_tri):
-    """FIX 1: Chuẩn hóa loai_nao — mặc định tieu_boss nếu sai."""
     if not gia_tri:
         return LOAI_NAO_MAC_DINH
     gt = str(gia_tri).strip().lower()
@@ -152,23 +131,13 @@ def _lay_quota(key, provider):
     return None
 
 
-# ================================================================
-# LƯU KEY MODEL (FIX 1)
-# ================================================================
 def luu_key_model(du_lieu):
-    """
-    Lưu key model vào MongoDB.
-
-    FIX 1: Nhận thêm trường "loai_nao" trong du_lieu.
-           Mặc định "tieu_boss" nếu không có.
-    """
     chu_so_huu = _lay_chu_so_huu()
 
     key = (du_lieu.get("key") or "").strip()
     if not key:
         return {"thanh_cong": False, "loi": "Thiếu key."}
 
-    # FIX 1: Lấy + chuẩn hóa loai_nao
     loai_nao = _chuan_hoa_loai_nao(du_lieu.get("loai_nao"))
 
     provider = _nhan_dien_provider(key)
@@ -213,22 +182,10 @@ def luu_key_model(du_lieu):
     }
 
 
-# ================================================================
-# LẤY DANH SÁCH KEY (FIX 2 + FIX 3)
-# ================================================================
 def lay_danh_sach_key(du_lieu=None):
-    """
-    Lấy danh sách key model — LỌC theo loai_nao.
-
-    FIX 2: Lọc theo tham số "loai_nao".
-           - Nếu du_lieu có loai_nao → chỉ trả key cùng loại.
-           - Nếu không → trả TẤT CẢ (dùng cho tương thích).
-    FIX 3: Key cũ không có loai_nao → tự động gán "tieu_boss".
-    """
     chu_so_huu = _lay_chu_so_huu()
     danh_sach = lay_danh_sach_key_cua(chu_so_huu) or []
 
-    # FIX 2: Lấy filter từ du_lieu (nếu có)
     du_lieu = du_lieu or {}
     loc_loai_nao = du_lieu.get("loai_nao")
     if loc_loai_nao:
@@ -239,7 +196,6 @@ def lay_danh_sach_key(du_lieu=None):
         if k.get("loai_key") == "tra_web":
             continue
 
-        # FIX 3: Key cũ không có loai_nao → mặc định tieu_boss
         ln = _chuan_hoa_loai_nao(k.get("loai_nao"))
 
         if loc_loai_nao and ln != loc_loai_nao:
@@ -256,9 +212,6 @@ def lay_danh_sach_key(du_lieu=None):
     return {"thanh_cong": True, "danh_sach": ket_qua}
 
 
-# ================================================================
-# XÓA KEY
-# ================================================================
 def xoa_key(du_lieu):
     chu_so_huu = _lay_chu_so_huu()
 
@@ -280,13 +233,7 @@ def xoa_key(du_lieu):
     return {"thanh_cong": True}
 
 
-# ================================================================
-# LẤY QUOTA KEY (FIX 4)
-# ================================================================
 def lay_quota_key(du_lieu=None):
-    """
-    FIX 4: Lọc theo loai_nao.
-    """
     chu_so_huu = _lay_chu_so_huu()
     danh_sach = lay_danh_sach_key_cua(chu_so_huu) or []
 

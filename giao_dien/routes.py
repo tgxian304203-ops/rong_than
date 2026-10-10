@@ -1,9 +1,8 @@
 """
 routes.py - Định nghĩa toàn bộ route API cho Rồng Thần.
 
-ĐÃ SỬA:
-    - Đọc SECRET_KEY từ env trước → không mất session khi Render rebuild.
-    - Nếu không có env → đọc file → nếu không có → tạo mới.
+Sửa: dai_nao.ghi_nho → luu_tru.ghi_nho
+      dai_nao.nhan_task → dai_nao.nhan_yeu_cau.
 """
 
 import os
@@ -21,13 +20,10 @@ FILE_CAU_HINH_KHO = os.path.join(THU_MUC_DU_LIEU, "cau_hinh_kho.json")
 
 
 def _doc_hoac_tao_secret_key():
-    """Đọc SECRET_KEY từ env → file → tạo mới."""
-    # 1. Ưu tiên env — không mất khi Render rebuild
     secret_env = os.environ.get("SECRET_KEY")
     if secret_env:
         return secret_env
 
-    # 2. Fallback: đọc từ file
     os.makedirs(THU_MUC_DU_LIEU, exist_ok=True)
     du_lieu = {}
     if os.path.exists(FILE_CAU_HINH_KHO):
@@ -128,7 +124,7 @@ def dang_ky_routes(app):
                     "urls_file": urls_file,
                 })
 
-        ham_xu_ly = _goi_an_toan("dai_nao.nhan_task", "nhan_task")
+        ham_xu_ly = _goi_an_toan("dai_nao.nhan_yeu_cau", "nhan_yeu_cau")
         if ham_xu_ly is None:
             return _chua_trien_khai("đại não xử lý")
 
@@ -158,7 +154,7 @@ def dang_ky_routes(app):
         })
 
     # ============================================================
-    # TRÒ CHUYỆN TRONG DỰ ÁN
+    # TRÒ CHUYỆN
     # ============================================================
     @app.route("/api/tao-tro-chuyen", methods=["POST"])
     def api_tao_tro_chuyen():
@@ -396,11 +392,11 @@ def dang_ky_routes(app):
         return jsonify(ham(request.files, id_tro_chuyen, id_du_an))
 
     # ============================================================
-    # PHỤC VỤ FILE TỪ GRIDFS
+    # PHỤC VỤ FILE
     # ============================================================
     @app.route("/api/file/<id_file>", methods=["GET"])
     def api_file(id_file):
-        from dai_nao.ghi_nho import lay_file_theo_id, doc_file_gridfs
+        from luu_tru.ghi_nho import lay_file_theo_id, doc_file_gridfs
         metadata = lay_file_theo_id(id_file)
         if not metadata:
             return jsonify({"thanh_cong": False, "loi": "Không tìm thấy file."}), 404
@@ -504,9 +500,9 @@ def dang_ky_routes(app):
         du_lieu = request.get_json(silent=True) or {}
         ngon_ngu = du_lieu.get("ngon_ngu", "python")
         if ngon_ngu == "html":
-            ham = _goi_an_toan("sanbox.chay_html", "chay_html")
+            ham = _goi_an_toan("tieu_nao.sanbox.chay_html", "chay_html")
         else:
-            ham = _goi_an_toan("sanbox.chay_python", "chay_python")
+            ham = _goi_an_toan("tieu_nao.sanbox.chay_python", "chay_python")
         if ham is None:
             return _chua_trien_khai("chạy sandbox")
         return jsonify(ham(du_lieu))
@@ -514,178 +510,13 @@ def dang_ky_routes(app):
     @app.route("/api/sandbox/ket-qua", methods=["POST"])
     def api_sandbox_ket_qua():
         du_lieu = request.get_json(silent=True) or {}
-        code = du_lieu.get("code") or ""
-        stdout = du_lieu.get("stdout") or ""
-        stderr = du_lieu.get("stderr") or ""
-        ngon_ngu = du_lieu.get("ngon_ngu") or "python"
-        id_chat = du_lieu.get("id_chat") or ""
-        id_node = du_lieu.get("id_node") or ""
-        la_lan_hai = bool(du_lieu.get("la_lan_hai", False))
-
-        if not code:
-            return jsonify({
-                "thanh_cong": False,
-                "loi": "Thiếu code.",
-            })
-
-        ket_qua_client = {
-            "console": [],
-            "error": stderr if stderr else None,
-        }
-        if stdout:
-            for dong in stdout.split("\n"):
-                if dong.strip():
-                    ket_qua_client["console"].append({
-                        "method": "log",
-                        "args": [dong],
-                    })
-        if stderr:
-            for dong in stderr.split("\n"):
-                if dong.strip():
-                    ket_qua_client["console"].append({
-                        "method": "error",
-                        "args": [dong],
-                    })
-
-        ket_qua_chuan = {}
-        try:
-            from sanbox.tra_ket_qua import tra_ket_qua
-            ket_qua_chuan = tra_ket_qua(ket_qua_client) or {}
-        except ImportError:
-            ket_qua_chuan = {
-                "thanh_cong": not bool(stderr),
-                "stdout": stdout,
-                "stderr": stderr,
-                "result_html": "",
-                "tests": [],
-                "loi": "",
-            }
-        except Exception as e:
-            return jsonify({
-                "thanh_cong": False,
-                "loi": f"Lỗi chuẩn hóa kết quả: {e}",
-            })
-
-        ket_qua_loi = {}
-        try:
-            from sanbox.kiem_tra_loi import kiem_tra_loi
-            ket_qua_loi = kiem_tra_loi(ket_qua_client) or {}
-        except ImportError:
-            ket_qua_loi = {
-                "thanh_cong": not bool(stderr),
-                "co_loi": bool(stderr),
-                "loai_loi": "runtime" if stderr else "",
-                "thong_diep": stderr[:500] if stderr else "",
-                "dong": None,
-                "goi_y": [],
-            }
-        except Exception as e:
-            return jsonify({
-                "thanh_cong": False,
-                "loi": f"Lỗi kiểm tra lỗi: {e}",
-            })
-
-        if not ket_qua_loi.get("co_loi"):
-            if id_node:
-                try:
-                    from dai_nao.xu_ly_task import ghi_thanh_cong_vao_cay
-                    ghi_thanh_cong_vao_cay(id_node, code)
-                except ImportError:
-                    pass
-                except Exception as e:
-                    print(f"Lỗi ghi thành công: {e}")
-
-            return jsonify({
-                "thanh_cong": True,
-                "co_loi": False,
-                "stdout": ket_qua_chuan.get("stdout", ""),
-                "result_html": ket_qua_chuan.get("result_html", ""),
-                "tests": ket_qua_chuan.get("tests", []),
-                "thong_bao": "Code chạy thành công.",
-            })
-
-        thong_diep_loi = ket_qua_loi.get("thong_diep") or stderr
-        loai_loi = ket_qua_loi.get("loai_loi") or "runtime"
-
-        if id_node:
-            try:
-                from dai_nao.xu_ly_task import ghi_that_bai_vao_cay
-                ghi_that_bai_vao_cay(id_node, code, thong_diep_loi[:200])
-            except ImportError:
-                pass
-            except Exception as e:
-                print(f"Lỗi ghi thất bại: {e}")
-
-        if la_lan_hai:
-            return jsonify({
-                "thanh_cong": True,
-                "co_loi": True,
-                "loai_loi": loai_loi,
-                "thong_diep_loi": thong_diep_loi[:500],
-                "dong_loi": ket_qua_loi.get("dong"),
-                "goi_y": ket_qua_loi.get("goi_y", []),
-                "code_moi": code,
-                "da_sua": False,
-                "thong_bao": "Đã thử sửa nhưng vẫn còn lỗi.",
-            })
-
-        code_moi = code
-        cach_sua = ""
-        nguon = ""
-        da_sua = False
-
-        try:
-            from dai_nao.tu_sua_loi import tu_sua_loi
-            ket_qua_sua = tu_sua_loi(code, thong_diep_loi, ngon_ngu)
-            if ket_qua_sua and ket_qua_sua.get("thanh_cong"):
-                code_moi = ket_qua_sua.get("code_moi", code)
-                cach_sua = ket_qua_sua.get("cach_sua", "")
-                nguon = ket_qua_sua.get("nguon", "")
-                da_sua = code_moi != code
-        except ImportError:
-            pass
-        except Exception as e:
-            return jsonify({
-                "thanh_cong": False,
-                "co_loi": True,
-                "loi": f"Lỗi tự sửa: {e}",
-                "thong_diep_loi": thong_diep_loi,
-            })
-
-        if da_sua and loai_loi:
-            try:
-                from dai_nao.cap_nhat_tu_dien_loi import hoc_tu_loi_moi
-                hoc_tu_loi_moi(loai_loi, thong_diep_loi, cach_sua, code_moi)
-            except ImportError:
-                pass
-            except Exception as e:
-                print(f"Lỗi học lỗi mới: {e}")
-
-        return jsonify({
-            "thanh_cong": True,
-            "co_loi": True,
-            "loai_loi": loai_loi,
-            "thong_diep_loi": thong_diep_loi[:500],
-            "dong_loi": ket_qua_loi.get("dong"),
-            "goi_y": ket_qua_loi.get("goi_y", []),
-            "code_moi": code_moi,
-            "da_sua": da_sua,
-            "cach_sua": cach_sua,
-            "nguon": nguon,
-        })
-
-    # ============================================================
-    # CÂY QUYẾT ĐỊNH
-    # ============================================================
-    @app.route("/api/cay", methods=["GET"])
-    def api_cay():
-        ham = _goi_an_toan("dai_nao.ghi_nho", "doc_cay")
+        ham = _goi_an_toan("tieu_nao.sanbox.tra_ket_qua", "tra_ket_qua")
         if ham is None:
-            return _chua_trien_khai("đọc cây quyết định")
-        return jsonify(ham())
+            return _chua_trien_khai("chuẩn hóa kết quả sandbox")
+        return jsonify(ham(du_lieu))
 
     # ============================================================
-    # GLOBAL ERROR HANDLER — Trả JSON thay vì HTML
+    # GLOBAL ERROR HANDLER
     # ============================================================
     @app.errorhandler(Exception)
     def _xu_ly_loi_chung(e):
